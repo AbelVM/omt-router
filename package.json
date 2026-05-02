@@ -1,0 +1,78 @@
+{
+  "name": "omt-router",
+  "version": "1.0.0",
+  "private": false,
+  "description": "GPU-accelerated routing library for OpenMapTiles vector tiles (pedestrian, car, bicycle).",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/omt-router.es.js",
+      "require": "./dist/omt-router.cjs.js"
+    }
+  },
+  "main": "dist/omt-router.cjs.js",
+  "module": "dist/omt-router.es.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint 'src/**/*.js' 'tests/**/*.js'",
+    "lint:fix": "eslint --fix 'src/**/*.js' 'tests/**/*.js'",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "routing",
+    "navigation",
+    "openmaptiles",
+    "vector-tiles",
+    "maplibre",
+    "gpu",
+    "webgpu",
+    "taichi",
+    "bellman-ford",
+    "dijkstra",
+    "pedestrian",
+    "bicycle",
+    "car"
+  ],
+  "author": {
+    "name": "Abel Vázquez Montoro",
+    "url": "https://github.com/AbelVM"
+  },
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AbelVM/omt-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AbelVM/omt-router/issues"
+  },
+  "homepage": "https://github.com/AbelVM/omt-router#readme",
+  "devDependencies": {
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "terser": "^5.46.2",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@mapbox/vector-tile": "^2.0.4",
+    "kdbush": "^4.0.2",
+    "pbf": "^4.0.1",
+    "performance-helpers": "^1.0.1",
+    "taichi.js": "^0.0.36"
+  }
+}

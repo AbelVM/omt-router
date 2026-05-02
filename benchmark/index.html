@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>omp-router — CPU vs GPU Benchmark</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f8fafc;
+      --surface:   #ffffff;
+      --border:    #e2e8f0;
+      --muted:     #94a3b8;
+      --text:      #1e293b;
+      --subtext:   #64748b;
+      --accent:    #6366f1;
+      --accent-lt: #eef2ff;
+      --green:     #16a34a;
+      --red:       #dc2626;
+      --radius:    8px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    .page { max-width: 1400px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    .header { margin-bottom: 24px; }
+    .header h1 { font-size: 22px; font-weight: 700; color: var(--text); }
+    .header p  { color: var(--subtext); margin-top: 4px; }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    section h2 { font-size: 13px; font-weight: 600; color: var(--subtext); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; }
+
+    /* ── Config grid ─────────────────────────────────────────────────────── */
+    .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px 20px;
+    }
+    .config-grid.wide { grid-template-columns: 2fr 1fr 1fr 1fr; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; color: var(--subtext); }
+    input[type="text"], input[type="number"], select {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+
+    .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .filter-row label { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: var(--text); cursor: pointer; }
+    .filter-row input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 18px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 600; transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:not(:disabled):hover { opacity: .88; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:not(:disabled):hover { background: var(--bg); }
+    .actions { display: flex; gap: 10px; margin-top: 16px; }
+
+    /* ── Progress ────────────────────────────────────────────────────────── */
+    .progress-wrap { display: flex; flex-direction: column; gap: 8px; }
+    .progress-bar-outer {
+      height: 8px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; overflow: hidden;
+    }
+    .progress-bar-inner {
+      height: 100%; background: var(--accent); border-radius: 4px;
+      transition: width .3s ease; width: 0;
+    }
+    .progress-text { font-size: 12px; color: var(--subtext); }
+
+    /* ── Summary cards ───────────────────────────────────────────────────── */
+    .summary-cards {
+      display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 18px; min-width: 120px;
+    }
+    .card-val  { font-size: 24px; font-weight: 700; color: var(--text); }
+    .card-lbl  { font-size: 11px; color: var(--subtext); margin-top: 2px; }
+    .card.green { border-color: #bbf7d0; background: #f0fdf4; }
+    .card.green .card-val { color: var(--green); }
+    .card.red   { border-color: #fecaca; background: #fef2f2; }
+    .card.red   .card-val { color: var(--red); }
+    .card.amber { border-color: #fde68a; background: #fffbeb; }
+    .card.amber .card-val { color: #d97706; }
+
+    /* ── Chart ───────────────────────────────────────────────────────────── */
+    .chart-wrap { position: relative; }
+    canvas { display: block; border-radius: var(--radius); }
+    .chart-legend {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(255,255,255,.92);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 11px;
+    }
+    .chart-legend h4 { font-size: 10px; font-weight: 600; color: var(--subtext); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .legend-swatch {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 1.5px solid rgba(0,0,0,.25); flex-shrink: 0;
+    }
+    .legend-swatch.square  { border-radius: 2px; }
+    .legend-swatch.tri     { width: 0; height: 0; background: none; border: none; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid; border-bottom-color: inherit; border-radius: 0; }
+    .legend-swatch.diamond { transform: rotate(45deg); border-radius: 2px; }
+
+    #tooltip {
+      position: fixed; pointer-events: none; z-index: 100;
+      background: rgba(15,23,42,.9); color: #f1f5f9;
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 12px; line-height: 1.6;
+      max-width: 300px;
+    }
+
+    /* ── Threshold suggestion ─────────────────────────────────────────────── */
+    .suggestion {
+      display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start;
+      padding: 14px 0 0;
+    }
+    .suggestion-box {
+      background: var(--accent-lt); border: 1px solid #c7d2fe;
+      border-radius: 6px; padding: 12px 16px;
+    }
+    .suggestion-box .val { font-size: 18px; font-weight: 700; color: var(--accent); }
+    .suggestion-box .lbl { font-size: 11px; color: var(--subtext); }
+    .suggestion-accuracy { font-size: 12px; color: var(--subtext); margin-top: 8px; }
+
+    /* ── Table ───────────────────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      background: var(--bg); color: var(--subtext);
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+      padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border);
+      cursor: pointer; user-select: none; white-space: nowrap;
+    }
+    thead th:hover { color: var(--accent); }
+    thead th.sorted { color: var(--accent); }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:hover { background: var(--bg); }
+    td { padding: 7px 10px; white-space: nowrap; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 999px; font-size: 11px; font-weight: 600;
+    }
+    .badge-gpu    { background: #dcfce7; color: #15803d; }
+    .badge-cpu    { background: #f1f5f9; color: #475569; }
+    .badge-error  { background: #fef2f2; color: #b91c1c; }
+    .badge-na     { background: #f1f5f9; color: #94a3b8; }
+
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.faster { color: var(--green); font-weight: 600; }
+    td.slower { color: var(--red); }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .config-grid, .config-grid.wide { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .config-grid, .config-grid.wide { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>omp-router — CPU vs GPU Benchmark</h1>
+    <p>Runs hundreds of routes at different beeline lengths and road densities to find where GPU Bellman-Ford beats CPU A★.</p>
+  </div>
+
+  <!-- Config ──────────────────────────────────────────────────────────────── -->
+  <section>
+    <h2>Configuration</h2>
+    <div class="config-grid wide">
+      <label>
+        Tile URL template
+        <input id="url-input" type="text"
+          value="https://api.maptiler.com/tiles/v3-openmaptiles/{z}/{x}/{y}.pbf?key=YOUR_KEY"
+          spellcheck="false" />
+      </label>
+      <label>
+        Transport mode
+        <select id="mode-select">
+          <option value="car" selected>Car</option>
+          <option value="pedestrian">Pedestrian</option>
+          <option value="bicycle">Bicycle</option>
+        </select>
+      </label>
+      <label>
+        Tile zoom
+        <input id="zoom-input" type="number" value="14" min="10" max="16" />
+      </label>
+      <label>
+        Runs per route
+        <input id="runs-input" type="number" value="3" min="1" max="10" />
+      </label>
+    </div>
+
+    <!-- Route filters -->
+    <div style="margin-top:16px">
+      <div style="font-size:12px;font-weight:500;color:var(--subtext);margin-bottom:6px">Categories to include</div>
+      <div class="filter-row" id="category-filters">
+        <label><input type="checkbox" value="city-center" checked> City center</label>
+        <label><input type="checkbox" value="city-consolidated" checked> City consolidated</label>
+        <label><input type="checkbox" value="suburban" checked> Suburban</label>
+        <label><input type="checkbox" value="countryside" checked> Countryside</label>
+      </div>
+      <div style="font-size:12px;font-weight:500;color:var(--subtext);margin-top:12px;margin-bottom:6px">Length categories</div>
+      <div class="filter-row" id="length-filters">
+        <label><input type="checkbox" value="extra-short" checked> Extra-short (&lt;300 m)</label>
+        <label><input type="checkbox" value="short" checked> Short (300 m–1.5 km)</label>
+        <label><input type="checkbox" value="medium" checked> Medium (1.5–6 km)</label>
+        <label><input type="checkbox" value="long" checked> Long (6–20 km)</label>
+        <label><input type="checkbox" value="extra-long" checked> Extra-long (&gt;20 km)</label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="run-btn">▶ Run Benchmark</button>
+      <button class="btn btn-secondary" id="stop-btn" disabled>■ Stop</button>
+      <span id="route-count" style="align-self:center;font-size:12px;color:var(--subtext)"></span>
+    </div>
+  </section>
+
+  <!-- Progress ──────────────────────────────────────────────────────────── -->
+  <section id="progress-section" hidden>
+    <h2>Progress</h2>
+    <div class="progress-wrap">
+      <div class="progress-bar-outer">
+        <div class="progress-bar-inner" id="progress-bar"></div>
+      </div>
+      <div class="progress-text" id="progress-text">Starting…</div>
+    </div>
+  </section>
+
+  <!-- Results ──────────────────────────────────────────────────────────── -->
+  <section id="results-section" hidden>
+    <h2>Results</h2>
+
+    <!-- Summary cards -->
+    <div class="summary-cards" id="summary-cards"></div>
+
+    <!-- Scatter plot -->
+    <div class="chart-wrap" style="margin-bottom:24px">
+      <canvas id="scatter" width="900" height="460"></canvas>
+      <div class="chart-legend">
+        <h4>Environment</h4>
+        <div class="legend-item"><div class="legend-swatch square" style="background:#e2e8f0;border-color:#64748b"></div> City center</div>
+        <div class="legend-item"><div class="legend-swatch tri"    style="border-bottom-color:#64748b"></div> Consolidated</div>
+        <div class="legend-item"><div class="legend-swatch diamond" style="background:#e2e8f0;border-color:#64748b"></div> Suburban</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#e2e8f0;border-color:#64748b"></div> Countryside</div>
+        <h4 style="margin-top:10px">GPU speedup</h4>
+        <div class="legend-item"><div class="legend-swatch" style="background:#16a34a"></div> 3× (GPU)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#4ade80"></div> 1.2× (GPU)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#fbbf24"></div> ~Tied</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#fb923c"></div> &lt;1× (CPU)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> 2× (CPU)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#94a3b8"></div> No GPU data</div>
+        <h4 style="margin-top:10px">Threshold lines</h4>
+        <div class="legend-item"><div style="width:24px;height:2px;border-top:2px dashed #6366f1;flex-shrink:0"></div> GPU_MIN_EDGES</div>
+        <div class="legend-item"><div style="width:24px;height:2px;border-top:2px dashed #f59e0b;flex-shrink:0"></div> GPU_MIN_BEELINE</div>
+      </div>
+    </div>
+
+    <!-- Threshold suggestion -->
+    <div id="suggestion-wrap" hidden style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;color:var(--subtext);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Suggested Thresholds</div>
+      <div class="suggestion" id="suggestion-content"></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions" style="margin-bottom:20px">
+      <button class="btn btn-secondary" id="download-btn">⬇ Download CSV</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th data-col="name">Route</th>
+            <th data-col="category">Category</th>
+            <th data-col="lengthCategory">Length</th>
+            <th data-col="beelineM" class="num">Beeline</th>
+            <th data-col="E" class="num">E</th>
+            <th data-col="N" class="num">N</th>
+            <th data-col="radius" class="num">r</th>
+            <th data-col="cpu_ms" class="num">CPU (ms)</th>
+            <th data-col="gpu_ms" class="num">GPU (ms)</th>
+            <th data-col="speedup" class="num">Speedup</th>
+            <th data-col="winner">Winner</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip" hidden></div>
+
+<script type="module">
+import { ROUTES, GPU_MIN_EDGES, GPU_MIN_BEELINE_M } from './routes.js';
+import { runBenchmark, downloadCSV, drawScatter, installTooltip, suggestThresholds } from './benchmark.js';
+
+// ── Route count indicator ─────────────────────────────────────────────────
+function getSelectedRoutes() {
+  const cats    = [...document.querySelectorAll('#category-filters input:checked')].map(el => el.value);
+  const lengths = [...document.querySelectorAll('#length-filters input:checked')].map(el => el.value);
+  return ROUTES.filter(r => cats.includes(r.category) && lengths.includes(r.lengthCategory));
+}
+
+function updateRouteCount() {
+  const n = getSelectedRoutes().length;
+  document.getElementById('route-count').textContent = `${n} routes selected`;
+}
+document.querySelectorAll('#category-filters input, #length-filters input')
+  .forEach(el => el.addEventListener('change', updateRouteCount));
+updateRouteCount();
+
+// ── State ─────────────────────────────────────────────────────────────────
+let _results = [];
+let _sortCol = 'E';
+let _sortAsc  = true;
+let _stopped  = false;
+let _cleanupTooltip = null;
+
+// ── Run button ────────────────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('click', async () => {
+  const urlTemplate = document.getElementById('url-input').value.trim();
+  if (!urlTemplate || urlTemplate.includes('YOUR_KEY')) {
+    alert('Please enter a valid tile URL template (replace YOUR_KEY with your API key).');
+    return;
+  }
+
+  const mode  = document.getElementById('mode-select').value;
+  const zoom  = parseInt(document.getElementById('zoom-input').value, 10) || 14;
+  const nRuns = parseInt(document.getElementById('runs-input').value, 10) || 3;
+  const routes = getSelectedRoutes();
+
+  if (routes.length === 0) {
+    alert('No routes selected. Check the category/length filters.');
+    return;
+  }
+
+  _stopped = false;
+  _results = [];
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('stop-btn').disabled = false;
+  document.getElementById('progress-section').hidden = false;
+  document.getElementById('results-section').hidden = true;
+  document.getElementById('results-tbody').innerHTML = '';
+  document.getElementById('summary-cards').innerHTML = '';
+  if (_cleanupTooltip) { _cleanupTooltip(); _cleanupTooltip = null; }
+
+  try {
+    await runBenchmark(
+      { routes, urlTemplate, mode, zoom, nRuns },
+      (progress) => {
+        if (_stopped) throw new Error('Benchmark stopped by user');
+
+        const { current, total, routeName, result, results, done } = progress;
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        document.getElementById('progress-bar').style.width = `${pct}%`;
+        document.getElementById('progress-text').textContent = done
+          ? `Done — ${total} routes completed`
+          : `${current}/${total} — ${routeName ?? ''}`;
+
+        if (result) {
+          _results = results;
+          appendRow(result);
+          updateSummary(results);
+          redrawChart(results);
+        }
+      }
+    );
+  } catch (err) {
+    if (!_stopped) console.error('Benchmark error:', err);
+  } finally {
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('stop-btn').disabled = true;
+    if (_results.length > 0) showResults(_results);
+  }
+});
+
+document.getElementById('stop-btn').addEventListener('click', () => {
+  _stopped = true;
+});
+
+// ── Download ──────────────────────────────────────────────────────────────
+document.getElementById('download-btn').addEventListener('click', () => {
+  if (_results.length > 0) {
+    const mode = document.getElementById('mode-select').value;
+    downloadCSV(_results, `benchmark_${mode}_${new Date().toISOString().slice(0,10)}.csv`);
+  }
+});
+
+// ── Table sorting ─────────────────────────────────────────────────────────
+document.querySelectorAll('#results-table thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (_sortCol === col) { _sortAsc = !_sortAsc; }
+    else { _sortCol = col; _sortAsc = true; }
+    document.querySelectorAll('#results-table thead th').forEach(t => t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (_sortAsc ? ' ▲' : ' ▼');
+    renderTable(_results);
+  });
+});
+
+// ── Rendering helpers ─────────────────────────────────────────────────────
+
+function fmtMs(v) {
+  if (v == null) return '<span style="color:var(--muted)">—</span>';
+  return `${v}`;
+}
+
+function fmtNum(v) {
+  if (v == null) return '<span style="color:var(--muted)">—</span>';
+  return Number(v).toLocaleString();
+}
+
+function winnerBadge(r) {
+  if (r.error) return `<span class="badge badge-error" title="${r.error}">error</span>`;
+  if (!r.winner) return `<span class="badge badge-na">—</span>`;
+  return r.winner === 'gpu'
+    ? `<span class="badge badge-gpu">GPU</span>`
+    : `<span class="badge badge-cpu">CPU</span>`;
+}
+
+function speedupCell(r) {
+  if (r.speedup == null) return '<span style="color:var(--muted)">—</span>';
+  const cls = r.speedup >= 1 ? 'faster' : 'slower';
+  const sign = r.speedup >= 1 ? '+' : '';
+  return `<span class="${cls}">${sign}${r.speedup}×</span>`;
+}
+
+function appendRow(r) {
+  document.getElementById('results-section').hidden = false;
+  const tbody = document.getElementById('results-tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = buildRowHTML(r);
+  tbody.appendChild(tr);
+}
+
+function buildRowHTML(r) {
+  return `
+    <td>${r.name}</td>
+    <td>${r.category}</td>
+    <td>${r.lengthCategory}</td>
+    <td class="num">${r.beelineM != null ? r.beelineM.toLocaleString() + ' m' : '—'}</td>
+    <td class="num">${fmtNum(r.E)}</td>
+    <td class="num">${fmtNum(r.N)}</td>
+    <td class="num">${r.radius ?? '—'}</td>
+    <td class="num">${fmtMs(r.cpu_ms)}</td>
+    <td class="num">${fmtMs(r.gpu_ms)}</td>
+    <td class="num">${speedupCell(r)}</td>
+    <td>${winnerBadge(r)}</td>
+  `;
+}
+
+function renderTable(results) {
+  const sorted = [...results].sort((a, b) => {
+    const va = a[_sortCol] ?? -Infinity;
+    const vb = b[_sortCol] ?? -Infinity;
+    if (typeof va === 'string') return _sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return _sortAsc ? va - vb : vb - va;
+  });
+  document.getElementById('results-tbody').innerHTML =
+    sorted.map(buildRowHTML).join('');
+}
+
+function updateSummary(results) {
+  const done       = results.filter(r => !r.error);
+  const gpuWins    = done.filter(r => r.winner === 'gpu').length;
+  const cpuWins    = done.filter(r => r.winner === 'cpu').length;
+  const errCount   = results.filter(r => r.error).length;
+  const medSpeedup = (() => {
+    const s = done.filter(r => r.speedup != null).map(r => r.speedup).sort((a, b) => a - b);
+    if (s.length === 0) return null;
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : ((s[m - 1] + s[m]) / 2).toFixed(2);
+  })();
+
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="card"><div class="card-val">${results.length}</div><div class="card-lbl">Routes run</div></div>
+    <div class="card green"><div class="card-val">${gpuWins}</div><div class="card-lbl">GPU wins</div></div>
+    <div class="card red"><div class="card-val">${cpuWins}</div><div class="card-lbl">CPU wins</div></div>
+    ${medSpeedup != null ? `<div class="card amber"><div class="card-val">${medSpeedup}×</div><div class="card-lbl">Median speedup (CPU/GPU)</div></div>` : ''}
+    ${errCount > 0 ? `<div class="card"><div class="card-val">${errCount}</div><div class="card-lbl">Errors</div></div>` : ''}
+  `;
+}
+
+function redrawChart(results) {
+  const canvas = document.getElementById('scatter');
+  drawScatter(canvas, results, { gpuMinEdges: GPU_MIN_EDGES, gpuMinBeelineM: GPU_MIN_BEELINE_M });
+  if (_cleanupTooltip) { _cleanupTooltip(); }
+  _cleanupTooltip = installTooltip(canvas, results, document.getElementById('tooltip'));
+}
+
+function showResults(results) {
+  document.getElementById('results-section').hidden = false;
+  updateSummary(results);
+  renderTable(results);
+  redrawChart(results);
+
+  // Threshold suggestion
+  const { suggestedE, suggestedBeelineM, stats } = suggestThresholds(results);
+  const wrap = document.getElementById('suggestion-wrap');
+  if (suggestedE != null) {
+    wrap.hidden = false;
+    document.getElementById('suggestion-content').innerHTML = `
+      <div class="suggestion-box">
+        <div class="val">${suggestedE.toLocaleString()}</div>
+        <div class="lbl">Suggested GPU_MIN_EDGES</div>
+        <div class="lbl" style="margin-top:2px">Current: ${GPU_MIN_EDGES.toLocaleString()}</div>
+      </div>
+      <div class="suggestion-box">
+        <div class="val">${suggestedBeelineM >= 1000 ? (suggestedBeelineM/1000).toFixed(1)+'km' : suggestedBeelineM+'m'}</div>
+        <div class="lbl">Suggested GPU_MIN_BEELINE_M</div>
+        <div class="lbl" style="margin-top:2px">Current: ${(GPU_MIN_BEELINE_M/1000).toFixed(1)} km</div>
+      </div>
+      <div style="align-self:center">
+        <div class="suggestion-accuracy">Accuracy: ${stats.accuracy}% (${stats.correctDecisions}/${stats.totalPoints} routes correctly dispatched)</div>
+        <div class="suggestion-accuracy">${stats.gpuWinsCount} GPU wins · ${stats.cpuWinsCount} CPU wins in measured data</div>
+      </div>
+    `;
+  } else {
+    wrap.hidden = true;
+  }
+}
+</script>
+</body>
+</html>
