@@ -1,26 +1,126 @@
 import { PowerPool } from 'performance-helpers/powerPool';
 import { PowerCache } from 'performance-helpers/powerCache';
-import tilesWorker from './workers/tilesWorker?worker&inline';
-import { getTilesAlongLine } from './tilesManager.js';
-import { buildGraphAsync } from './graphBuilder.js';
+import tilesWorker from './tiles/tilesWorker?worker&inline.js';
+import { getTilesAlongLine } from './tiles/tilesManager.js';
+import { buildGraphAsync } from './graphs/graphBuilder.js';
 import { interpolate, haversineDistance } from './utils/misc.js';
-import { buildCH, queryRoute, computeRoute, nearestNode } from './chRouter.js';
+import {
+  buildCH,
+  queryRoute,
+  computeRoute,
+  nearestNode,
+  getEngineWorkerStatus,
+  onEngineWorkerStatusChange,
+  cancelRunningEngine,
+} from './engines/router.js';
 
-export { buildCH, queryRoute, computeRoute, nearestNode };
+export {
+  buildCH,
+  queryRoute,
+  computeRoute,
+  nearestNode,
+  getEngineWorkerStatus,
+  onEngineWorkerStatusChange,
+  cancelRunningEngine,
+};
 
 // Module-level singletons — created once at import time, shared across all
 // route() calls. Avoids ~50–200 ms of worker-spawn latency per call and lets
 // the tile cache persist between calls so revisited tiles are never re-fetched.
 const _hwConcurrency =
   typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
-const _pool = new PowerPool(tilesWorker, {
-  size: _hwConcurrency,       // match CPU core count
-  maxSize: _hwConcurrency,
-  lazy: false,                // prewarm workers at import time
-  autoScale: true,            // sets maxTasksPerWorker=1 (CPU-bound tasks)
-  idleTimeout: 300_000,       // keep workers alive 5 min between calls
-});
-const _cache = new PowerCache({ maxEntries: 5000, defaultTTL: 300_000 });
+const TILE_POOL_MAX_SIZE = Math.min(8, Math.max(1, _hwConcurrency - 1));
+const TILE_POOL_BASE_SIZE = Math.min(2, TILE_POOL_MAX_SIZE);
+let _pool = null;
+
+function getSharedPool() {
+  if (_pool) return _pool;
+  if (typeof Worker === 'undefined') {
+    throw new Error('Web Worker is not available in this environment.');
+  }
+
+  _pool = new PowerPool(tilesWorker, {
+    size: TILE_POOL_BASE_SIZE,
+    maxSize: TILE_POOL_MAX_SIZE,
+    lazy: true,
+    autoScale: {
+      // Tile parsing is short and bursty during pan/zoom. React fast, shrink gently.
+      intervalMs: 350,
+      targetMs: 55,
+      alpha: 0.32,
+      cooldownMs: 1_200,
+      hysteresis: 0.2,
+      stepUp: 2,
+      stepDown: 1,
+      backoffFactor: 1.5,
+      backoffMaxMultiplier: 4,
+      backoffResetMs: 6_000,
+    },
+    idleTimeout: 30_000,
+  });
+
+  return _pool;
+}
+
+// Tile-segment cache: individual parsed tile results.
+// 5000 entries × ~5 KB avg = ~25 MB max; tiles expire after 5 min.
+const _tileCache = new PowerCache({ maxEntries: 5000, defaultTTL: 300_000 });
+
+// Graph cache: merged graphs keyed by sorted tile list + mode.
+// Reuses an already-merged graph when the exact same tile set is requested again
+// (e.g. repeated route queries in the same area or after transportation-mode
+// toggle back to a previously used mode). 50 entries is enough for typical use.
+const _graphCache = new PowerCache({ maxEntries: 50, defaultTTL: 300_000 });
+const VALID_COST_FIELDS = new Set(['distance', 'travelTime']);
+
+function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate } = {}) {
+  const rawURL = interpolate(urlTemplate, { z: tile.z, x: tile.x, y: tile.y });
+
+  if (typeof tileUrlTransform === 'function') {
+    const transformed = tileUrlTransform(rawURL, tile);
+    return typeof transformed === 'string' ? transformed : rawURL;
+  }
+
+  if (typeof tileProxyTemplate === 'string' && tileProxyTemplate) {
+    if (tileProxyTemplate.includes('{url}')) {
+      return interpolate(tileProxyTemplate, {
+        z: tile.z,
+        x: tile.x,
+        y: tile.y,
+        url: encodeURIComponent(rawURL),
+      });
+    }
+    return `${tileProxyTemplate}${encodeURIComponent(rawURL)}`;
+  }
+
+  return rawURL;
+}
+
+function getMissingTileError(graph, code) {
+  return graph?.missingTileErrors?.find((err) => err?.code === code) ?? null;
+}
+
+function normalizePenalties(penalties = {}) {
+  const {
+    intersectionPenaltySec = 0,
+    turnPenaltySec = 0,
+    turnAngleThresholdDeg = 25,
+  } = penalties;
+
+  const values = [
+    ['intersectionPenaltySec', intersectionPenaltySec],
+    ['turnPenaltySec', turnPenaltySec],
+    ['turnAngleThresholdDeg', turnAngleThresholdDeg],
+  ];
+
+  for (const [name, value] of values) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid penalties.${name}: expected a non-negative finite number`);
+    }
+  }
+
+  return { intersectionPenaltySec, turnPenaltySec, turnAngleThresholdDeg };
+}
 
 /**
  * Compute the tile fetch radius needed to reliably contain the real path.
@@ -58,39 +158,97 @@ export const route = async (
   end,
   mode,
   urlTemplate,
-  { zoom = 14, schema = 'zxy', radius } = {}
+  {
+    zoom = 14,
+    schema = 'zxy',
+    radius,
+    maxAutoRadius = 8,
+    costField = 'distance',
+    penalties = {},
+    maxAcceptableSnapDistanceM,
+    tileUrlTransform,
+    tileProxyTemplate,
+  } = {}
 ) => {
-  const initialRadius = radius ?? computeRadius(start, end, zoom);
+  if (!VALID_COST_FIELDS.has(costField)) {
+    throw new Error(`Unknown costField: ${costField}. Expected "distance" or "travelTime".`);
+  }
 
-  // Retry loop: if the graph at the current radius has both nodes but no
-  // connecting path, a physical barrier (river, mountain, motorway) is forcing
-  // the real route outside the loaded tile corridor.  Widen by +1 tile and
-  // retry.  The tile cache ensures already-fetched tiles are not re-downloaded.
+  const normalizedPenalties = normalizePenalties(penalties);
+
+  const initialRadius = radius ?? computeRadius(start, end, zoom);
+  const parsedMaxAutoRadius = Number(maxAutoRadius);
+  const effectiveMaxAutoRadius = Number.isFinite(parsedMaxAutoRadius)
+    ? Math.floor(parsedMaxAutoRadius)
+    : 8;
+  const normalizedMaxAutoRadius = Math.max(initialRadius, Math.min(10, effectiveMaxAutoRadius));
+
+  // Retry loop: if the graph at the current radius has no connecting path,
+  // one endpoint has no nearby graph node, or endpoint snapping quality is
+  // poor, widen by +1 tile and retry.
   //
-  // We do NOT retry on 'no_node' (start/end coords have no road nearby at all
-  // — widening tiles won't help if there's simply no road within 500 m).
+  // `no_path` means both nodes were found but the corridor was too narrow for
+  // the real detour; `no_node` can happen when a point is near a road that is
+  // just outside the loaded corridor; `poor_snap` means snapped nodes are too
+  // far from user-selected points at this radius; `incomplete_path` means the
+  // selected engine produced an invalid/incomplete node sequence. The tile cache ensures
+  // already-fetched tiles are not re-downloaded.
   //
-  // Cap: initialRadius + 2 expansions, maximum radius 4.  Beyond that the
-  // tile window is so large that the route is genuinely unreachable within
-  // the loaded area and the caller should handle it.
-  const maxRadius = Math.min(4, initialRadius + 2);
+  // Expand up to maxAutoRadius (default 8) to handle long detours that
+  // exceed the old radius=4 ceiling, while still preventing unbounded growth.
+  const maxRadius = normalizedMaxAutoRadius;
 
   let lastResult;
   for (let r = initialRadius; r <= maxRadius; r++) {
+    const pool = getSharedPool();
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
     const tiles = candidateTiles.map((tile) => {
-      const url = interpolate(urlTemplate, { z: tile.z, x: tile.x, y: tile.y });
+      const url = buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate });
       return { ...tile, url };
     });
-    const graph = await buildGraphAsync(tiles, mode, { pool: _pool, cache: _cache });
-    lastResult = await computeRoute(start, end, graph, { costField: 'distance' });
+
+    // Stable graph cache key: sorted tile ids + mode so the order of
+    // getTilesAlongLine does not affect cache hits.
+    const graphKey = `v2:${mode}:${tiles.map(t => `${t.z}/${t.x}/${t.y}`).sort().join(',')}`;
+    let graph = _graphCache.get(graphKey);
+    if (!graph) {
+      graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });
+      // Only cache complete graphs; partial graphs from failed tile fetches
+      // would otherwise poison future route attempts in the same area.
+      if (!graph?.hasMissingTiles) {
+        _graphCache.set(graphKey, graph);
+      }
+    }
+
+    lastResult = await computeRoute(start, end, graph, {
+      costField,
+      penalties: normalizedPenalties,
+      maxAcceptableSnapDistanceM,
+    });
+
+    const corsError = getMissingTileError(graph, 'MissingAllowOriginHeader');
+    if (!lastResult.found && corsError) {
+      return {
+        ...lastResult,
+        reason: 'tile_cors',
+        code: 'MissingAllowOriginHeader',
+        message: corsError.message,
+      };
+    }
 
     if (lastResult.found) return lastResult;
-    if (lastResult.reason !== 'no_path') return lastResult; // no_node — don't retry
+    if (
+      lastResult.reason !== 'no_path'
+      && lastResult.reason !== 'no_node'
+      && lastResult.reason !== 'poor_snap'
+      && lastResult.reason !== 'incomplete_path'
+    ) return lastResult;
 
     if (r < maxRadius) {
       // Log so the caller can see the retry in dev tools.
-      console.debug(`[omp-router] no path at radius=${r}, retrying with radius=${r + 1}`);
+      console.debug(
+        `[omt-router] ${lastResult.reason} at radius=${r}, retrying with radius=${r + 1}`,
+      );
     }
   }
 

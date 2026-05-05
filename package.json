@@ -2,7 +2,7 @@
   "name": "omt-router",
   "version": "1.0.0",
   "private": false,
-  "description": "GPU-accelerated routing library for OpenMapTiles vector tiles (pedestrian, car, bicycle).",
+  "description": "Client-side routing library for OpenMapTiles vector tiles (pedestrian, car, bicycle).",
   "type": "module",
   "exports": {
     ".": {
@@ -28,6 +28,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "benchmark": "node benchmark/cli-runner.js",
+    "benchmark:serial": "node benchmark/cli-runner.js --profile serial",
+    "benchmark:parallel": "node benchmark/cli-runner.js --profile parallel",
+    "benchmark:quick": "node benchmark/cli-runner.js --routes 100",
     "lint": "eslint 'src/**/*.js' 'tests/**/*.js'",
     "lint:fix": "eslint --fix 'src/**/*.js' 'tests/**/*.js'",
     "format": "prettier --write ."
@@ -38,10 +42,7 @@
     "openmaptiles",
     "vector-tiles",
     "maplibre",
-    "gpu",
-    "webgpu",
-    "taichi",
-    "bellman-ford",
+    "a-star",
     "dijkstra",
     "pedestrian",
     "bicycle",
@@ -61,18 +62,19 @@
   },
   "homepage": "https://github.com/AbelVM/omt-router#readme",
   "devDependencies": {
+    "chart.js": "^4.5.1",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3",
     "terser": "^5.46.2",
     "vite": "^8.0.10",
+    "vite-plugin-cross-origin-isolation": "^0.1.6",
     "vitest": "^4.1.5"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^2.0.4",
     "kdbush": "^4.0.2",
     "pbf": "^4.0.1",
-    "performance-helpers": "^1.0.1",
-    "taichi.js": "^0.0.36"
+    "performance-helpers": "^1.0.1"
   }
 }

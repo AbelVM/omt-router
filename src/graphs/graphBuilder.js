@@ -2,21 +2,37 @@ import { VectorTile } from '@mapbox/vector-tile';
 import Pbf from 'pbf';
 import { u82o } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
-import { ways, CLASS_SPEEDS_KMH } from './utils/ways_defaults.js';
-import { haversineDistance } from './utils/misc.js';
+import { ways, getDefaultSpeedKmh } from '../utils/ways_defaults.js';
+import { haversineDistance } from '../utils/misc.js';
 
-const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omp-router/graph' });
+const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router/graph' });
+const COORD_KEY_SCALE = 1e6;
+const CAR_CLASS_FIB_SCORE = buildCarClassFibonacciScore();
+
+function buildCarClassFibonacciScore() {
+  const carClasses = Array.from(ways.car.class);
+  const fib = [1, 1];
+  for (let i = 2; i < carClasses.length; i++) {
+    fib[i] = fib[i - 1] + fib[i - 2];
+  }
+
+  const score = {};
+  for (let i = 0; i < carClasses.length; i++) {
+    score[carClasses[i]] = fib[i];
+  }
+  return score;
+}
 
 /**
  * Produce a stable integer-string key for a coordinate pair (1e-6 deg ≈ 0.1 m).
- * Math.round(x * 1e6) is significantly faster than x.toFixed(6) because it
- * avoids the float-to-string number formatter; the result is a plain integer.
+ * Math.round(x * COORD_KEY_SCALE) is significantly faster than x.toFixed(6)
+ * because it avoids the float-to-string number formatter.
  * @param {number} lng
  * @param {number} lat
  * @returns {string}
  */
 function coordKey(lng, lat) {
-  return `${Math.round(lng * 1e6)},${Math.round(lat * 1e6)}`;
+  return `${Math.round(lng * COORD_KEY_SCALE)},${Math.round(lat * COORD_KEY_SCALE)}`;
 }
 
 /**
@@ -95,13 +111,40 @@ export function parseTile(buffer, x, y, z, mode) {
   };
 
   const segments = [];
+  const rules = ways[mode];
+  let featureAccessible;
+  if (mode === 'car') {
+    featureAccessible = (props) => {
+      if (!rules.class.has(props.class ?? '')) return false;
+      const sub = props.subclass ?? '';
+      return !(sub && rules.exclude_subclass.has(sub));
+    };
+  } else if (mode === 'pedestrian') {
+    featureAccessible = (props) => {
+      const cls = props.class ?? '';
+      const sub = props.subclass ?? '';
+      const foot = props.foot ?? '';
+      return rules.class.has(cls) || rules.subclass.has(sub) || rules.foot.has(foot);
+    };
+  } else if (mode === 'bicycle') {
+    featureAccessible = (props) => {
+      const cls = props.class ?? '';
+      if (rules.exclude_classes.has(cls)) return false;
+      const sub = props.subclass ?? '';
+      const bicycle = props.bicycle ?? '';
+      return rules.class.has(cls) || rules.subclass.has(sub) || rules.bicycle.has(bicycle);
+    };
+  } else {
+    featureAccessible = () => false;
+  }
+
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
     if (feature.type !== 2) continue;
     const props = feature.properties;
-    if (!isAccessible(props, mode)) continue;
+    if (!featureAccessible(props)) continue;
     const oneway = props.oneway ?? 0;
-    const speed = CLASS_SPEEDS_KMH[props.class] ?? 30;
+    const speed = getDefaultSpeedKmh(mode, props.class ?? '');
     for (const line of feature.loadGeometry()) {
       for (let j = 0; j < line.length - 1; j++) {
         // Clip each segment to [0, extent]×[0, extent] using Liang-Barsky.
@@ -180,6 +223,102 @@ function clipSegmentToTile(x1, y1, x2, y2, extent) {
 }
 
 /**
+ * Create an accumulator for building a routing graph incrementally.
+ * This avoids allocating a temporary list of all parsed tile batches.
+ * @param {'car'|'pedestrian'|'bicycle'} mode
+ */
+function createGraphAccumulator(mode) {
+  /** @type {Map<number, { id: number, coords: [number, number] }>} */
+  const nodes = new Map();
+  /** @type {Map<string, number>} */
+  const nodeIndex = new Map();
+  /** @type {Array<object>} */
+  const edges = [];
+  /** @type {Map<number, Set<number>>} */
+  const edgeSet = new Map();
+  /** @type {number[]} */
+  const outDegree = [];
+  /** @type {number[]|null} */
+  const outCarCentrality = mode === 'car' ? [] : null;
+  let nodeCounter = 0;
+  let edgeCounter = 0;
+  const classToFibonacciScore = mode === 'car' ? CAR_CLASS_FIB_SCORE : null;
+
+  const getOrCreateNode = (coords) => {
+    const key = coordKey(coords[0], coords[1]);
+    const existing = nodeIndex.get(key);
+    if (existing !== undefined) return existing;
+    const id = nodeCounter++;
+    nodeIndex.set(key, id);
+    nodes.set(id, { id, coords });
+    return id;
+  };
+
+  return {
+    nodes,
+    nodeIndex,
+    edges,
+    edgeSet,
+    outDegree,
+    outCarCentrality,
+    nodeCounter,
+    edgeCounter,
+    classToFibonacciScore,
+    getOrCreateNode,
+  };
+}
+
+function appendSegments(acc, segments) {
+  const { edgeSet, outDegree, outCarCentrality } = acc;
+  for (const { c1, c2, oneway, speed, props } of segments) {
+    const src = acc.getOrCreateNode(c1);
+    const tgt = acc.getOrCreateNode(c2);
+    let targets = edgeSet.get(src);
+    if (!targets) {
+      targets = new Set();
+      edgeSet.set(src, targets);
+    }
+    if (targets.has(tgt)) continue;
+    targets.add(tgt);
+
+    const length = haversineDistance(c1, c2);
+    const travelTime = length / (speed / 3.6);
+    const edge = {
+      id: acc.edgeCounter++,
+      source: src,
+      target: tgt,
+      cost: oneway === -1 ? -1 : length,
+      reverseCost: oneway === 1 ? -1 : length,
+      length,
+      speed,
+      travelTime,
+      properties: props,
+    };
+
+    if (acc.classToFibonacciScore) {
+      const roadClass = props.class ?? '';
+      edge.fibonacciScore = acc.classToFibonacciScore[roadClass] ?? 1;
+    }
+
+    outDegree[src] = (outDegree[src] || 0) + 1;
+    if (outCarCentrality) {
+      outCarCentrality[src] = (outCarCentrality[src] || 0) + (edge.fibonacciScore ?? 1);
+    }
+    acc.edges.push(edge);
+  }
+}
+
+function finalizeGraph(acc) {
+  return {
+    nodes: acc.nodes,
+    edges: acc.edges,
+    nodeIndex: acc.nodeIndex,
+    outDegree: new Int32Array(acc.outDegree),
+    outCarCentrality: acc.outCarCentrality ? new Int32Array(acc.outCarCentrality) : undefined,
+  };
+}
+
+/**
  * Merge pre-parsed segment batches from multiple tiles into a single routing
  * graph, deduplicating nodes and edges that appear in overlapping tile buffers.
  * This step is sequential and lightweight compared to parsing.
@@ -187,53 +326,13 @@ function clipSegmentToTile(x1, y1, x2, y2, extent) {
  * @param {Array<Array<{ c1, c2, oneway, speed, props }>>} batches
  * @returns {{ nodes: Map<number, object>, edges: Array<object>, nodeIndex: Map<string, number> }}
  */
-function mergeSegments(batches) {
-  /** @type {Map<number, { id: number, coords: [number, number] }>} */
-  const nodes = new Map();
-  /** @type {Map<string, number>} */
-  const nodeIndex = new Map();
-  /** @type {Array<object>} */
-  const edges = [];
-  /** @type {Set<string>} */
-  const edgeSet = new Set();
-  let nodeCounter = 0;
-  let edgeCounter = 0;
-
-  const getOrCreateNode = (coords) => {
-    const key = coordKey(coords[0], coords[1]);
-    if (!nodeIndex.has(key)) {
-      const id = nodeCounter++;
-      nodeIndex.set(key, id);
-      nodes.set(id, { id, coords });
-    }
-    return nodeIndex.get(key);
-  };
-
+function mergeSegments(batches, mode) {
+  const accumulator = createGraphAccumulator(mode);
   for (const segments of batches) {
-    for (const { c1, c2, oneway, speed, props } of segments) {
-      const src = getOrCreateNode(c1);
-      const tgt = getOrCreateNode(c2);
-      // Numeric key avoids string allocation per edge: encode as a single BigInt.
-      const edgeKey = (BigInt(src) << 32n) | BigInt(tgt);
-      if (edgeSet.has(edgeKey)) continue;
-      edgeSet.add(edgeKey);
-      const length = haversineDistance(c1, c2);
-      const travelTime = length / (speed / 3.6);
-      edges.push({
-        id: edgeCounter++,
-        source: src,
-        target: tgt,
-        cost: oneway === -1 ? -1 : length,
-        reverseCost: oneway === 1 ? -1 : length,
-        length,
-        speed,
-        travelTime,
-        properties: props,
-      });
-    }
+    appendSegments(accumulator, segments);
   }
 
-  return { nodes, edges, nodeIndex };
+  return finalizeGraph(accumulator);
 }
 
 
@@ -264,25 +363,21 @@ function mergeSegments(batches) {
  *     travelTime:  number,
  *     properties:  object
  *   }>,
- *   nodeIndex: Map<string, number>
+ *   nodeIndex: Map<string, number>,
+ *   outDegree?: Int32Array,
+ *   outCarCentrality?: Int32Array
  * }}
- *
- * Graph fields
- * ─────────────
- * nodes      — Map from numeric ID → { id, coords: [lng, lat] }
- * edges      — Directed edge list (one entry per consecutive point-pair)
- *              · cost        : forward traversal distance in metres (−1 if blocked)
- *              · reverseCost : backward traversal distance in metres (−1 if blocked)
- *              · length      : Haversine distance in metres (always positive)
- *              · speed       : default speed for the road class (km/h)
- *              · travelTime  : length / speed converted to seconds (forward direction)
- * nodeIndex  — Map from "lng,lat" string → numeric node ID (for deduplication)
  */
 export function buildGraph(tiles, mode) {
   if (!ways[mode]) {
     throw new Error(`Unknown transport mode "${mode}". Valid values: car, pedestrian, bicycle.`);
   }
-  return mergeSegments(tiles.map(({ buffer, x, y, z }) => parseTile(buffer, x, y, z, mode)));
+
+  const accumulator = createGraphAccumulator(mode);
+  for (const { buffer, x, y, z } of tiles) {
+    appendSegments(accumulator, parseTile(buffer, x, y, z, mode));
+  }
+  return finalizeGraph(accumulator);
 }
 
 /**
@@ -314,16 +409,31 @@ export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000 
     throw new Error(`Unknown transport mode "${mode}". Valid values: car, pedestrian, bicycle.`);
   }
 
+  const cacheVersion = 'v2';
   const results = await Promise.allSettled(
     tiles.map(({ url, x, y, z }) =>
       cache.getOrSetAsync(
-        `graph:${mode}:${z}/${x}/${y}`,
+        `graph:${cacheVersion}:${mode}:${z}/${x}/${y}`,
         async () => {
           const response = await pool.postMessage(
             { op: 'parse-tile', url, x, y, z, mode },
             undefined,
             { awaitResponse: true, timeout: 10_000 }
           );
+
+          if (response?.fetchFailed) {
+            const reasonCode = response?.fetchError?.code;
+            const reasonMessage = response?.fetchError?.message;
+            const err = new Error(
+              reasonMessage
+                ? `tile fetch failed for ${z}/${x}/${y}: ${reasonMessage}`
+                : `tile fetch failed for ${z}/${x}/${y}`
+            );
+            err.code = reasonCode ?? 'TileFetchFailed';
+            err.tile = { z, x, y, url };
+            throw err;
+          }
+
           const payload = response?.output ?? response;
           return payload instanceof ArrayBuffer || ArrayBuffer.isView(payload)
             ? u82o(payload)
@@ -334,70 +444,27 @@ export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000 
     )
   );
 
-  const segmentBatches = results.flatMap((r) => {
-    if (r.status === 'rejected') {
-      logger.warn(() => `tile fetch failed, skipping: ${r.reason?.message ?? r.reason}`);
-      return [];
+  const accumulator = createGraphAccumulator(mode);
+  let hasMissingTiles = false;
+  const missingTileErrors = [];
+
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      hasMissingTiles = true;
+      logger.warn(() => `tile fetch failed, skipping: ${result.reason?.message ?? result.reason}`);
+      missingTileErrors.push({
+        code: result.reason?.code ?? 'TileFetchFailed',
+        message: result.reason?.message ?? String(result.reason),
+        tile: result.reason?.tile ?? null,
+      });
+      continue;
     }
-    return [r.value];
-  });
-
-  return mergeSegments(segmentBatches);
-}
-
-/**
- * Convert the edge-list graph returned by {@link buildGraph} into an adjacency
- * list, which is the representation expected by in-memory routing algorithms
- * such as Dijkstra or A*.
- *
- * Each node entry gains an `edges` array of outgoing connections.
- *
- * @param {{ nodes: Map<number, object>, edges: Array<object> }} graph
- *   Output of buildGraph.
- * @param {'distance'|'travelTime'} [costField='distance']
- *   Which edge field to use as the traversal weight.
- *   · 'distance'   → edge.length (metres)
- *   · 'travelTime' → edge.travelTime (seconds)
- *
- * @returns {Map<number, {
- *   id: number,
- *   coords: [number, number],
- *   edges: Array<{ to: number, cost: number, edgeId: number }>
- * }>}
- */
-export function toAdjacencyList(graph, costField = 'distance') {
-  const adj = new Map();
-
-  for (const [id, node] of graph.nodes) {
-    adj.set(id, { ...node, edges: [] });
+    appendSegments(accumulator, result.value);
   }
 
-  const pickCost = (edge, forward) => {
-    const raw = forward ? edge.cost : edge.reverseCost;
-    if (raw === -1) return -1; // blocked direction
-    return costField === 'travelTime' ? edge.travelTime : edge.length;
-  };
-
-  for (const edge of graph.edges) {
-    const fwd = pickCost(edge, true);
-    const bwd = pickCost(edge, false);
-
-    if (fwd !== -1) {
-      adj.get(edge.source)?.edges.push({
-        to: edge.target,
-        cost: fwd,
-        edgeId: edge.id,
-      });
-    }
-
-    if (bwd !== -1) {
-      adj.get(edge.target)?.edges.push({
-        to: edge.source,
-        cost: bwd,
-        edgeId: edge.id,
-      });
-    }
-  }
-
-  return adj;
+  const graph = finalizeGraph(accumulator);
+  graph.hasMissingTiles = hasMissingTiles;
+  graph.missingTileErrors = missingTileErrors;
+  return graph;
 }
+

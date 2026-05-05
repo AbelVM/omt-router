@@ -19,6 +19,10 @@ body {
     inset: 0;
 }
 
+#map .maplibregl-canvas {
+    cursor: crosshair;
+}
+
 /* ── Routing Panel ─────────────────────────────── */
 
 .routing-panel {
@@ -51,6 +55,50 @@ body {
     padding: 4px;
     gap: 3px;
     margin-bottom: 14px;
+}
+
+.rp-section {
+    margin-bottom: 14px;
+}
+
+.rp-section-label {
+    display: block;
+    margin-bottom: 7px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+
+.rp-costs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.rp-cost-btn {
+    border: 1px solid #dbe4ef;
+    background: #f8fafc;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 9px;
+    padding: 9px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.rp-cost-btn:hover {
+    border-color: #cbd5e1;
+    background: #fff;
+}
+
+.rp-cost-btn.active {
+    border-color: #2563eb;
+    background: rgba(37, 99, 235, 0.08);
+    color: #1d4ed8;
 }
 
 .rp-mode-btn {
@@ -98,6 +146,7 @@ body {
 .rp-inputs {
     display: flex;
     flex-direction: column;
+    gap: 4px;
     margin-bottom: 10px;
 }
 
@@ -147,12 +196,38 @@ body {
     color: #c1cbd9;
 }
 
-.rp-connector {
-    width: 1.5px;
-    height: 6px;
-    background: #dde3ea;
-    margin: 2px 0 2px 19px;
-    border-radius: 1px;
+.rp-swap-wrap {
+    display: flex;
+    justify-content: center;
+}
+
+.rp-swap-btn {
+    border: 1px solid #dbe4ef;
+    background: #f8fafc;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 999px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.rp-swap-btn:hover {
+    border-color: #cbd5e1;
+    background: #fff;
+}
+
+.rp-swap-btn:active {
+    border-color: #2563eb;
+    color: #1d4ed8;
 }
 
 /* Hint */
@@ -261,7 +336,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 5px;
-    margin-top: 8px;
+    margin-top: 14px;
     padding: 4px 10px;
     border-radius: 20px;
     font-size: 11px;
@@ -271,14 +346,14 @@ body {
     margin-inline: auto;
 }
 
-.rp-engine--gpu {
-    background: #dcfce7;
-    color: #15803d;
-}
-
 .rp-engine--cpu {
     background: #f1f5f9;
     color: #64748b;
+}
+
+.rp-engine--parallel {
+    background: #dcfce7;
+    color: #15803d;
 }
 
 /* Map markers */
@@ -288,6 +363,11 @@ body {
     border-radius: 50%;
     border: 2.5px solid #fff;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    cursor: grab;
+}
+
+.rp-map-dot.is-dragging {
+    cursor: grabbing;
 }
 
 .rp-map-dot--origin {

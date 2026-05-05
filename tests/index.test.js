@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph, parseTile, toAdjacencyList } from '../src/graphBuilder.js';
-import { nearestNode, buildCH } from '../src/chRouter.js';
-import { getTilesAlongLine } from '../src/tilesManager.js';
+import { buildGraph, parseTile } from '../src/graphs/graphBuilder.js';
+import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
+import { nearestNode, buildCH, selectBestEngine } from '../src/engines/router.js';
+import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance } from '../src/utils/misc.js';
+import { hasParallelRoutingRuntime } from '../src/tuning/tuning.js';
 
 describe('interpolate', () => {
   it('replaces {z}, {x}, {y} placeholders', () => {
@@ -53,6 +55,50 @@ describe('buildGraph', () => {
   });
 });
 
+describe('graphMetrics', () => {
+  it('computes weighted centrality for a raw car graph using fibonacciScore', () => {
+    const rawGraph = {
+      nodes: new Map([
+        [0, { id: 0, coords: [0, 0] }],
+        [1, { id: 1, coords: [1, 1] }],
+      ]),
+      edges: [
+        { source: 0, target: 1, fibonacciScore: 2 },
+        { source: 0, target: 1, fibonacciScore: 3 },
+        { source: 1, target: 0, fibonacciScore: 5 },
+      ],
+    };
+
+    expect(nodeCentrality(rawGraph, 0, 'car')).toBe(5);
+    expect(nodeCentrality(rawGraph, 1, 'car')).toBe(5);
+
+    const preparedGraph = {
+      N: 2,
+      E: 3,
+      adjPtr: new Int32Array([0, 2, 3]),
+      coordsArr: [[0, 0], [1, 1]],
+    };
+    const metrics = getAllGraphMetrics(preparedGraph, rawGraph, 0, 1, { mode: 'car' });
+    expect(metrics.nodeCentralitySource).toBe(5);
+    expect(metrics.nodeCentralityTarget).toBe(5);
+  });
+
+  it('reuses density sampler for repeated maxRes calls', () => {
+    const preparedGraph = {
+      N: 2,
+      E: 1,
+      adjPtr: new Int32Array([0, 1, 1]),
+      coordsArr: [[0, 0], [1, 1]],
+    };
+    const first = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
+    const second = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
+
+    expect(first).toEqual(second);
+    expect(preparedGraph._densitySamplerByRes).toBeInstanceOf(Map);
+    expect(preparedGraph._densitySamplerByRes.get(16)).toBe(preparedGraph._densitySampler);
+  });
+});
+
 describe('nearestNode', () => {
   it('returns -1 when the graph is empty', () => {
     const g = buildGraph([], 'car');
@@ -82,10 +128,53 @@ describe('nearestNode', () => {
   });
 });
 
-describe('toAdjacencyList', () => {
-  it('returns an empty map for an empty graph', () => {
-    const g = buildGraph([], 'car');
-    const adj = toAdjacencyList(g);
-    expect(adj.size).toBe(0);
+describe('selector runtime behavior', () => {
+  it('uses serial branch in node/non-browser runtime', () => {
+    expect(hasParallelRoutingRuntime()).toBe(false);
+
+    const selected = selectBestEngine(420_000, 220_000, 40_000, '', 'distance');
+    expect(selected).toBe('adaptive-barrier');
+  });
+
+  it('stays serial in node even if worker-like globals are mocked', () => {
+    const originalSharedArrayBuffer = globalThis.SharedArrayBuffer;
+    const originalWorker = globalThis.Worker;
+    const originalCrossOriginIsolated = globalThis.crossOriginIsolated;
+
+    try {
+      if (typeof originalSharedArrayBuffer === 'undefined') {
+        globalThis.SharedArrayBuffer = class MockSharedArrayBuffer {};
+      }
+      globalThis.Worker = class MockWorker {};
+      Object.defineProperty(globalThis, 'crossOriginIsolated', {
+        configurable: true,
+        value: true,
+      });
+
+      expect(hasParallelRoutingRuntime()).toBe(false);
+      const selected = selectBestEngine(28_215, 20_324, 135, '', 'distance');
+      expect(selected).toBe('adaptive-barrier');
+    } finally {
+      if (originalSharedArrayBuffer === undefined) {
+        delete globalThis.SharedArrayBuffer;
+      } else {
+        globalThis.SharedArrayBuffer = originalSharedArrayBuffer;
+      }
+
+      if (originalWorker === undefined) {
+        delete globalThis.Worker;
+      } else {
+        globalThis.Worker = originalWorker;
+      }
+
+      if (originalCrossOriginIsolated === undefined) {
+        delete globalThis.crossOriginIsolated;
+      } else {
+        Object.defineProperty(globalThis, 'crossOriginIsolated', {
+          configurable: true,
+          value: originalCrossOriginIsolated,
+        });
+      }
+    }
   });
 });
