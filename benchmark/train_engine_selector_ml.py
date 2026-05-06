@@ -15,6 +15,7 @@ import argparse
 import json
 import math
 import os
+import shutil
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -25,6 +26,7 @@ from typing import Dict, Iterable, List, Tuple
 import numpy as np
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPRegressor
 from xgboost import XGBClassifier
 import m2cgen as m2c
 
@@ -48,21 +50,33 @@ FEATURE_ORDER = [
     "safeE",
     "safeBeelineKm",
     "avgOutDegree",
+    "logAvgOutDegree",
     "edgesPerKm",
     "nodesPerKm",
     "sizeRatioEN",
     "beelinePerNode",
     "relativeDensity",
+    "logRelativeDensity",
     "globalCoverage",
+    "logGlobalCoverage",
     "emptyRatio",
+    "logEmptyRatio",
     "sourceDegree",
+    "logSourceDegree",
     "targetDegree",
+    "logTargetDegree",
     "sourceCentrality",
+    "logSourceCentrality",
     "targetCentrality",
+    "logTargetCentrality",
     "sourceTargetDegreeRatio",
+    "logSourceTargetDegreeRatio",
     "sourceTargetCentralityRatio",
+    "logSourceTargetCentralityRatio",
     "graphDensity",
+    "logGraphDensity",
     "avgBranchFactor",
+    "logAvgBranchFactor",
     "logN",
     "logE",
     "logBeelineKm",
@@ -70,16 +84,101 @@ FEATURE_ORDER = [
     "logNodesPerKm",
     "logEoverN",
     "logBeelinePerNode",
+    "densityBySize",
+    "logDensityBySize",
+    "coverageDensity",
+    "logCoverageDensity",
+    "degreeProduct",
+    "logDegreeProduct",
+    "centralityProduct",
+    "logCentralityProduct",
+    "coverageEmptyContrast",
+    "logCoverageEmptyContrast",
+    "safeBeelineKmOverSizeRatioEN",
+    "globalCoverageTimesEmptyRatio",
+    "avgOutDegreeTimesLogRelativeDensity",
+    "beelinePerNodeTimesSourceTargetDegreeRatio",
+    "coverageEmptyContrastTimesLogAvgBranchFactor",
+    "densityBySizeTimesSourceCentrality",
 ]
 
 HYPERPARAMETER_SEARCH = {
-    "max_depth": [3, 4, 5],
-    "n_estimators": [25, 50, 75],
+    "max_depth": [3, 4, 5, 6],
+    "n_estimators": [50, 100, 150],
     "learning_rate": [0.05, 0.1, 0.2],
 }
-REGRESSION_ALPHA_SEARCH = [0.01, 0.1, 1.0, 5.0]
+FEATURE_SELECTION_PCT = [1.0, 0.75, 0.60, 0.45, 0.30]
+REGRESSION_ALPHA_SEARCH = [0.02, 0.04, 0.06, 0.08, 0.1, 0.2]
+REGRESSION_ALPHA_SEARCH_SABOFF = [0.06, 0.07, 0.08, 0.09, 0.1, 0.12]
+REGRESSION_ALPHA_SEARCH_SABON = [0.02, 0.04, 0.06, 0.08, 0.1, 0.2]
+PROFILE_REGRESSION_ALPHA_SEARCH = {
+    "sabOff": REGRESSION_ALPHA_SEARCH_SABOFF,
+    "sabOn": REGRESSION_ALPHA_SEARCH_SABON,
+}
+MLP_HIDDEN_LAYER_OPTIONS = [
+    (16, 16),
+    (32, 16),
+    (32, 32),
+    (48, 24),
+    (64, 32),
+]
+MLP_ALPHA_SEARCH = [0.0002, 0.0005, 0.001, 0.003, 0.01]
+MLP_LEARNING_RATE_SEARCH = [0.001, 0.005, 0.01]
+MLP_EARLY_STOPPING = True
+MLP_N_ITER_NO_CHANGE = 20
+MLP_TOL = 1e-5
 VALIDATION_FRACTION = 0.2
-RANDOM_SPLITS = [42, 77, 99]
+RANDOM_SPLITS = [42, 77, 99, 123, 202]
+GOOD_ENOUGH_TOLERANCE = 0.05
+MIN_GOOD_ENOUGH_RATE = 0.58
+MIN_HIT_RATE = 0.40
+HIT_WEIGHT = 0.15
+GOOD_ENOUGH_WEIGHT = 0.14
+CONFIDENCE_WEIGHT = 0.05
+MARGIN_WEIGHT = 0.06
+REGRET_WEIGHT = 1.2
+REGRET_TOLERANCE = 0.002
+MARGIN_NORMALIZATION = 0.05
+
+PROFILE_OBJECTIVE_CONFIG = {
+    "sabOff": {
+        "hit_weight": 0.12,
+        "good_enough_weight": 0.20,
+        "confidence_weight": 0.05,
+        "margin_weight": 0.06,
+        "regret_weight": 1.4,
+        "min_good_enough_rate": 0.60,
+        "min_hit_rate": 0.40,
+    },
+    "sabOn": {
+        "hit_weight": 0.16,
+        "good_enough_weight": 0.12,
+        "confidence_weight": 0.06,
+        "margin_weight": 0.06,
+        "regret_weight": 1.2,
+        "min_good_enough_rate": 0.58,
+        "min_hit_rate": 0.40,
+    },
+}
+
+
+def objective_weights(profile: str) -> Tuple[float, float, float, float, float]:
+    config = PROFILE_OBJECTIVE_CONFIG.get(profile, {})
+    return (
+        config.get("hit_weight", HIT_WEIGHT),
+        config.get("good_enough_weight", GOOD_ENOUGH_WEIGHT),
+        config.get("confidence_weight", CONFIDENCE_WEIGHT),
+        config.get("margin_weight", MARGIN_WEIGHT),
+        config.get("regret_weight", REGRET_WEIGHT),
+    )
+
+
+def profile_thresholds(profile: str) -> Tuple[float, float]:
+    config = PROFILE_OBJECTIVE_CONFIG.get(profile, {})
+    return (
+        config.get("min_good_enough_rate", MIN_GOOD_ENOUGH_RATE),
+        config.get("min_hit_rate", MIN_HIT_RATE),
+    )
 
 
 @dataclass
@@ -526,31 +625,72 @@ def feature_vector(row: dict) -> List[float]:
     logE = math.log1p(safe_e)
     logN = math.log1p(safe_n)
     log_beeline_km = math.log1p(safe_beeline_km)
+    log_global_coverage = math.log1p(max(0.0, global_coverage))
+    log_empty_ratio = math.log1p(max(0.0, empty_ratio))
+    log_source_degree = math.log1p(max(0.0, source_degree))
+    log_target_degree = math.log1p(max(0.0, target_degree))
+    log_source_centrality = math.log1p(max(0.0, source_centrality))
+    log_target_centrality = math.log1p(max(0.0, target_centrality))
+    log_source_target_degree_ratio = math.log1p(max(0.0, source_target_degree_ratio))
+    log_source_target_centrality_ratio = math.log1p(max(0.0, source_target_centrality_ratio))
     log_edges_km = math.log1p(max(0.0, edges_per_km))
     log_nodes_km = math.log1p(max(0.0, nodes_per_km))
     log_e_over_n = math.log1p(max(0.0, size_ratio_en))
     log_beeline_per_node = math.log1p(max(0.0, beeline_per_node))
+    log_avg_out = math.log1p(max(0.0, avg_out))
+    log_relative_density = math.log1p(max(0.0, relative_density))
+    log_graph_density = math.log1p(max(0.0, graph_density))
+    log_avg_branch = math.log1p(max(0.0, avg_branch))
+    density_by_size = relative_density * safe_n
+    coverage_density = global_coverage * relative_density
+    degree_product = source_degree * target_degree
+    centrality_product = source_centrality * target_centrality
+    coverage_empty_contrast = global_coverage * max(0.0, 1.0 - empty_ratio)
+    safe_beeline_km_over_size_ratio_en = safe_beeline_km / max(0.25, size_ratio_en)
+    global_coverage_times_empty_ratio = global_coverage * empty_ratio
+    avg_out_degree_times_log_relative_density = avg_branch * log_relative_density
+    beeline_per_node_times_source_target_degree_ratio = beeline_per_node * source_target_degree_ratio
+    coverage_empty_contrast_times_log_avg_branch_factor = coverage_empty_contrast * log_avg_branch
+    density_by_size_times_source_centrality = density_by_size * source_centrality
+
+    log_density_by_size = math.log1p(max(0.0, density_by_size))
+    log_coverage_density = math.log1p(max(0.0, coverage_density))
+    log_degree_product = math.log1p(max(0.0, degree_product))
+    log_centrality_product = math.log1p(max(0.0, centrality_product))
+    log_coverage_empty_contrast = math.log1p(max(0.0, coverage_empty_contrast))
 
     return [
         safe_n,
         safe_e,
         safe_beeline_km,
         avg_out,
+        log_avg_out,
         edges_per_km,
         nodes_per_km,
         size_ratio_en,
         beeline_per_node,
         relative_density,
+        log_relative_density,
         global_coverage,
+        log_global_coverage,
         empty_ratio,
+        log_empty_ratio,
         source_degree,
+        log_source_degree,
         target_degree,
+        log_target_degree,
         source_centrality,
+        log_source_centrality,
         target_centrality,
+        log_target_centrality,
         source_target_degree_ratio,
+        log_source_target_degree_ratio,
         source_target_centrality_ratio,
+        log_source_target_centrality_ratio,
         graph_density,
+        log_graph_density,
         avg_branch,
+        log_avg_branch,
         logN,
         logE,
         log_beeline_km,
@@ -558,6 +698,22 @@ def feature_vector(row: dict) -> List[float]:
         log_nodes_km,
         log_e_over_n,
         log_beeline_per_node,
+        density_by_size,
+        log_density_by_size,
+        coverage_density,
+        log_coverage_density,
+        degree_product,
+        log_degree_product,
+        centrality_product,
+        log_centrality_product,
+        coverage_empty_contrast,
+        log_coverage_empty_contrast,
+        safe_beeline_km_over_size_ratio_en,
+        global_coverage_times_empty_ratio,
+        avg_out_degree_times_log_relative_density,
+        beeline_per_node_times_source_target_degree_ratio,
+        coverage_empty_contrast_times_log_avg_branch_factor,
+        density_by_size_times_source_centrality,
     ]
 
 
@@ -567,6 +723,22 @@ def standardize_features(X: np.ndarray) -> Tuple[np.ndarray, List[float], List[f
     scales = [float(s) if s > 1e-12 else 1.0 for s in scales]
     scaled = (X - means) / np.array(scales, dtype=np.float64)
     return scaled, means.tolist(), scales
+
+
+def select_top_feature_indices(importance: dict, top_n: int) -> List[int]:
+    ranked = [item.get("feature") for item in importance.get("featureRankings", [])]
+    selected = []
+    for feature_name in ranked[:top_n]:
+        if feature_name in FEATURE_ORDER:
+            selected.append(FEATURE_ORDER.index(feature_name))
+    return selected
+
+
+def embed_sparse_coefficients(full_size: int, selected_indices: List[int], sparse_coeffs: np.ndarray) -> List[float]:
+    full_coeffs = [0.0] * full_size
+    for idx, coeff in zip(selected_indices, sparse_coeffs.tolist()):
+        full_coeffs[idx] = float(coeff)
+    return full_coeffs
 
 
 def softmax(values: np.ndarray) -> np.ndarray:
@@ -613,6 +785,23 @@ def winner_margin_pct(row: dict) -> float:
     return max(0.0, (times[1] - times[0]) / max(times[0], 1e-9))
 
 
+def winner_candidate_count(row: dict) -> int:
+    candidates = row.get("winner_candidates")
+    if isinstance(candidates, (list, tuple)):
+        return max(1, len(candidates))
+    return max(1, get_int(row, "winner_candidate_count", 1))
+
+
+def is_good_enough_prediction(pred_engine: str, item: dict, tolerance: float = 0.05) -> bool:
+    if pred_engine == item["winner"]:
+        return True
+    row = item["row"]
+    candidates = row.get("winner_candidates")
+    if isinstance(candidates, (list, tuple)) and pred_engine in candidates:
+        return True
+    return regret_for_prediction(pred_engine, item) <= tolerance
+
+
 def has_complete_engine_times(item: dict) -> bool:
     return all(engine in item.get("times", {}) for engine in ENGINE_IDS)
 
@@ -635,34 +824,50 @@ def sample_weight(item: dict, run_quality: float) -> float:
     best_to_worst_pct = get_float(row, "best_to_worst_pct", 0.0)
     engines_within_5pct = get_int(row, "engines_within_5pct", 0)
     engines_within_10pct = get_int(row, "engines_within_10pct", 0)
-    winner_candidate_count = max(1, get_int(row, "winner_candidate_count", 1))
+    winner_candidate_count_val = winner_candidate_count(row)
     winner_vs_cost_pct = row.get("winner_vs_cost_pct")
 
-    base = 0.35 + 0.65 * run_quality
-    clarity = 0.4 + min(1.0, winner_margin * 3.0) + min(1.0, spread * 4.0) + min(1.0, best_to_worst_pct * 1.2)
-    ambiguity_penalty = 1.0 - min(
-        0.8,
-        engines_within_5pct * 0.12 + engines_within_10pct * 0.06 + max(0, winner_candidate_count - 1) * 0.08,
-    )
-    clarity *= max(0.25, ambiguity_penalty)
+    quality_bonus = 0.22 + 0.72 * (run_quality ** 1.8)
+    base = quality_bonus + min(0.16, winner_margin)
+    clarity = 0.35 + min(1.0, winner_margin * 4.2) + min(1.0, spread * 5.0) + min(1.0, best_to_worst_pct * 1.8)
 
-    if tie:
+    ambiguity_penalty = 1.0 - min(
+        0.92,
+        engines_within_5pct * 0.18 + engines_within_10pct * 0.08 + max(0, winner_candidate_count_val - 1) * 0.12,
+    )
+    clarity *= max(0.18, ambiguity_penalty)
+
+    if winner_margin < 0.05:
+        clarity *= 0.75
+    if winner_margin < 0.02:
         clarity *= 0.65
+    if best_to_worst_pct < 0.05:
+        clarity *= 0.80
+    if tie:
+        clarity *= 0.50
     if any_error:
-        clarity *= 0.55
+        clarity *= 0.40
     if winner_vs_cost_pct is None:
-        clarity *= 0.92
+        clarity *= 0.88
 
     completeness = 1.0
     if not all_engines_timed:
-        completeness *= 0.75
+        completeness *= 0.60
     if not all_engines_found:
-        completeness *= 0.8
+        completeness *= 0.55
     if not all_engines_cost:
-        completeness *= 0.9
+        completeness *= 0.70
 
-    weight = base * max(0.2, clarity) * completeness
-    return max(0.03, min(1.0, weight))
+    regret_factor = 1.0 + min(1.8, max(0.0, winner_margin - 0.04) * 2.5 + max(0.0, best_to_worst_pct - 0.05) * 1.0)
+    if winner_margin > 0.12 and winner_candidate_count_val == 1:
+        regret_factor += 0.15
+    if engines_within_5pct > 0:
+        regret_factor += 0.08
+    if tie:
+        regret_factor += 0.05
+
+    weight = base * max(0.16, clarity) * completeness * regret_factor
+    return max(0.01, min(1.0, weight))
 
 
 def regret_for_prediction(pred_engine: str, item: dict) -> float:
@@ -705,7 +910,7 @@ def build_xy_for_profile(runs: List[DatasetRun], profile: str):
     }
 
 
-def fit_runtime_models(profile_data: dict, profile: str):
+def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: bool = True):
     """Train a per-engine runtime regressor and export a small runtime model."""
     X = profile_data["X"]
     w = profile_data["w"]
@@ -733,10 +938,11 @@ def fit_runtime_models(profile_data: dict, profile: str):
         dtype=np.int64,
     )
 
-    def evaluate_alpha(alpha):
+    def evaluate_alpha(alpha, feature_indices: Optional[List[int]] = None):
         scores = []
         regrets = []
         hit_rates = []
+        good_enough_rates = []
         confidences = []
         margins = []
 
@@ -751,8 +957,13 @@ def fit_runtime_models(profile_data: dict, profile: str):
                 stratify=stratify,
             )
 
-            X_train = X_complete[idx_train]
-            X_val = X_complete[idx_val]
+            if feature_indices is None or len(feature_indices) == X_complete.shape[1]:
+                X_train = X_complete[idx_train]
+                X_val = X_complete[idx_val]
+            else:
+                X_train = X_complete[idx_train][:, feature_indices]
+                X_val = X_complete[idx_val][:, feature_indices]
+
             w_train = w_complete[idx_train]
             y_val = y_true[idx_val]
 
@@ -777,6 +988,9 @@ def fit_runtime_models(profile_data: dict, profile: str):
 
             split_regrets = []
             split_hit_rate = 0
+            split_good_enough = 0
+            split_confidences = []
+            split_margins = []
 
             for pos, sample_idx in enumerate(idx_val):
                 pred_idx = int(np.argmin(preds[pos]))
@@ -784,29 +998,48 @@ def fit_runtime_models(profile_data: dict, profile: str):
                 split_regrets.append(regret_for_prediction(pred_engine, complete_items[sample_idx]))
                 if pred_idx == y_val[pos]:
                     split_hit_rate += 1
+                if is_good_enough_prediction(
+                    pred_engine, complete_items[sample_idx], tolerance=GOOD_ENOUGH_TOLERANCE
+                ):
+                    split_good_enough += 1
 
                 sorted_p = np.sort(probs[pos])
-                confidences.append(float(sorted_p[-1]))
-                margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
+                split_confidences.append(float(sorted_p[-1]))
+                split_margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
 
             split_mean_regret = float(np.mean(split_regrets)) if split_regrets else 1.0
+            split_regret_tail = float(np.mean([max(0.0, r - GOOD_ENOUGH_TOLERANCE) for r in split_regrets])) if split_regrets else 0.0
             split_hit_rate = float(split_hit_rate / len(idx_val)) if len(idx_val) else 0.0
-            split_score = split_mean_regret - 0.15 * split_hit_rate
+            split_good_enough_rate = float(split_good_enough / len(idx_val)) if len(idx_val) else 0.0
+            split_confidence_p50 = float(np.median(split_confidences)) if split_confidences else 0.5
+            split_margin_p50 = float(np.median(split_margins)) if split_margins else 0.0
+            hit_w, good_enough_w, conf_w, margin_w, regret_w = objective_weights(profile)
+            split_score = (
+                regret_w * (split_mean_regret + 0.75 * split_regret_tail)
+                - hit_w * split_hit_rate
+                - good_enough_w * split_good_enough_rate
+                - conf_w * split_confidence_p50
+                - margin_w * min(split_margin_p50 / MARGIN_NORMALIZATION, 1.0)
+            )
 
             scores.append(split_score)
             regrets.append(split_mean_regret)
             hit_rates.append(split_hit_rate)
+            good_enough_rates.append(split_good_enough_rate)
+            confidences.extend(split_confidences)
+            margins.extend(split_margins)
 
         return {
             "score": float(np.mean(scores)),
             "mean_regret": float(np.mean(regrets)),
             "hit_rate": float(np.mean(hit_rates)),
-            "confidence_p50": float(median(confidences)) if confidences else 0.5,
-            "margin_p50": float(median(margins)) if margins else 0.0,
+            "good_enough_rate": float(np.mean(good_enough_rates)),
+            "confidence_p50": float(np.median(confidences)) if confidences else 0.5,
+            "margin_p50": float(np.median(margins)) if margins else 0.0,
         }
 
     best = None
-    for alpha in REGRESSION_ALPHA_SEARCH:
+    for alpha in PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH):
         try:
             result = evaluate_alpha(alpha)
             if best is None or result["score"] < best["score"]:
@@ -815,6 +1048,7 @@ def fit_runtime_models(profile_data: dict, profile: str):
                     "alpha": alpha,
                     "mean_regret": result["mean_regret"],
                     "hit_rate": result["hit_rate"],
+                    "good_enough_rate": result["good_enough_rate"],
                     "confidence_p50": result["confidence_p50"],
                     "margin_p50": result["margin_p50"],
                 }
@@ -825,19 +1059,261 @@ def fit_runtime_models(profile_data: dict, profile: str):
         raise RuntimeError(f"Runtime regression training failed for profile {profile}")
 
     X_scaled, means, scales = standardize_features(X_complete)
-    regressors = {}
-    for engine in classes:
-        model = Ridge(alpha=best["alpha"])
-        model.fit(X_scaled, y_by_engine[engine], sample_weight=w_complete)
-        regressors[engine] = {
-            "coefficients": [float(c) for c in model.coef_],
-            "intercept": float(model.intercept_),
+
+    def train_ridge(alpha: float, feature_indices: List[int], embed_full: bool = True) -> dict:
+        regressors = {}
+        X_subset = X_scaled[:, feature_indices] if len(feature_indices) != X_scaled.shape[1] else X_scaled
+        for engine in classes:
+            model = Ridge(alpha=alpha)
+            model.fit(X_subset, y_by_engine[engine], sample_weight=w_complete)
+            coefficients = model.coef_
+            if embed_full and len(feature_indices) != X_scaled.shape[1]:
+                coefficients = np.array(
+                    embed_sparse_coefficients(X_scaled.shape[1], feature_indices, coefficients),
+                    dtype=np.float64,
+                )
+            regressors[engine] = {
+                "coefficients": [float(c) for c in coefficients],
+                "intercept": float(model.intercept_),
+            }
+        return regressors
+
+    def evaluate_feature_subset(feature_indices: List[int]) -> dict:
+        scores = []
+        regrets = []
+        hit_rates = []
+        good_enough_rates = []
+        confidences = []
+        margins = []
+
+        for split_seed in RANDOM_SPLITS:
+            idx_all = np.arange(len(complete_items))
+            stratify = y_true if len(set(y_true.tolist())) > 1 else None
+            idx_train, idx_val = train_test_split(
+                idx_all,
+                test_size=VALIDATION_FRACTION,
+                random_state=split_seed,
+                shuffle=True,
+                stratify=stratify,
+            )
+
+            X_train = X_scaled[idx_train][:, feature_indices] if len(feature_indices) != X_scaled.shape[1] else X_scaled[idx_train]
+            X_val = X_scaled[idx_val][:, feature_indices] if len(feature_indices) != X_scaled.shape[1] else X_scaled[idx_val]
+            w_train = w_complete[idx_train]
+            y_val = y_true[idx_val]
+
+            engine_models = {}
+            for engine in classes:
+                model = Ridge(alpha=best["alpha"])
+                model.fit(X_train, y_by_engine[engine][idx_train], sample_weight=w_train)
+                engine_models[engine] = model
+
+            preds = np.column_stack(
+                [engine_models[engine].predict(X_val) for engine in classes]
+            )
+            probs = np.exp(-preds - np.max(-preds, axis=1, keepdims=True))
+            probs = probs / np.sum(probs, axis=1, keepdims=True)
+
+            split_regrets = []
+            split_hit_rate = 0
+            split_good_enough = 0
+            split_confidences = []
+            split_margins = []
+
+            for pos, sample_idx in enumerate(idx_val):
+                pred_idx = int(np.argmin(preds[pos]))
+                pred_engine = classes[pred_idx]
+                split_regrets.append(regret_for_prediction(pred_engine, complete_items[sample_idx]))
+                if pred_idx == y_val[pos]:
+                    split_hit_rate += 1
+                if is_good_enough_prediction(
+                    pred_engine, complete_items[sample_idx], tolerance=GOOD_ENOUGH_TOLERANCE
+                ):
+                    split_good_enough += 1
+
+                sorted_p = np.sort(probs[pos])
+                split_confidences.append(float(sorted_p[-1]))
+                split_margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
+
+            split_mean_regret = float(np.mean(split_regrets)) if split_regrets else 1.0
+            split_regret_tail = float(np.mean([max(0.0, r - GOOD_ENOUGH_TOLERANCE) for r in split_regrets])) if split_regrets else 0.0
+            split_hit_rate = float(split_hit_rate / len(idx_val)) if len(idx_val) else 0.0
+            split_good_enough_rate = float(split_good_enough / len(idx_val)) if len(idx_val) else 0.0
+            split_confidence_p50 = float(np.median(split_confidences)) if split_confidences else 0.5
+            split_margin_p50 = float(np.median(split_margins)) if split_margins else 0.0
+            hit_w, good_enough_w, conf_w, margin_w, regret_w = objective_weights(profile)
+            split_score = (
+                regret_w * (split_mean_regret + 0.75 * split_regret_tail)
+                - hit_w * split_hit_rate
+                - good_enough_w * split_good_enough_rate
+                - conf_w * split_confidence_p50
+                - margin_w * min(split_margin_p50 / MARGIN_NORMALIZATION, 1.0)
+            )
+
+            scores.append(split_score)
+            regrets.append(split_mean_regret)
+            hit_rates.append(split_hit_rate)
+            good_enough_rates.append(split_good_enough_rate)
+            confidences.extend(split_confidences)
+            margins.extend(split_margins)
+
+        return {
+            "score": float(np.mean(scores)),
+            "mean_regret": float(np.mean(regrets)),
+            "hit_rate": float(np.mean(hit_rates)),
+            "good_enough_rate": float(np.mean(good_enough_rates)),
+            "confidence_p50": float(np.median(confidences)) if confidences else 0.5,
+            "margin_p50": float(np.median(margins)) if margins else 0.0,
         }
+
+    def evaluate_best_alpha_for_subset(feature_indices: List[int]) -> dict:
+        best_result = None
+        best_alpha = None
+        for alpha in PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH):
+            try:
+                candidate = evaluate_alpha(alpha, feature_indices)
+            except Exception:
+                continue
+            if best_result is None or candidate["score"] < best_result["score"]:
+                best_result = candidate
+                best_alpha = alpha
+        if best_result is None:
+            raise RuntimeError(f"Feature subset evaluation failed for profile {profile}")
+        best_result["alpha"] = best_alpha
+        return best_result
+
+    initial_regressors = train_ridge(best["alpha"], list(range(X_scaled.shape[1])))
+    importance = compute_feature_importance({"regressors": initial_regressors}, FEATURE_ORDER)
+    selected_indices = list(range(X_scaled.shape[1]))
+    selected_feature_names = [FEATURE_ORDER[i] for i in selected_indices]
+    selected_feature_count = X_scaled.shape[1]
+    feature_selection_applied = False
+    feature_selection_gain = 0.0
+    feature_selection_candidates = []
+
+    if use_feature_selection and X_scaled.shape[1] > 20:
+        ranked_indices = select_top_feature_indices(importance, X_scaled.shape[1])
+        candidate_counts = sorted(
+            {len(FEATURE_ORDER)}.union(
+                max(1, int(round(len(FEATURE_ORDER) * pct))) for pct in FEATURE_SELECTION_PCT
+            ),
+            reverse=True,
+        )
+        best_subset = {
+            "indices": ranked_indices,
+            "count": len(FEATURE_ORDER),
+            "score": best["score"],
+            "alpha": best["alpha"],
+        }
+        for count in candidate_counts:
+            if count >= best_subset["count"]:
+                continue
+            candidate_indices = ranked_indices[:count]
+            best_candidate = None
+            for alpha in PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH):
+                try:
+                    candidate = evaluate_alpha(alpha, candidate_indices)
+                except Exception:
+                    continue
+                if best_candidate is None or candidate["score"] < best_candidate["score"]:
+                    best_candidate = {"score": candidate["score"], "alpha": alpha}
+            if best_candidate is None:
+                continue
+
+            feature_selection_candidates.append(
+                {
+                    "candidateCount": count,
+                    "selectedFeatures": [FEATURE_ORDER[i] for i in candidate_indices],
+                    "score": best_candidate["score"],
+                    "scoreGain": round(best["score"] - best_candidate["score"], 6),
+                    "alpha": best_candidate["alpha"],
+                }
+            )
+
+            if best_candidate["score"] < best_subset["score"] - 1e-6 or (
+                abs(best_candidate["score"] - best_subset["score"]) < 1e-6
+                and count < best_subset["count"]
+            ):
+                best_subset = {
+                    "indices": candidate_indices,
+                    "count": count,
+                    "score": best_candidate["score"],
+                    "alpha": best_candidate["alpha"],
+                }
+
+        if best_subset["count"] < len(FEATURE_ORDER):
+            selected_indices = best_subset["indices"]
+            selected_feature_names = [FEATURE_ORDER[i] for i in selected_indices]
+            selected_feature_count = best_subset["count"]
+            feature_selection_applied = True
+            feature_selection_gain = best["score"] - best_subset["score"]
+            best["alpha"] = best_subset["alpha"]
+
+        # Try a small backward-elimination ablation pass on the least important features.
+        if len(best_subset["indices"]) > 20:
+            current_indices = best_subset["indices"].copy()
+            least_important_indices = [
+                FEATURE_ORDER.index(item["feature"])
+                for item in reversed(importance["featureRankings"])
+                if item["feature"] in FEATURE_ORDER and FEATURE_ORDER.index(item["feature"]) in current_indices
+            ]
+            for removal_index in least_important_indices[:10]:
+                subset_indices = [i for i in current_indices if i != removal_index]
+                try:
+                    candidate = evaluate_best_alpha_for_subset(subset_indices)
+                except Exception:
+                    continue
+
+                feature_selection_candidates.append(
+                    {
+                        "candidateCount": len(subset_indices),
+                        "selectedFeatures": [FEATURE_ORDER[i] for i in subset_indices],
+                        "removedFeature": FEATURE_ORDER[removal_index],
+                        "method": "remove-least-important",
+                        "score": candidate["score"],
+                        "scoreGain": round(best["score"] - candidate["score"], 6),
+                        "alpha": candidate["alpha"],
+                    }
+                )
+
+                if candidate["score"] < best_subset["score"] - 1e-6 or (
+                    abs(candidate["score"] - best_subset["score"]) < 1e-6
+                    and len(subset_indices) < best_subset["count"]
+                ):
+                    best_subset = {
+                        "indices": subset_indices,
+                        "count": len(subset_indices),
+                        "score": candidate["score"],
+                        "alpha": candidate["alpha"],
+                    }
+                    current_indices = subset_indices
+                    selected_indices = current_indices
+                    selected_feature_names = [FEATURE_ORDER[i] for i in selected_indices]
+                    selected_feature_count = len(selected_indices)
+                    feature_selection_applied = True
+                    feature_selection_gain = best["score"] - candidate["score"]
+                    best["alpha"] = candidate["alpha"]
+
+    regressors = train_ridge(best["alpha"], selected_indices, embed_full=True)
+    runtime_regressors = (
+        train_ridge(best["alpha"], selected_indices, embed_full=False)
+        if len(selected_indices) != len(FEATURE_ORDER)
+        else regressors
+    )
+    runtime_feature_order = [FEATURE_ORDER[i] for i in selected_indices] if len(selected_indices) != len(FEATURE_ORDER) else FEATURE_ORDER
+    runtime_scaler_mean = [means[i] for i in selected_indices] if len(selected_indices) != len(FEATURE_ORDER) else means
+    runtime_scaler_scale = [scales[i] for i in selected_indices] if len(selected_indices) != len(FEATURE_ORDER) else scales
 
     class_counts = Counter(item["winner"] for item in complete_items)
     fallback_engine = class_counts.most_common(1)[0][0]
-    min_conf = max(0.38, min(0.92, best["confidence_p50"] * 0.95))
-    min_margin = max(0.04, min(0.32, best["margin_p50"] * 0.9))
+    min_conf = float(np.clip(best["confidence_p50"] * 0.94, 0.36, 0.90))
+    min_margin = float(np.clip(best["margin_p50"] * 0.88, 0.04, 0.28))
+
+    # If validation shows a high near-tie rate, soften thresholds slightly so the model
+    # can still make useful predictions rather than defaulting too often.
+    if best["good_enough_rate"] < 0.55:
+        min_conf = float(np.clip(min_conf * 0.95, 0.36, 0.88))
+        min_margin = float(np.clip(min_margin * 0.95, 0.04, 0.26))
 
     return {
         "profile": profile,
@@ -849,13 +1325,273 @@ def fit_runtime_models(profile_data: dict, profile: str):
         "regressors": regressors,
         "scaler_mean": means,
         "scaler_scale": scales,
+        "selectedFeatureNames": selected_feature_names,
+        "featureSelectionCandidates": feature_selection_candidates,
+        "runtimeFeatureOrder": runtime_feature_order,
+        "runtimeScalerMean": runtime_scaler_mean,
+        "runtimeScalerScale": runtime_scaler_scale,
+        "runtimeRegressors": runtime_regressors,
         "metrics": {
             "validationMeanRegret": best["mean_regret"],
             "validationHitRate": best["hit_rate"],
+            "validationGoodEnoughRate": best["good_enough_rate"],
+            "validationConfidenceP50": best["confidence_p50"],
+            "validationMarginP50": best["margin_p50"],
             "chosenAlpha": best["alpha"],
+            "selectedFeatureCount": selected_feature_count,
+            "featureSelectionApplied": feature_selection_applied,
+            "featureSelectionScoreGain": round(feature_selection_gain, 6),
             "samples": int(len(complete_items)),
         },
     }
+
+
+def fit_mlp_model(profile_data: dict, profile: str):
+    """Train a compact 2-layer MLP runtime predictor and export weights for browser inference."""
+    X = profile_data["X"]
+    w = profile_data["w"]
+    items = profile_data["items"]
+    classes = ENGINE_IDS
+
+    complete_indices = [
+        i for i, item in enumerate(items) if has_complete_engine_times(item)
+    ]
+    if not complete_indices:
+        raise RuntimeError(f"No complete runtime items found for profile {profile}")
+
+    X_complete = X[complete_indices]
+    w_complete = w[complete_indices]
+    complete_items = [items[i] for i in complete_indices]
+    y_matrix = np.column_stack(
+        [
+            np.array(
+                [math.log1p(item["times"][engine]) for item in complete_items],
+                dtype=np.float64,
+            )
+            for engine in classes
+        ]
+    )
+    y_true = np.array(
+        [ENGINE_IDS.index(item["winner"]) for item in complete_items],
+        dtype=np.int64,
+    )
+
+    def evaluate_config(hidden_layers, alpha, learning_rate):
+        scores = []
+        regrets = []
+        hit_rates = []
+        good_enough_rates = []
+        confidences = []
+        margins = []
+
+        for split_seed in RANDOM_SPLITS:
+            idx_all = np.arange(len(complete_items))
+            stratify = y_true if len(set(y_true.tolist())) > 1 else None
+            idx_train, idx_val = train_test_split(
+                idx_all,
+                test_size=VALIDATION_FRACTION,
+                random_state=split_seed,
+                shuffle=True,
+                stratify=stratify,
+            )
+
+            X_train = X_complete[idx_train]
+            X_val = X_complete[idx_val]
+            w_train = w_complete[idx_train]
+            y_train = y_matrix[idx_train]
+            y_val = y_true[idx_val]
+
+            X_train_scaled, mean, scale = standardize_features(X_train)
+            X_val_scaled = (X_val - mean) / np.array(scale, dtype=np.float64)
+
+            model = MLPRegressor(
+                hidden_layer_sizes=hidden_layers,
+                activation="relu",
+                solver="adam",
+                alpha=alpha,
+                learning_rate="adaptive",
+                learning_rate_init=learning_rate,
+                early_stopping=MLP_EARLY_STOPPING,
+                n_iter_no_change=MLP_N_ITER_NO_CHANGE,
+                tol=MLP_TOL,
+                max_iter=2000,
+                random_state=split_seed,
+                batch_size="auto",
+                validation_fraction=0.1,
+            )
+            model.fit(X_train_scaled, y_train, sample_weight=w_train)
+
+            preds = model.predict(X_val_scaled)
+            probs = np.exp(-preds - np.max(-preds, axis=1, keepdims=True))
+            probs = probs / np.sum(probs, axis=1, keepdims=True)
+
+            split_regrets = []
+            split_hit_rate = 0
+            split_good_enough = 0
+            split_confidences = []
+            split_margins = []
+
+            for pos, sample_idx in enumerate(idx_val):
+                pred_idx = int(np.argmin(preds[pos]))
+                pred_engine = classes[pred_idx]
+                split_regrets.append(regret_for_prediction(pred_engine, complete_items[sample_idx]))
+                if pred_idx == y_val[pos]:
+                    split_hit_rate += 1
+                if is_good_enough_prediction(
+                    pred_engine, complete_items[sample_idx], tolerance=GOOD_ENOUGH_TOLERANCE
+                ):
+                    split_good_enough += 1
+
+                sorted_p = np.sort(probs[pos])
+                split_confidences.append(float(sorted_p[-1]))
+                split_margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
+
+            split_mean_regret = float(np.mean(split_regrets)) if split_regrets else 1.0
+            split_regret_tail = float(np.mean([max(0.0, r - GOOD_ENOUGH_TOLERANCE) for r in split_regrets])) if split_regrets else 0.0
+            split_hit_rate = float(split_hit_rate / len(idx_val)) if len(idx_val) else 0.0
+            split_good_enough_rate = float(split_good_enough / len(idx_val)) if len(idx_val) else 0.0
+            split_confidence_p50 = float(np.median(split_confidences)) if split_confidences else 0.5
+            split_margin_p50 = float(np.median(split_margins)) if split_margins else 0.0
+            hit_w, good_enough_w, conf_w, margin_w, regret_w = objective_weights(profile)
+            split_score = (
+                regret_w * (split_mean_regret + 0.75 * split_regret_tail)
+                - hit_w * split_hit_rate
+                - good_enough_w * split_good_enough_rate
+                - conf_w * split_confidence_p50
+                - margin_w * min(split_margin_p50 / MARGIN_NORMALIZATION, 1.0)
+            )
+
+            scores.append(split_score)
+            regrets.append(split_mean_regret)
+            hit_rates.append(split_hit_rate)
+            good_enough_rates.append(split_good_enough_rate)
+            confidences.extend(split_confidences)
+            margins.extend(split_margins)
+
+        return {
+            "score": float(np.mean(scores)),
+            "mean_regret": float(np.mean(regrets)),
+            "hit_rate": float(np.mean(hit_rates)),
+            "good_enough_rate": float(np.mean(good_enough_rates)) if good_enough_rates else 0.0,
+            "confidence_p50": float(median(confidences)) if confidences else 0.5,
+            "margin_p50": float(median(margins)) if margins else 0.0,
+        }
+
+    results = []
+    for hidden_layers in MLP_HIDDEN_LAYER_OPTIONS:
+        for alpha in MLP_ALPHA_SEARCH:
+            for learning_rate in MLP_LEARNING_RATE_SEARCH:
+                try:
+                    result = evaluate_config(hidden_layers, alpha, learning_rate)
+                    results.append(
+                        {
+                            "score": result["score"],
+                            "hidden_layers": hidden_layers,
+                            "alpha": alpha,
+                            "learning_rate": learning_rate,
+                            "mean_regret": result["mean_regret"],
+                            "hit_rate": result["hit_rate"],
+                            "good_enough_rate": result["good_enough_rate"],
+                            "confidence_p50": result["confidence_p50"],
+                            "margin_p50": result["margin_p50"],
+                        }
+                    )
+                except Exception:
+                    continue
+    if not results:
+        raise RuntimeError(f"MLP training failed for profile {profile}")
+    best = select_mlp_candidate(results, profile)
+
+    X_scaled, means, scales = standardize_features(X_complete)
+    final_model = MLPRegressor(
+        hidden_layer_sizes=best["hidden_layers"],
+        activation="relu",
+        solver="adam",
+        alpha=best["alpha"],
+        learning_rate="adaptive",
+        learning_rate_init=best["learning_rate"],
+        early_stopping=False,
+        tol=MLP_TOL,
+        max_iter=2000,
+        random_state=42,
+        batch_size="auto",
+    )
+    final_model.fit(X_scaled, y_matrix, sample_weight=w_complete)
+
+    coefs = [coef.tolist() for coef in final_model.coefs_]
+    intercepts = [intercept.tolist() for intercept in final_model.intercepts_]
+
+    class_counts = Counter(item["winner"] for item in complete_items)
+    fallback_engine = class_counts.most_common(1)[0][0]
+    min_conf = float(np.clip(best["confidence_p50"] * 0.94, 0.36, 0.90))
+    min_margin = float(np.clip(best["margin_p50"] * 0.88, 0.04, 0.28))
+
+    if best["good_enough_rate"] < 0.55:
+        min_conf = float(np.clip(min_conf * 0.95, 0.36, 0.88))
+        min_margin = float(np.clip(min_margin * 0.95, 0.04, 0.26))
+
+    return {
+        "profile": profile,
+        "modelType": "mlp",
+        "classes": classes,
+        "fallbackEngine": fallback_engine,
+        "minConfidence": float(min_conf),
+        "minMargin": float(min_margin),
+        "coefs": coefs,
+        "intercepts": intercepts,
+        "scaler_mean": means,
+        "scaler_scale": scales,
+        "metrics": {
+            "validationMeanRegret": best["mean_regret"],
+            "validationHitRate": best["hit_rate"],
+            "validationGoodEnoughRate": best["good_enough_rate"],
+            "validationConfidenceP50": best["confidence_p50"],
+            "validationMarginP50": best["margin_p50"],
+            "chosenHiddenLayers": best["hidden_layers"],
+            "chosenAlpha": best["alpha"],
+            "chosenLearningRate": best["learning_rate"],
+            "samples": int(len(complete_items)),
+        },
+    }
+
+
+def choose_candidate(candidates: list, require_hit_rate: bool = False, profile: str | None = None) -> dict:
+    min_good_enough_rate, min_hit_rate = profile_thresholds(profile) if profile else (MIN_GOOD_ENOUGH_RATE, MIN_HIT_RATE)
+    if require_hit_rate:
+        hit_candidates = [c for c in candidates if c["hit_rate"] >= min_hit_rate]
+        if hit_candidates:
+            candidates = hit_candidates
+
+    eligible = [c for c in candidates if c["good_enough_rate"] >= min_good_enough_rate]
+    if eligible:
+        best_regret = min(c["mean_regret"] for c in eligible)
+        close = [c for c in eligible if c["mean_regret"] <= best_regret + REGRET_TOLERANCE]
+        best_good_enough = max(c["good_enough_rate"] for c in close)
+        finalists = [
+            c
+            for c in close
+            if c["good_enough_rate"] >= best_good_enough - 0.01
+        ]
+        return min(
+            finalists,
+            key=lambda c: (
+                c["mean_regret"],
+                -c["good_enough_rate"],
+                -c["hit_rate"],
+                -c["margin_p50"],
+                -c["confidence_p50"],
+                c["score"],
+            ),
+        )
+    return min(candidates, key=lambda c: c["score"])
+
+
+def select_best_candidate(candidates: list) -> dict:
+    return choose_candidate(candidates)
+
+
+def select_mlp_candidate(candidates: list, profile: str) -> dict:
+    return choose_candidate(candidates, require_hit_rate=True, profile=profile)
 
 
 def fit_xgboost_model(profile_data: dict, profile: str):
@@ -870,6 +1606,7 @@ def fit_xgboost_model(profile_data: dict, profile: str):
         scores = []
         regrets = []
         hit_rates = []
+        good_enough_rates = []
         confidences = []
         margins = []
 
@@ -914,12 +1651,29 @@ def fit_xgboost_model(profile_data: dict, profile: str):
                 split_margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
 
             split_mean_regret = float(np.mean(split_regrets)) if split_regrets else 1.0
+            split_regret_tail = float(np.mean([max(0.0, r - GOOD_ENOUGH_TOLERANCE) for r in split_regrets])) if split_regrets else 0.0
             split_hit_rate = float(np.mean(pred == y[idx_val])) if len(idx_val) else 0.0
-            split_score = split_mean_regret - 0.15 * split_hit_rate
+            split_good_enough_rate = float(np.mean([
+                is_good_enough_prediction(
+                    classes[pred[pos]], items[sample_idx], tolerance=GOOD_ENOUGH_TOLERANCE
+                )
+                for pos, sample_idx in enumerate(idx_val)
+            ])) if len(idx_val) else 0.0
+            split_confidence_p50 = float(np.median(split_confidences)) if split_confidences else 0.5
+            split_margin_p50 = float(np.median(split_margins)) if split_margins else 0.0
+            hit_w, good_enough_w, conf_w, margin_w, regret_w = objective_weights(profile)
+            split_score = (
+                regret_w * (split_mean_regret + 0.75 * split_regret_tail)
+                - hit_w * split_hit_rate
+                - good_enough_w * split_good_enough_rate
+                - conf_w * split_confidence_p50
+                - margin_w * min(split_margin_p50 / MARGIN_NORMALIZATION, 1.0)
+            )
 
             scores.append(split_score)
             regrets.append(split_mean_regret)
             hit_rates.append(split_hit_rate)
+            good_enough_rates.append(split_good_enough_rate)
             confidences.extend(split_confidences)
             margins.extend(split_margins)
 
@@ -927,29 +1681,35 @@ def fit_xgboost_model(profile_data: dict, profile: str):
             "score": float(np.mean(scores)),
             "mean_regret": float(np.mean(regrets)),
             "hit_rate": float(np.mean(hit_rates)),
+            "good_enough_rate": float(np.mean(good_enough_rates)) if good_enough_rates else 0.0,
             "confidence_p50": float(median(confidences)) if confidences else 0.5,
             "margin_p50": float(median(margins)) if margins else 0.0,
         }
 
-    best = None
+    results = []
     for max_depth in HYPERPARAMETER_SEARCH["max_depth"]:
         for n_estimators in HYPERPARAMETER_SEARCH["n_estimators"]:
             for learning_rate in HYPERPARAMETER_SEARCH["learning_rate"]:
                 try:
                     result = evaluate_config(max_depth, n_estimators, learning_rate)
-                    if best is None or result["score"] < best["score"]:
-                        best = {
+                    results.append(
+                        {
                             "score": result["score"],
                             "max_depth": max_depth,
                             "n_estimators": n_estimators,
                             "learning_rate": learning_rate,
                             "mean_regret": result["mean_regret"],
                             "hit_rate": result["hit_rate"],
+                            "good_enough_rate": result["good_enough_rate"],
                             "confidence_p50": result["confidence_p50"],
                             "margin_p50": result["margin_p50"],
                         }
+                    )
                 except Exception:
                     continue
+    if not results:
+        raise RuntimeError(f"XGBoost training failed for profile {profile}")
+    best = select_best_candidate(results)
 
     if best is None:
         raise RuntimeError(f"XGBoost training failed for profile {profile}")
@@ -974,8 +1734,12 @@ def fit_xgboost_model(profile_data: dict, profile: str):
     fallback_idx = class_counts.most_common(1)[0][0]
     fallback_engine = classes[fallback_idx]
 
-    min_conf = max(0.38, min(0.72, best["confidence_p50"] * 0.95))
-    min_margin = max(0.04, min(0.28, best["margin_p50"] * 0.9))
+    min_conf = float(np.clip(best["confidence_p50"] * 0.94, 0.36, 0.88))
+    min_margin = float(np.clip(best["margin_p50"] * 0.88, 0.04, 0.26))
+
+    if best["good_enough_rate"] < 0.55:
+        min_conf = float(np.clip(min_conf * 0.95, 0.36, 0.86))
+        min_margin = float(np.clip(min_margin * 0.95, 0.04, 0.24))
 
     score_source = m2c.export_to_javascript(
         final_model,
@@ -993,6 +1757,9 @@ def fit_xgboost_model(profile_data: dict, profile: str):
         "metrics": {
             "validationMeanRegret": best["mean_regret"],
             "validationHitRate": best["hit_rate"],
+            "validationGoodEnoughRate": best["good_enough_rate"],
+            "validationConfidenceP50": best["confidence_p50"],
+            "validationMarginP50": best["margin_p50"],
             "chosenMaxDepth": best["max_depth"],
             "chosenNEstimators": best["n_estimators"],
             "chosenLearningRate": best["learning_rate"],
@@ -1001,14 +1768,16 @@ def fit_xgboost_model(profile_data: dict, profile: str):
     }
 
 
-def fit_profile_model(profile_data: dict, profile: str, model_type: str = "runtime-linear"):
+def fit_profile_model(profile_data: dict, profile: str, model_type: str = "runtime-linear", use_feature_selection: bool = True):
     """Wrapper that trains the requested model type for the profile."""
     if model_type == "xgboost":
         return fit_xgboost_model(profile_data, profile)
-    return fit_runtime_models(profile_data, profile)
+    if model_type == "mlp":
+        return fit_mlp_model(profile_data, profile)
+    return fit_runtime_models(profile_data, profile, use_feature_selection)
 
 
-def build_model_payload(runs: List[DatasetRun], root: Path, model_type: str) -> dict:
+def build_model_payload(runs: List[DatasetRun], root: Path, model_type: str, use_feature_selection: bool = True) -> dict:
     compute_consensus_agreement(runs)
 
     by_profile = {
@@ -1020,7 +1789,9 @@ def build_model_payload(runs: List[DatasetRun], root: Path, model_type: str) -> 
     for profile_name, pdata in by_profile.items():
         if pdata is None:
             continue
-        profiles[profile_name] = fit_profile_model(pdata, profile_name, model_type)
+        profiles[profile_name] = fit_profile_model(
+            pdata, profile_name, model_type, use_feature_selection=use_feature_selection
+        )
 
     if "sabOff" not in profiles and profiles:
         profiles["sabOff"] = next(iter(profiles.values()))
@@ -1047,6 +1818,91 @@ def build_model_payload(runs: List[DatasetRun], root: Path, model_type: str) -> 
     }
 
 
+def feature_category(feature: str) -> str:
+    base_features = {
+        "safeN",
+        "safeE",
+        "safeBeelineKm",
+        "avgOutDegree",
+        "edgesPerKm",
+        "nodesPerKm",
+        "sizeRatioEN",
+        "beelinePerNode",
+        "relativeDensity",
+        "globalCoverage",
+        "emptyRatio",
+        "sourceDegree",
+        "targetDegree",
+        "sourceCentrality",
+        "targetCentrality",
+        "graphDensity",
+        "avgBranchFactor",
+    }
+    if feature in base_features:
+        return "base"
+    if feature.startswith("log"):
+        return "log"
+    if any(term in feature for term in ["Times", "Over", "Product", "Contrast"]):
+        return "interaction"
+    if "Ratio" in feature or "Density" in feature or "PerNode" in feature:
+        return "derived"
+    return "other"
+
+
+def compute_feature_importance(profile_data: dict, feature_order: list) -> dict:
+    regressors = profile_data.get("regressors")
+    if not regressors or not feature_order:
+        return {}
+
+    engines = list(regressors.keys())
+    features = []
+    for feature_index, feature_name in enumerate(feature_order):
+        coeff_values = []
+        for engine in engines:
+            coeffs = regressors[engine].get("coefficients", [])
+            coeff_values.append(float(coeffs[feature_index]) if feature_index < len(coeffs) else 0.0)
+
+        abs_values = [abs(value) for value in coeff_values]
+        mean_abs = float(np.mean(abs_values))
+        max_abs = float(np.max(abs_values))
+        best_engine = engines[int(np.argmax(abs_values))] if engines else None
+        category = feature_category(feature_name)
+
+        features.append(
+            {
+                "feature": feature_name,
+                "category": category,
+                "meanAbsCoefficient": mean_abs,
+                "maxAbsCoefficient": max_abs,
+                "bestEngine": best_engine,
+                "coefficients": {engine: coeff for engine, coeff in zip(engines, coeff_values)},
+            }
+        )
+
+    features.sort(key=lambda item: item["meanAbsCoefficient"], reverse=True)
+
+    derived_features = [f for f in features if f["category"] != "base"]
+    top_features = features[:20]
+    top_derived = derived_features[:20]
+
+    return {
+        "topFeatures": top_features,
+        "topDerivedFeatures": top_derived,
+        "featureRankings": features,
+    }
+
+
+def add_feature_importance_to_report(report_payload: dict) -> None:
+    feature_order = report_payload.get("featureOrder", [])
+    profiles = report_payload.get("profiles", {})
+    for profile_name, profile_data in profiles.items():
+        profile_data.pop("featureImportance", None)
+        if profile_data.get("modelType") == "runtime-linear":
+            profile_data["featureImportance"] = compute_feature_importance(
+                profile_data, feature_order
+            )
+
+
 def write_js_model(payload: dict, out_file: Path) -> None:
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1071,12 +1927,24 @@ def write_js_model(payload: dict, out_file: Path) -> None:
     out_file.write_text(model_js, encoding="utf-8")
 
 
+def preserve_existing_report(out_file: Path) -> None:
+    if out_file.exists():
+        backup_name = (
+            f"{out_file.stem}_baseline_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}{out_file.suffix}"
+        )
+        backup_path = out_file.with_name(backup_name)
+        shutil.copy2(out_file, backup_path)
+        print(f"Preserved previous report to {backup_path}")
+
+
 def write_analysis_report(payload: dict, out_file: Path) -> None:
     out_file.parent.mkdir(parents=True, exist_ok=True)
+    preserve_existing_report(out_file)
     report_payload = json.loads(json.dumps(payload))
     for profile_data in report_payload.get("profiles", {}).values():
         profile_data.pop("scoreSource", None)
         profile_data.pop("score", None)
+    add_feature_importance_to_report(report_payload)
     out_file.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
 
 
@@ -1093,20 +1961,85 @@ def main() -> int:
         default="benchmark/results/analysis/engine_selector_ml_latest.json",
         help="Path to analysis report",
     )
+    global GOOD_ENOUGH_TOLERANCE, HIT_WEIGHT, GOOD_ENOUGH_WEIGHT, REGRET_WEIGHT, MIN_GOOD_ENOUGH_RATE, MIN_HIT_RATE
+
     parser.add_argument(
         "--model-type",
         default="runtime-linear",
-        choices=["runtime-linear", "xgboost"],
+        choices=["runtime-linear", "mlp", "xgboost"],
         help="Which model architecture to train",
     )
+    parser.add_argument(
+        "--good-enough-tolerance",
+        type=float,
+        default=0.05,
+        help="Regret tolerance used to count near-tie predictions as good enough",
+    )
+    parser.add_argument(
+        "--hit-weight",
+        type=float,
+        default=0.15,
+        help="Weight applied to exact hit rate in the search score",
+    )
+    parser.add_argument(
+        "--good-enough-weight",
+        type=float,
+        default=0.14,
+        help="Weight applied to good-enough rate in the search score",
+    )
+    parser.add_argument(
+        "--confidence-weight",
+        type=float,
+        default=0.05,
+        help="Weight applied to validation confidence in the search score",
+    )
+    parser.add_argument(
+        "--margin-weight",
+        type=float,
+        default=0.06,
+        help="Weight applied to validation margin in the search score",
+    )
+    parser.add_argument(
+        "--regret-weight",
+        type=float,
+        default=1.2,
+        help="Weight applied to regret in the search score",
+    )
+    parser.add_argument(
+        "--min-good-enough-rate",
+        type=float,
+        default=0.58,
+        help="Minimum validation good-enough rate required before choosing lower-regret configs",
+    )
+    parser.add_argument(
+        "--min-hit-rate",
+        type=float,
+        default=0.40,
+        help="Minimum validation exact-hit rate required before choosing lower-regret configs",
+    )
+    parser.add_argument(
+        "--no-feature-selection",
+        action="store_false",
+        dest="use_feature_selection",
+        help="Disable feature importance-based pruning for runtime-linear training.",
+    )
     args = parser.parse_args()
+
+    GOOD_ENOUGH_TOLERANCE = args.good_enough_tolerance
+    MIN_GOOD_ENOUGH_RATE = args.min_good_enough_rate
+    MIN_HIT_RATE = args.min_hit_rate
+    HIT_WEIGHT = args.hit_weight
+    GOOD_ENOUGH_WEIGHT = args.good_enough_weight
+    CONFIDENCE_WEIGHT = args.confidence_weight
+    MARGIN_WEIGHT = args.margin_weight
+    REGRET_WEIGHT = args.regret_weight
 
     root = Path(args.root).resolve()
     runs = load_runs(root)
     if not runs:
         raise SystemExit("No benchmark runs found to train model.")
 
-    payload = build_model_payload(runs, root, args.model_type)
+    payload = build_model_payload(runs, root, args.model_type, use_feature_selection=args.use_feature_selection)
     if not payload.get("profiles"):
         raise SystemExit("Model training failed: no profiles were trained.")
 

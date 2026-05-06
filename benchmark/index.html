@@ -40,6 +40,10 @@
         Pause between routes (ms)
           <input id="pause-input" type="number" value="0" min="0" max="30000" step="100" />
       </label>
+      <label>
+        Finish after successful routes
+          <input id="success-routes-input" type="number" value="0" min="0" />
+      </label>
     </div>
 
     <!-- Route filters -->
@@ -81,30 +85,23 @@
       <div class="mini-summary" id="auto-selector-cards"></div>
     </div>
 
-    <div id="copilot-report" class="report-panel" hidden>
-      <div class="report-toolbar">
-        <div>
-          <h3 style="margin-bottom:0">Shareable Analysis</h3>
-          <p>Paste this report into chat to tune the selector without attaching a CSV.</p>
-          <div id="report-run-context" class="run-pass-note" hidden></div>
-        </div>
-        <div class="report-actions">
-          <button class="btn btn-secondary" id="copy-report-btn">⧉ Copy Analysis</button>
-          <span class="report-status" id="copy-report-status"></span>
-        </div>
-      </div>
-      <textarea id="copilot-report-output" class="report-output" readonly spellcheck="false"></textarea>
-    </div>
-
     <!-- Scatter plots -->
     <div class="charts-grid" style="margin-bottom:24px">
       <div class="chart-panel">
-        <div class="chart-panel-title">E × Beeline distance</div>
+        <div class="chart-panel-title">Coverage density × Coverage-empty contrast</div>
         <canvas id="scatter"></canvas>
       </div>
       <div class="chart-panel">
-        <div class="chart-panel-title">Edges/km × Avg out-degree</div>
+        <div class="chart-panel-title">Global coverage × empty ratio × Log global coverage</div>
         <canvas id="density"></canvas>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-title">Coverage density distribution by winner</div>
+        <canvas id="histogram"></canvas>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-panel-title">Timing bubble: fastest route time</div>
+        <canvas id="bubble"></canvas>
       </div>
     </div>
 
@@ -142,7 +139,7 @@
     </div>
 
     <!-- Table -->
-    <div class="table-wrap">
+    <div class="table-wrap results-table-wrap">
       <table id="results-table">
         <thead>
           <tr>

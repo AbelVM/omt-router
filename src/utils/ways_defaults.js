@@ -18,6 +18,9 @@ export const ways = {
       'minor',
       'service',
       'track',
+      'residential',
+      'unclassified',
+      'living_street',
     ]),
     exclude_subclass: new Set(['pedestrian', 'footway', 'steps', 'cycleway', 'bridleway', 'corridor']),
   },
@@ -55,6 +58,8 @@ export const CLASS_SPEEDS_KMH = {
   service: 30,
   track: 20,
   living_street: 10,
+  residential: 30,
+  unclassified: 35,
   path: 5,
   pedestrian: 5,
 };

@@ -28,13 +28,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "benchmark": "node benchmark/cli-runner.js",
-    "benchmark:serial": "node benchmark/cli-runner.js --profile serial",
-    "benchmark:parallel": "node benchmark/cli-runner.js --profile parallel",
-    "benchmark:quick": "node benchmark/cli-runner.js --routes 100",
     "lint": "eslint 'src/**/*.js' 'tests/**/*.js'",
     "lint:fix": "eslint --fix 'src/**/*.js' 'tests/**/*.js'",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "train:LR": ".venv/bin/python benchmark/train_engine_selector_ml.py --root . --model runtime-linear",
+    "train:MLP": ".venv/bin/python benchmark/train_engine_selector_ml.py --root . --model mlp",
+    "train:XGBoost": ".venv/bin/python benchmark/train_engine_selector_ml.py --root . --model xgboost",
+    "analyze:features": ".venv/bin/python benchmark/analyze_feature_importance.py --out-json benchmark/results/analysis/engine_selector_feature_importance.json",
+    "compare-models": ".venv/bin/python benchmark/compare_engine_selector_results.py"
   },
   "keywords": [
     "routing",

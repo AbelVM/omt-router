@@ -18,19 +18,28 @@ import {
   prepareGraph,
   selectBestEngine,
   validateRouteResult,
-  getSelectorBins,
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
 } from '../../src/engines/router.js';
 import { buildGraphAsync } from '../../src/graphs/graphBuilder.js';
-import { classifySelectorFeatures } from '../../src/tuning/tuning.js';
+import {
+  classifySelectorFeatures,
+  getSelectorBins,
+} from './benchmark-selector-features.js';
 import { getTilesAlongLine } from '../../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance } from '../../src/utils/misc.js';
 import { PowerPool } from 'performance-helpers/powerPool';
 import { PowerCache } from 'performance-helpers/powerCache';
 import tilesWorker from '../../src/tiles/tilesWorker?worker&inline';
 import Chart from 'chart.js/auto';
+
+const ENGINE_IDS = [
+  'bidirectional-astar',
+  'adaptive-barrier',
+  'delta-stepping',
+  'ultra-dijkstra',
+];
 
 // ── Shared singletons (created once, reused across all routes) ────────────────
 let _pool = null;
@@ -176,12 +185,17 @@ function summarizeSamples(samples) {
   const count = ordered.length;
   const minMs = ordered[0];
   const maxMs = ordered[count - 1];
-  const meanMs = ordered.reduce((acc, value) => acc + value, 0) / count;
+  let sum = 0;
+  for (let i = 0; i < count; i += 1) {
+    sum += ordered[i];
+  }
+  const meanMs = sum / count;
+  let variance = 0;
+  for (let i = 0; i < count; i += 1) {
+    const delta = ordered[i] - meanMs;
+    variance += delta * delta;
+  }
   const medianMs = median(ordered);
-  const variance = ordered.reduce((acc, value) => {
-    const delta = value - meanMs;
-    return acc + (delta * delta);
-  }, 0) / count;
   const p95Index = Math.max(0, Math.ceil(0.95 * count) - 1);
 
   return {
@@ -494,13 +508,7 @@ async function benchmarkSingleRoute(
   }
 
   // ── Engine timing results ──────────────────────────────────────────────────
-  const engineIds = [
-    'bidirectional-astar',
-    'adaptive-barrier',
-    'delta-stepping',
-    'ultra-dijkstra',
-  ];
-  const availableEngines = engineIds;
+  const engineIds = ENGINE_IDS;
 
   // Warm up all available engines before timing starts.
   // This primes JIT, field caches, and CSR hot paths for every engine equally,
@@ -509,7 +517,7 @@ async function benchmarkSingleRoute(
   const warmResults = {};
   const warmTimingsMs = {};
   const warmErrors = {};
-  for (const engineId of availableEngines) {
+  for (const engineId of engineIds) {
     onPhase?.({ phase: 'warming-engine', engineId });
     const warmStart = performance.now();
     try {
@@ -534,10 +542,10 @@ async function benchmarkSingleRoute(
   // Any transient effects (GC pause, OS scheduler, JIT recompilation) hit all
   // engines in the same round, so they cancel out in the median rather than
   // systematically skewing whichever engine happened to run at that moment.
-  const timesMap = {};
+  const timesMap = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, []]));
   const engineRunErrors = {};
+  const timedErrorCounts = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, 0]));
   const timedRounds = [];
-  for (const engineId of availableEngines) timesMap[engineId] = [];
 
   onPhase?.({ phase: 'timing-engines', nRuns });
   for (let i = 0; i < nRuns; i++) {
@@ -546,7 +554,7 @@ async function benchmarkSingleRoute(
       round: i + 1,
       engines: {},
     };
-    for (const engineId of availableEngines) {
+    for (const engineId of engineIds) {
       if (engineRunErrors[engineId]) {
         roundRecord.engines[engineId] = {
           elapsedMs: null,
@@ -593,6 +601,7 @@ async function benchmarkSingleRoute(
       } catch (err) {
         if (err?.name === 'AbortError') throw err;
         engineRunErrors[engineId] = err.message ?? String(err);
+        timedErrorCounts[engineId] += 1;
         roundRecord.engines[engineId] = {
           elapsedMs: null,
           error: engineRunErrors[engineId],
@@ -755,20 +764,24 @@ async function benchmarkSingleRoute(
       ultra_dijkstra: results['ultra-dijkstra'].found,
     },
     errors: {
-      bidirectional_astar_error: results['bidirectional-astar'].error,
-      adaptive_barrier_error: results['adaptive-barrier'].error,
-      delta_stepping_error: results['delta-stepping'].error,
-      ultra_dijkstra_error: results['ultra-dijkstra'].error,
+      bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
+      adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
+      delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
+      ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
     },
-    bidirectional_astar_error: results['bidirectional-astar'].error,
-    adaptive_barrier_error: results['adaptive-barrier'].error,
-    delta_stepping_error: results['delta-stepping'].error,
-    ultra_dijkstra_error: results['ultra-dijkstra'].error,
+    bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
+    adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
+    delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
+    ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
+    bidirectional_astar_timed_error: results['bidirectional-astar'].timedError,
+    adaptive_barrier_timed_error: results['adaptive-barrier'].timedError,
+    delta_stepping_timed_error: results['delta-stepping'].timedError,
+    ultra_dijkstra_timed_error: results['ultra-dijkstra'].timedError,
     engine_errors: summarizeEngineErrors({
-      bidirectional_astar_error: results['bidirectional-astar'].error,
-      adaptive_barrier_error: results['adaptive-barrier'].error,
-      delta_stepping_error: results['delta-stepping'].error,
-      ultra_dijkstra_error: results['ultra-dijkstra'].error,
+      bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
+      adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
+      delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
+      ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
     }),
     rawDiagnostics: {
       forceSerialRouting,
@@ -796,13 +809,21 @@ async function benchmarkSingleRoute(
           engineId,
           Number.isFinite(warmTimingsMs[engineId]) ? warmTimingsMs[engineId] : null,
         ])),
-        warmupErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
+        warmupErrorMessagesByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
           warmErrors[engineId] ?? null,
         ])),
-        timedErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
+        warmupErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
+          engineId,
+          warmErrors[engineId] ? 1 : 0,
+        ])),
+        timedErrorMessagesByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
           engineRunErrors[engineId] ?? null,
+        ])),
+        timedErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
+          engineId,
+          timedErrorCounts[engineId] ?? 0,
         ])),
         timingSamplesMsByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
@@ -1501,28 +1522,76 @@ function _buildTooltipLines(r) {
   ];
 }
 
+const _SELECTOR_FEATURE_SCALES = [
+  {
+    xKey: 'coverageDensity',
+    xLabel: 'Coverage density',
+    yKey: 'coverageEmptyContrastTimesLogAvgBranchFactor',
+    yLabel: 'Coverage-empty contrast × log avg branch',
+  },
+  {
+    xKey: 'globalCoverageTimesEmptyRatio',
+    xLabel: 'Global coverage × empty ratio',
+    yKey: 'logGlobalCoverage',
+    yLabel: 'Log global coverage',
+  },
+];
+
+function _getSelectorFeatureRow(row) {
+  if (row._selectorFeatures) return row._selectorFeatures;
+  const selectorMetrics = {
+    edgeCount: Number.isFinite(row.safeE) ? row.safeE : Number.isFinite(row.E) ? row.E : 0,
+    nodeCount: Number.isFinite(row.safeN) ? row.safeN : Number.isFinite(row.N) ? row.N : 1,
+    haversineDistance: Number.isFinite(row.safeBeelineKm) ? row.safeBeelineKm * 1000 : null,
+    averageNodeDegree: Number.isFinite(row.avgOutDegree) ? row.avgOutDegree : null,
+    relativeDensity: Number.isFinite(row.relativeDensity) ? row.relativeDensity : null,
+    globalCoverage: Number.isFinite(row.globalCoverage) ? row.globalCoverage : null,
+    emptyRatio: Number.isFinite(row.emptyRatio) ? row.emptyRatio : null,
+    nodeDegreeSource: Number.isFinite(row.sourceDegree) ? row.sourceDegree : null,
+    nodeDegreeTarget: Number.isFinite(row.targetDegree) ? row.targetDegree : null,
+    nodeCentralitySource: Number.isFinite(row.sourceCentrality) ? row.sourceCentrality : null,
+    nodeCentralityTarget: Number.isFinite(row.targetCentrality) ? row.targetCentrality : null,
+    sourceTargetDegreeRatio: Number.isFinite(row.sourceTargetDegreeRatio) ? row.sourceTargetDegreeRatio : null,
+  };
+  return row._selectorFeatures = classifySelectorFeatures(selectorMetrics);
+}
+
+function _featureForRow(row, key) {
+  if (Number.isFinite(row[key])) return row[key];
+  const features = _getSelectorFeatureRow(row);
+  return Number.isFinite(features?.[key]) ? features[key] : null;
+}
+
 function _buildScatterDatasets(validResults, xKey, yKey) {
   const sets = _ENGINE_CHART_META.map(e => ({
     label: e.label,
     data: validResults
-      .filter(r => r.winner === e.id && r[xKey] != null && r[yKey] != null)
-      .map(r => ({ x: r[xKey], y: r[yKey], route: r })),
+      .map((r) => ({
+        x: _featureForRow(r, xKey),
+        y: _featureForRow(r, yKey),
+        route: r,
+      }))
+      .filter((pt) => pt.x != null && pt.y != null && pt.route.winner === e.id),
     backgroundColor: e.bg,
     borderColor: e.border,
     borderWidth: 1.5,
-    pointRadius: 5,
-    pointHoverRadius: 7,
+    pointRadius: 3,
+    pointHoverRadius: 5,
   }));
   const errDs = {
     label: 'Error / N.A.',
     data: validResults
-      .filter(r => !r.winner && r[xKey] != null && r[yKey] != null)
-      .map(r => ({ x: r[xKey], y: r[yKey], route: r })),
+      .map((r) => ({
+        x: _featureForRow(r, xKey),
+        y: _featureForRow(r, yKey),
+        route: r,
+      }))
+      .filter((pt) => pt.x != null && pt.y != null && !pt.route.winner),
     backgroundColor: 'rgba(148,163,184,0.7)',
     borderColor: '#64748b',
     borderWidth: 1.5,
-    pointRadius: 4,
-    pointHoverRadius: 6,
+    pointRadius: 3,
+    pointHoverRadius: 5,
   };
   if (errDs.data.length > 0) sets.push(errDs);
   return sets.filter(ds => ds.data.length > 0);
@@ -1558,6 +1627,16 @@ function _logAxis(title, tickFn) {
   };
 }
 
+function _linearAxis(title, tickFn) {
+  return {
+    type: 'linear',
+    min: 0,
+    title: { display: true, text: title, font: { weight: '600', size: 12 }, color: '#475569' },
+    ticks: { callback: tickFn, color: '#64748b', font: { size: 11 } },
+    grid: { color: '#e2e8f0' },
+  };
+}
+
 function _upsertScatter(canvas, datasets, xScale, yScale, existingChart) {
   if (existingChart) {
     existingChart.data.datasets = datasets;
@@ -1580,6 +1659,204 @@ function _upsertScatter(canvas, datasets, xScale, yScale, existingChart) {
   });
 }
 
+function _buildHistogramBins(values, binCount = 12) {
+  if (!values.length) return [];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) {
+    return [{ min, max, label: `${Number(min.toPrecision(3))}` }];
+  }
+  const step = (max - min) / binCount;
+  return Array.from({ length: binCount }, (_, idx) => {
+    const low = min + idx * step;
+    const high = idx === binCount - 1 ? max : low + step;
+    const lowLabel = Number(low.toPrecision(3));
+    const highLabel = Number(high.toPrecision(3));
+    return {
+      min: low,
+      max: high,
+      label: idx === binCount - 1 ? `${lowLabel}–${highLabel}` : `${lowLabel}–${highLabel}`,
+    };
+  });
+}
+
+function _buildHistogramDatasets(results, featureKey, binCount = 12) {
+  const valid = results.filter((r) => _featureForRow(r, featureKey) != null);
+  const values = valid.map((r) => _featureForRow(r, featureKey));
+  const bins = _buildHistogramBins(values, binCount);
+  const binLabels = bins.map((bin) => bin.label);
+  const allBuckets = new Map([
+    ..._ENGINE_CHART_META.map((engine) => [engine.id, Array.from({ length: bins.length }, () => 0)]),
+    [null, Array.from({ length: bins.length }, () => 0)],
+  ]);
+
+  valid.forEach((row) => {
+    const value = _featureForRow(row, featureKey);
+    const bucket = bins.findIndex((bin, index) => (index === bins.length - 1 ? value <= bin.max : value < bin.max) && value >= bin.min);
+    const winner = row.winner && allBuckets.has(row.winner) ? row.winner : null;
+    if (bucket >= 0) {
+      allBuckets.get(winner)[bucket] += 1;
+    }
+  });
+
+  const datasets = [..._ENGINE_CHART_META, { id: null, label: 'No winner / error', bg: 'rgba(148,163,184,0.7)', border: '#64748b' }]
+    .map((engine) => ({
+      label: engine.label,
+      data: allBuckets.get(engine.id),
+      backgroundColor: engine.bg,
+      borderColor: engine.border,
+      borderWidth: 1,
+    }))
+    .filter((ds) => ds.data.some((count) => count > 0));
+
+  return { labels: binLabels, datasets };
+}
+
+function _upsertBar(canvas, labels, datasets, xLabel, yLabel, existingChart) {
+  if (existingChart) {
+    existingChart.data.labels = labels;
+    existingChart.data.datasets = datasets;
+    existingChart.update('none');
+    return existingChart;
+  }
+  return new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        x: {
+          title: { display: true, text: xLabel, font: { weight: '600', size: 12 }, color: '#475569' },
+          ticks: { color: '#64748b', font: { size: 11 } },
+          grid: { color: '#e2e8f0' },
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: yLabel, font: { weight: '600', size: 12 }, color: '#475569' },
+          ticks: { color: '#64748b', font: { size: 11 } },
+          grid: { color: '#e2e8f0' },
+        },
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, padding: 12 } },
+        tooltip: {
+          callbacks: {
+            label(item) {
+              return `${item.dataset.label}: ${item.parsed.y.toLocaleString()} routes`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function _routeTimingMetrics(row) {
+  const timeKeys = [
+    'bidirectional_astar_ms',
+    'adaptive_barrier_ms',
+    'delta_stepping_ms',
+    'ultra_dijkstra_ms',
+  ];
+  const times = timeKeys
+    .map((key) => Number.isFinite(row[key]) ? row[key] : null)
+    .filter(Number.isFinite);
+  if (!times.length) return null;
+  const sorted = [...times].sort((a, b) => a - b);
+  const fastestMs = sorted[0];
+  const secondBestMs = sorted.length > 1 ? sorted[1] : null;
+  const winnerMarginMs = secondBestMs != null ? Math.max(0, secondBestMs - fastestMs) : null;
+  const winnerMarginPct = winnerMarginMs != null && fastestMs > 0 ? round4(winnerMarginMs / fastestMs) : null;
+  return { fastestMs, winnerMarginMs, winnerMarginPct };
+}
+
+function _bubbleRadiusForFastestMs(fastestMs) {
+  if (!Number.isFinite(fastestMs)) return 4;
+  return Math.min(12, Math.max(4, Math.sqrt(fastestMs) * 0.9));
+}
+
+function _buildBubbleDatasets(validResults, xKey, yKey) {
+  const sets = _ENGINE_CHART_META.map((engine) => ({
+    label: engine.label,
+    data: validResults
+      .map((r) => {
+        const timing = _routeTimingMetrics(r);
+        const x = _featureForRow(r, xKey);
+        const y = _featureForRow(r, yKey);
+        return timing && x != null && y != null
+          ? { x, y, r: _bubbleRadiusForFastestMs(timing.fastestMs), route: r, timing }
+          : null;
+      })
+      .filter((pt) => pt && pt.route.winner === engine.id),
+    backgroundColor: engine.bg,
+    borderColor: engine.border,
+    borderWidth: 1.5,
+  }));
+  const errData = validResults
+    .map((r) => {
+      const timing = _routeTimingMetrics(r);
+      const x = _featureForRow(r, xKey);
+      const y = _featureForRow(r, yKey);
+      return timing && x != null && y != null
+        ? { x, y, r: _bubbleRadiusForFastestMs(timing.fastestMs), route: r, timing }
+        : null;
+    })
+    .filter((pt) => pt && !pt.route.winner);
+  if (errData.length > 0) {
+    sets.push({
+      label: 'No winner / error',
+      data: errData,
+      backgroundColor: 'rgba(148,163,184,0.7)',
+      borderColor: '#64748b',
+      borderWidth: 1.5,
+    });
+  }
+  return sets.filter((ds) => ds.data.length > 0);
+}
+
+function _upsertBubble(canvas, datasets, xScale, yScale, existingChart) {
+  if (existingChart) {
+    existingChart.data.datasets = datasets;
+    existingChart.update('none');
+    return existingChart;
+  }
+  return new Chart(canvas, {
+    type: 'bubble',
+    data: { datasets },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: { x: xScale, y: yScale },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, padding: 12 } },
+        tooltip: {
+          callbacks: {
+            title(items) {
+              return items[0]?.raw?.route?.name ?? '';
+            },
+            label(item) {
+              const route = item.raw?.route;
+              const timing = item.raw?.timing;
+              const valueX = Number(item.raw?.x);
+              const valueY = Number(item.raw?.y);
+              if (!route || !timing) return [];
+              return [
+                `${route.category} · ${route.lengthCategory}`,
+                `x: ${Number.isFinite(valueX) ? Number(valueX.toPrecision(3)) : 'n/a'}`,
+                `y: ${Number.isFinite(valueY) ? Number(valueY.toPrecision(3)) : 'n/a'}`,
+                `fastest: ${_fmtMsChart(timing.fastestMs)}${timing.winnerMarginPct != null ? ` · margin ${Math.round(timing.winnerMarginPct * 100)}%` : ''}`,
+              ];
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 /**
  * Create or update a Chart.js scatter plot of Edges vs Beeline distance.
  *
@@ -1590,17 +1867,11 @@ function _upsertScatter(canvas, datasets, xScale, yScale, existingChart) {
  * @returns {Chart}
  */
 export function drawScatter(canvas, results, _opts = {}, existingChart = null) {
-  const valid = results.filter(r => r.safeE != null && r.safeBeelineKm != null);
-  const datasets = _buildScatterDatasets(valid, 'safeE', 'safeBeelineKm');
-  const xScale = _logAxis('Edges (safeE)', v => {
-    if (v >= 1_000_000) return `${v / 1_000_000}M`;
-    if (v >= 1_000) return `${v / 1_000}k`;
-    return String(v);
-  });
-  const yScale = _logAxis('Beeline distance (km)', v => {
-    if (v >= 1_000) return `${v / 1_000}Mm`;
-    return `${v}km`;
-  });
+  const feature = _SELECTOR_FEATURE_SCALES[0];
+  const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null);
+  const datasets = _buildScatterDatasets(valid, feature.xKey, feature.yKey);
+  const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
+  const yScale = _linearAxis(feature.yLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
   return _upsertScatter(canvas, datasets, xScale, yScale, existingChart);
 }
 
@@ -1614,15 +1885,27 @@ export function drawScatter(canvas, results, _opts = {}, existingChart = null) {
  * @returns {Chart}
  */
 export function drawDensityScatter(canvas, results, _opts = {}, existingChart = null) {
-  const valid = results.filter(r => r.edgesPerKm != null && r.avgBranchFactor != null);
-  const datasets = _buildScatterDatasets(valid, 'edgesPerKm', 'avgBranchFactor');
-  const xScale = _logAxis('Edges per km', v => {
-    if (v >= 1_000_000) return `${v / 1_000_000}M`;
-    if (v >= 1_000) return `${v / 1_000}k`;
-    return String(v);
-  });
-  const yScale = _logAxis('Avg branch factor', v => v.toFixed(2));
+  const feature = _SELECTOR_FEATURE_SCALES[1];
+  const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null);
+  const datasets = _buildScatterDatasets(valid, feature.xKey, feature.yKey);
+  const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
+  const yScale = _linearAxis(feature.yLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
   return _upsertScatter(canvas, datasets, xScale, yScale, existingChart);
+}
+
+export function drawFeatureHistogram(canvas, results, _opts = {}, existingChart = null) {
+  const feature = _SELECTOR_FEATURE_SCALES[0];
+  const { labels, datasets } = _buildHistogramDatasets(results, feature.xKey, 14);
+  return _upsertBar(canvas, labels, datasets, feature.xLabel, 'Routes', existingChart);
+}
+
+export function drawTimingBubble(canvas, results, _opts = {}, existingChart = null) {
+  const feature = _SELECTOR_FEATURE_SCALES[0];
+  const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null && _routeTimingMetrics(r));
+  const datasets = _buildBubbleDatasets(valid, feature.xKey, feature.yKey);
+  const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
+  const yScale = _linearAxis(feature.yLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
+  return _upsertBubble(canvas, datasets, xScale, yScale, existingChart);
 }
 
 /**

@@ -247,6 +247,7 @@
 
     /* ── Table ───────────────────────────────────────────────────────────── */
     .table-wrap { overflow-x: auto; margin-top: 4px; }
+    .table-wrap.results-table-wrap { max-height: min(560px, 60vh); overflow-y: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.summary-matrix {
       width: max-content;

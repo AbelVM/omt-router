@@ -3,54 +3,77 @@ import {
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
-} from '../src/index.js';
+} from '../dist/omt-router.js';
 
+const TILE_METADATA_URL = new URLSearchParams(window.location.search).get('tileMetadataUrl')
+  || 'https://tiles.openfreemap.org/planet';
 let URL_TEMPLATE = null;
 
-fetch('https://tiles.openfreemap.org/planet')
-  .then(r => r.json())
-  .then(meta => { URL_TEMPLATE = meta.tiles[0]; })
-  .catch(err => console.error('[omt-router] Failed to fetch tile URL:', err));
-
-// Average speeds used for travel-time estimates
-const SPEEDS_KPH = { car: 50, pedestrian: 5, bicycle: 15 };
+const SPEEDS_KPH = Object.freeze({ car: 50, pedestrian: 5, bicycle: 15 });
 const ROUTE_TIMEOUT_MS = 20_000;
+const EARTH_RADIUS_METERS = 6_371_000;
+const RAD = Math.PI / 180;
+const ENGINE_LABELS = Object.freeze({
+  'ultra-dijkstra': 'UltraDijkstra',
+  'bidirectional-astar': 'Bidirectional A★',
+  'adaptive-barrier': 'Adaptive Barrier',
+  'delta-stepping': 'Delta Stepping',
+  cpu: 'CPU',
+});
+const ENGINE_BADGE_ICONS = Object.freeze({
+  parallel: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.9 4.9 2.2 2.2"/><path d="m16.9 16.9 2.2 2.2"/><path d="m16.9 7.1 2.2-2.2"/><path d="m4.9 19.1 2.2-2.2"/></svg>',
+  cpu: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
+});
+const COST_LABELS = Object.freeze({ distance: 'shortest', travelTime: 'fastest' });
+
+fetch(TILE_METADATA_URL)
+  .then((r) => {
+    if (!r.ok) {
+      throw new Error(`Tile metadata fetch failed: ${r.status} ${r.statusText}`);
+    }
+    return r.json();
+  })
+  .then((meta) => {
+    if (!meta || !Array.isArray(meta.tiles) || meta.tiles.length === 0) {
+      throw new Error('Tile metadata response does not include a valid `tiles` array.');
+    }
+    URL_TEMPLATE = meta.tiles[0];
+  })
+  .catch((err) => console.error('[omt-router] Failed to fetch tile URL:', err));
+
+function formatDuration(minutes) {
+  if (minutes < 1) return '< 1 min';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder > 0 ? `${hours} h ${remainder} min` : `${hours} h`;
+}
 
 function fmtDistance(m) {
-  if (m < 1000) return `${Math.round(m)}\u202fm`;
-  return `${(m / 1000).toFixed(1)}\u202fkm`;
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${(m / 1000).toFixed(1)} km`;
 }
 
 function fmtTime(m, mode) {
   const mins = Math.round((m / 1000 / SPEEDS_KPH[mode]) * 60);
-  if (mins < 1) return '< 1 min';
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const rem = mins % 60;
-  return rem > 0 ? `${h} h ${rem} min` : `${h} h`;
+  return formatDuration(mins);
 }
 
 function fmtDurationSeconds(seconds) {
-  const mins = Math.round(seconds / 60);
-  if (mins < 1) return '< 1 min';
-  if (mins < 60) return `${mins} min`;
-  const h = Math.floor(mins / 60);
-  const rem = mins % 60;
-  return rem > 0 ? `${h} h ${rem} min` : `${h} h`;
+  return formatDuration(Math.round(seconds / 60));
 }
 
 function haversineMeters(a, b) {
-  const toRad = deg => (deg * Math.PI) / 180;
   const [lng1, lat1] = a;
   const [lng2, lat2] = b;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const lat1Rad = toRad(lat1);
-  const lat2Rad = toRad(lat2);
+  const dLat = (lat2 - lat1) * RAD;
+  const dLng = (lng2 - lng1) * RAD;
+  const lat1Rad = lat1 * RAD;
+  const lat2Rad = lat2 * RAD;
   const sinDLat = Math.sin(dLat / 2);
   const sinDLng = Math.sin(dLng / 2);
   const h = sinDLat * sinDLat + Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDLng * sinDLng;
-  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(h));
 }
 
 function getRouteDistance(coords) {
@@ -75,28 +98,11 @@ function lngLatToStr({ lng, lat }) {
 }
 
 function formatEngineBadgeName(engineId) {
-  switch (engineId) {
-    case 'ultra-dijkstra':
-      return 'UltraDijkstra';
-    case 'bidirectional-astar':
-      return 'Bidirectional A★';
-    case 'adaptive-barrier':
-      return 'Adaptive Barrier';
-    case 'delta-stepping':
-      return 'Delta Stepping';
-    case 'cpu':
-      return 'CPU';
-    default:
-      return engineId;
-  }
+  return ENGINE_LABELS[engineId] || engineId;
 }
 
 function getEngineBadgeIcon(parallelUsed) {
-  if (parallelUsed) {
-    return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.9 4.9 2.2 2.2"/><path d="m16.9 16.9 2.2 2.2"/><path d="m16.9 7.1 2.2-2.2"/><path d="m4.9 19.1 2.2-2.2"/></svg>';
-  }
-
-  return '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4M14 7V4M10 20v-3M14 20v-3M7 10H4M7 14H4M20 10h-3M20 14h-3"/></svg>';
+  return parallelUsed ? ENGINE_BADGE_ICONS.parallel : ENGINE_BADGE_ICONS.cpu;
 }
 
 // ── RoutingControl ──────────────────────────────────────────────────────────
@@ -104,13 +110,13 @@ function getEngineBadgeIcon(parallelUsed) {
 class RoutingControl {
   constructor() {
     this._origin = null;   // [lng, lat]
-    this._dest   = null;   // [lng, lat]
-    this._mode   = 'car';
+    this._dest = null;   // [lng, lat]
+    this._mode = 'car';
     this._costField = 'distance';
-    this._map    = null;
-    this._el     = null;
+    this._map = null;
+    this._el = null;
     this._markers = { origin: null, dest: null };
-    this._calcId  = 0;     // incremented on each new calculation to discard stale results
+    this._calcId = 0;     // incremented on each new calculation to discard stale results
     this._suppressNextMapPointerSet = false;
     this._engineBusy = false;
     this._pendingRecalc = false;
@@ -202,6 +208,16 @@ class RoutingControl {
     `;
 
     this._el = el;
+    this._originInput = el.querySelector('#rp-origin');
+    this._destInput = el.querySelector('#rp-dest');
+    this._statusEl = el.querySelector('#rp-status');
+    this._statsEl = el.querySelector('#rp-stats');
+    this._statDistEl = el.querySelector('#rp-stat-dist');
+    this._statTimeEl = el.querySelector('#rp-stat-time');
+    this._statDistLabelEl = el.querySelector('#rp-stat-dist-label');
+    this._statTimeLabelEl = el.querySelector('#rp-stat-time-label');
+    this._engineBadgeEl = el.querySelector('#rp-engine');
+
     this._engineBusy = Boolean(getEngineWorkerStatus().running);
     this._unsubscribeEngineStatus = onEngineWorkerStatusChange((status) => {
       this._engineBusy = Boolean(status.running);
@@ -212,34 +228,41 @@ class RoutingControl {
     });
 
     // Mode buttons
-    el.querySelectorAll('.rp-mode-btn').forEach(btn => {
+    const modeButtons = el.querySelectorAll('.rp-mode-btn');
+    modeButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         this._mode = btn.dataset.mode;
-        el.querySelectorAll('.rp-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+        modeButtons.forEach(b => b.classList.toggle('active', b === btn));
         this._tryRoute();
       });
     });
 
-    el.querySelectorAll('.rp-cost-btn').forEach(btn => {
+    const costButtons = el.querySelectorAll('.rp-cost-btn');
+    costButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         this._costField = btn.dataset.costField;
-        el.querySelectorAll('.rp-cost-btn').forEach(b => b.classList.toggle('active', b === btn));
+        costButtons.forEach(b => b.classList.toggle('active', b === btn));
         this._tryRoute();
       });
     });
 
     // Coordinate inputs — fire on Enter or blur
-    const originInput = el.querySelector('#rp-origin');
-    const destInput   = el.querySelector('#rp-dest');
-
-    originInput.addEventListener('change', () => {
-      const c = parseCoords(originInput.value);
-      if (c) { this._origin = c; this._placeMarker('origin', c); this._tryRoute(); }
+    this._originInput.addEventListener('change', () => {
+      const coords = parseCoords(this._originInput.value);
+      if (coords) {
+        this._origin = coords;
+        this._placeMarker('origin', coords);
+        this._tryRoute();
+      }
     });
 
-    destInput.addEventListener('change', () => {
-      const c = parseCoords(destInput.value);
-      if (c) { this._dest = c; this._placeMarker('dest', c); this._tryRoute(); }
+    this._destInput.addEventListener('change', () => {
+      const coords = parseCoords(this._destInput.value);
+      if (coords) {
+        this._dest = coords;
+        this._placeMarker('dest', coords);
+        this._tryRoute();
+      }
     });
 
     el.querySelector('#rp-swap-btn').addEventListener('click', () => {
@@ -248,7 +271,7 @@ class RoutingControl {
 
     // Prevent panel interactions from bleeding through to the map
     el.addEventListener('mousedown', e => e.stopPropagation());
-    el.addEventListener('wheel',     e => e.stopPropagation());
+    el.addEventListener('wheel', e => e.stopPropagation());
     el.addEventListener('contextmenu', e => e.stopPropagation());
 
     return el;
@@ -266,14 +289,14 @@ class RoutingControl {
   // Called by the map click handlers
   setOrigin(lngLat) {
     this._origin = [lngLat.lng, lngLat.lat];
-    this._el.querySelector('#rp-origin').value = lngLatToStr(lngLat);
+    this._originInput.value = lngLatToStr(lngLat);
     this._placeMarker('origin', this._origin);
     this._tryRoute();
   }
 
   setDest(lngLat) {
     this._dest = [lngLat.lng, lngLat.lat];
-    this._el.querySelector('#rp-dest').value = lngLatToStr(lngLat);
+    this._destInput.value = lngLatToStr(lngLat);
     this._placeMarker('dest', this._dest);
     this._tryRoute();
   }
@@ -302,6 +325,8 @@ class RoutingControl {
       .setLngLat(lngLat)
       .addTo(this._map);
 
+    this._markers[type] = marker;
+
     marker.on('dragstart', () => {
       // Ignore the map click/contextmenu event that fires on pointer release.
       this._suppressNextMapPointerSet = true;
@@ -314,15 +339,13 @@ class RoutingControl {
       const next = [ll.lng, ll.lat];
       if (type === 'origin') {
         this._origin = next;
-        this._el.querySelector('#rp-origin').value = lngLatToStr(ll);
+        this._originInput.value = lngLatToStr(ll);
       } else {
         this._dest = next;
-        this._el.querySelector('#rp-dest').value = lngLatToStr(ll);
+        this._destInput.value = lngLatToStr(ll);
       }
       this._tryRoute();
     });
-
-    this._markers[type] = marker;
   }
 
   _consumeMapPointerSuppression() {
@@ -338,10 +361,8 @@ class RoutingControl {
     this._origin = this._dest;
     this._dest = oldOrigin;
 
-    const originInput = this._el.querySelector('#rp-origin');
-    const destInput = this._el.querySelector('#rp-dest');
-    originInput.value = this._origin ? `${this._origin[1].toFixed(6)}, ${this._origin[0].toFixed(6)}` : '';
-    destInput.value = this._dest ? `${this._dest[1].toFixed(6)}, ${this._dest[0].toFixed(6)}` : '';
+    this._originInput.value = this._origin ? `${this._origin[1].toFixed(6)}, ${this._origin[0].toFixed(6)}` : '';
+    this._destInput.value = this._dest ? `${this._dest[1].toFixed(6)}, ${this._dest[0].toFixed(6)}` : '';
 
     if (this._origin) {
       this._placeMarker('origin', this._origin);
@@ -361,39 +382,37 @@ class RoutingControl {
   }
 
   _setStatus(html, cls = '') {
-    const el = this._el.querySelector('#rp-status');
-    el.className = `rp-status${cls ? ' ' + cls : ''}`;
-    el.innerHTML = html;
-    el.hidden = !html;
+    this._statusEl.className = `rp-status${cls ? ' ' + cls : ''}`;
+    this._statusEl.innerHTML = html;
+    this._statusEl.hidden = !html;
   }
 
   _showStats(result) {
-    const distanceM = this._costField === 'distance'
+    const distanceM = result.costField === 'distance'
       ? result.cost
       : getRouteDistance(result.coordinates);
-    const timeText = this._costField === 'travelTime'
+    const timeText = result.costField === 'travelTime'
       ? fmtDurationSeconds(result.cost)
       : fmtTime(distanceM, this._mode);
     const engine = result.engine ?? 'cpu';
     const parallelUsed = Boolean(result.parallelUsed);
 
-    this._el.querySelector('#rp-stat-dist').textContent = fmtDistance(distanceM);
-    this._el.querySelector('#rp-stat-time').textContent = timeText;
-    this._el.querySelector('#rp-stat-dist-label').textContent = 'Distance';
-    this._el.querySelector('#rp-stat-time-label').textContent =
+    this._statDistEl.textContent = fmtDistance(distanceM);
+    this._statTimeEl.textContent = timeText;
+    this._statDistLabelEl.textContent = 'Distance';
+    this._statTimeLabelEl.textContent =
       this._costField === 'travelTime' ? 'Travel time' : 'Est. time';
-    this._el.querySelector('#rp-stats').hidden = false;
-    const badge = this._el.querySelector('#rp-engine');
-    badge.className = `rp-engine ${parallelUsed ? 'rp-engine--parallel' : 'rp-engine--cpu'}`;
-    const costLabel = this._costField === 'travelTime' ? 'fastest' : 'shortest';
+    this._statsEl.hidden = false;
+    this._engineBadgeEl.className = `rp-engine ${parallelUsed ? 'rp-engine--parallel' : 'rp-engine--cpu'}`;
+    const costLabel = COST_LABELS[this._costField] ?? 'shortest';
     const engineLabel = formatEngineBadgeName(engine);
-    badge.innerHTML = `${getEngineBadgeIcon(parallelUsed)}${engineLabel} · ${costLabel}`;
-    badge.hidden = false;
+    this._engineBadgeEl.innerHTML = `${getEngineBadgeIcon(parallelUsed)}${engineLabel} · ${costLabel}`;
+    this._engineBadgeEl.hidden = false;
   }
 
   _hideStats() {
-    this._el.querySelector('#rp-stats').hidden = true;
-    this._el.querySelector('#rp-engine').hidden = true;
+    this._statsEl.hidden = true;
+    this._engineBadgeEl.hidden = true;
   }
 
   _clearRoute() {
@@ -402,11 +421,11 @@ class RoutingControl {
 
   async _tryRoute() {
     if (!this._origin || !this._dest) return;
-      if (!URL_TEMPLATE) {
-        this._setStatus('Tile URL not yet loaded. Please wait a moment and try again.', 'error');
-        this._clearRoute();
-        return;
-      }
+    if (!URL_TEMPLATE) {
+      this._setStatus('Tile URL not yet loaded. Please wait a moment and try again.', 'error');
+      this._clearRoute();
+      return;
+    }
 
     if (this._engineBusy) {
       this._pendingRecalc = true;
@@ -433,9 +452,9 @@ class RoutingControl {
       if (id !== this._calcId) return; // stale — a newer call is already running
 
       if (!result.found || !result.coordinates?.length) {
-          if (result.reason === 'tile_cors') {
-            this._setStatus('Tile request blocked. Check that your tile server allows requests from this origin.', 'error');
-          } else if (result.reason === 'poor_snap') {
+        if (result.reason === 'tile_cors') {
+          this._setStatus('Tile request blocked. Check that your tile server allows requests from this origin.', 'error');
+        } else if (result.reason === 'poor_snap') {
           this._setStatus('Route incomplete near one endpoint. Try placing points closer to roads.', 'error');
         } else if (result.reason === 'incomplete_path') {
           this._setStatus('Routing engine returned an incomplete path. Retrying with a broader corridor may help.', 'error');
@@ -447,14 +466,25 @@ class RoutingControl {
       }
 
       // Draw route
+      const coords = result.coordinates;
       this._map.getSource('route-source')?.setData({
         type: 'Feature',
-        geometry: { type: 'LineString', coordinates: result.coordinates },
+        geometry: { type: 'LineString', coordinates: coords },
         properties: {},
       });
 
+      if (coords.length > 0) {
+        const snappedOrigin = coords[0];
+        const snappedDest = coords[coords.length - 1];
+        this._origin = snappedOrigin;
+        this._dest = snappedDest;
+        this._placeMarker('origin', snappedOrigin);
+        this._placeMarker('dest', snappedDest);
+        this._originInput.value = lngLatToStr({ lng: snappedOrigin[0], lat: snappedOrigin[1] });
+        this._destInput.value = lngLatToStr({ lng: snappedDest[0], lat: snappedDest[1] });
+      }
+
       // Fit map to the route extent
-      const coords = result.coordinates;
       if (coords.length > 1) {
         const bounds = coords.reduce(
           (b, c) => b.extend(c),
@@ -490,13 +520,14 @@ class RoutingControl {
 
 const map = new maplibregl.Map({
   container: 'map',
-  style: 'https://tiles.openfreemap.org/styles/bright',//'./style.json',
+  style: 'https://tiles.openfreemap.org/styles/bright',
   center: [-3.7038, 40.4168],
   zoom: 14,
   minZoom: 10,
 });
 
-window._map=map;
+// map.showTileBoundaries = true;
+// window._map = map;
 
 const ctrl = new RoutingControl();
 map.addControl(ctrl, 'top-left');
@@ -516,7 +547,7 @@ map.on('load', () => {
     data: { type: 'FeatureCollection', features: [] },
   });
 
-   // Soft shadow casing behind the route line
+  // Soft shadow casing behind the route line
   map.addLayer({
     id: 'route-casing',
     type: 'line',
@@ -527,7 +558,7 @@ map.on('load', () => {
       'line-opacity': 0.5,
     },
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-  }); 
+  });
 
   // Gradient route line
   map.addLayer({
@@ -537,9 +568,9 @@ map.on('load', () => {
     paint: {
       'line-gradient': [
         'interpolate', ['linear'], ['line-progress'],
-        0,   '#2563eb',
+        0, '#2563eb',
         0.5, '#7c3aed',
-        1,   '#dc2626',
+        1, '#dc2626',
       ],
       'line-width': 4,
       'line-opacity': 0.9,

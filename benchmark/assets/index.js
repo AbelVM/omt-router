@@ -10,52 +10,97 @@ import {
   downloadCSV,
   drawScatter,
   drawDensityScatter,
+  drawFeatureHistogram,
+  drawTimingBubble,
   installTooltip,
   suggestThresholds,
   generatePerformanceSummary,
   generateCostSummary,
-  generateCopilotReport,
 } from './benchmark.js';
+
+const root = document;
+const categoryFiltersEl = root.getElementById('category-filters');
+const lengthFiltersEl = root.getElementById('length-filters');
+const successRoutesInput = root.getElementById('success-routes-input');
+const routeCountEl = root.getElementById('route-count');
+const runBtn = root.getElementById('run-btn');
+const stopBtn = root.getElementById('stop-btn');
+const progressSectionEl = root.getElementById('progress-section');
+const resultsSectionEl = root.getElementById('results-section');
+const resultsTbodyEl = root.getElementById('results-tbody');
+const summaryCardsEl = root.getElementById('summary-cards');
+const summaryTbodyEl = root.getElementById('summary-tbody');
+const summaryTheadEl = root.getElementById('summary-thead');
+const costSummaryTbodyEl = root.getElementById('cost-summary-tbody');
+const costSummaryTheadEl = root.getElementById('cost-summary-thead');
+const autoSelectorSummaryEl = root.getElementById('auto-selector-summary');
+const autoSelectorCardsEl = root.getElementById('auto-selector-cards');
+const progressBarEl = root.getElementById('progress-bar');
+const progressTextEl = root.getElementById('progress-text');
+const resultsRunContextEl = root.getElementById('results-run-context');
+const scatterEl = root.getElementById('scatter');
+const densityEl = root.getElementById('density');
+const histogramEl = root.getElementById('histogram');
+const bubbleEl = root.getElementById('bubble');
+const urlInputEl = root.getElementById('url-input');
+const modeSelectEl = root.getElementById('mode-select');
+const runsInputEl = root.getElementById('runs-input');
+const pauseInputEl = root.getElementById('pause-input');
+const downloadBtn = root.getElementById('download-btn');
+const suggestionWrapEl = root.getElementById('suggestion-wrap');
+const resultsTableSortHeaders = root.querySelectorAll('#results-table thead th[data-col]');
 
 const qs = new URLSearchParams(window.location.search);
 fetch('https://tiles.openfreemap.org/planet')
   .then(r => r.json())
   .then(meta => {
-    const urlInput = document.getElementById('url-input');
-    if (urlInput && !urlInput.value) urlInput.value = meta.tiles[0];
+    if (urlInputEl && !urlInputEl.value) urlInputEl.value = meta.tiles[0];
   })
   .catch(err => console.error('[benchmark] Failed to fetch tile URL:', err));
 
 // ── Populate filter checkboxes from routes.js ────────────────────────────
 (function buildFilters() {
-  const catEl = document.getElementById('category-filters');
+  const catFragment = document.createDocumentFragment();
   CATEGORIES.forEach(val => {
     const lbl = document.createElement('label');
     lbl.innerHTML = `<input type="checkbox" value="${val}" checked> ${CATEGORY_LABELS[val] ?? val}`;
-    catEl.appendChild(lbl);
+    catFragment.appendChild(lbl);
   });
+  categoryFiltersEl.appendChild(catFragment);
 
-  const lenEl = document.getElementById('length-filters');
+  const lenFragment = document.createDocumentFragment();
   LENGTH_CATEGORIES.forEach(val => {
     const lbl = document.createElement('label');
     lbl.innerHTML = `<input type="checkbox" value="${val}" checked> ${LENGTH_CATEGORY_LABELS[val] ?? val}`;
-    lenEl.appendChild(lbl);
+    lenFragment.appendChild(lbl);
   });
+  lengthFiltersEl.appendChild(lenFragment);
 })();
 
 // ── Route count indicator ─────────────────────────────────────────────────
+function getCheckedValues(containerEl) {
+  return Array.from(containerEl.querySelectorAll('input:checked'), (el) => el.value);
+}
+
 function getSelectedRoutes() {
-  const cats    = [...document.querySelectorAll('#category-filters input:checked')].map(el => el.value);
-  const lengths = [...document.querySelectorAll('#length-filters input:checked')].map(el => el.value);
+  const cats = getCheckedValues(categoryFiltersEl);
+  const lengths = getCheckedValues(lengthFiltersEl);
   return ROUTES.filter(r => cats.includes(r.category) && lengths.includes(r.lengthCategory));
 }
 
 function updateRouteCount() {
   const n = getSelectedRoutes().length;
-  document.getElementById('route-count').textContent = `${n} routes selected`;
+  const successThreshold = Math.max(0, parseInt(successRoutesInput.value, 10) || 0);
+  const thresholdText = successThreshold > 0
+    ? `, ${successThreshold.toLocaleString()} selected`
+    : '';
+  routeCountEl.textContent = `${n.toLocaleString()} routes available${thresholdText}`;
 }
-document.getElementById('category-filters').addEventListener('change', updateRouteCount);
-document.getElementById('length-filters').addEventListener('change', updateRouteCount);
+categoryFiltersEl.addEventListener('change', updateRouteCount);
+lengthFiltersEl.addEventListener('change', updateRouteCount);
+successRoutesInput.addEventListener('input', updateRouteCount);
+successRoutesInput.addEventListener('change', updateRouteCount);
+successRoutesInput.addEventListener('keyup', updateRouteCount);
 updateRouteCount();
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -66,10 +111,31 @@ let _stopped  = false;
 let _cleanupTooltip = null;
 let _chartScatter = null;
 let _chartDensity = null;
+let _chartHistogram = null;
+let _chartBubble = null;
 let _runContext = null;
 let _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
 let _abortController = null;
+let _updateScheduled = false;
+let _pendingChartRedraw = false;
+let _pendingSummaryUpdate = false;
 window.__benchmarkResults = [];
+
+function scheduleUIUpdate() {
+  if (_updateScheduled) return;
+  _updateScheduled = true;
+  requestAnimationFrame(() => {
+    _updateScheduled = false;
+    if (_pendingSummaryUpdate) {
+      updateSummary(_results);
+      _pendingSummaryUpdate = false;
+    }
+    if (_pendingChartRedraw) {
+      redrawCharts(_results);
+      _pendingChartRedraw = false;
+    }
+  });
+}
 
 function engineLabel(engineId) {
   switch (engineId) {
@@ -133,24 +199,24 @@ function formatStatusSuffix(progress) {
 }
 
 // ── Run button ────────────────────────────────────────────────────────────
-document.getElementById('run-btn').addEventListener('click', async () => {
-  const urlTemplate = document.getElementById('url-input').value.trim();
+runBtn.addEventListener('click', async () => {
+  const urlTemplate = urlInputEl.value.trim();
   if (!urlTemplate) {
     alert('Please enter a valid tile URL template.');
     return;
   }
 
-  const mode  = document.getElementById('mode-select').value;
-  const zoom  = 14; // hardcoded — z14 provides full road detail
-  const nRuns = parseInt(document.getElementById('runs-input').value, 10) || 10;
-  const pauseInputEl = document.getElementById('pause-input');
+  const mode = modeSelectEl.value;
+  const zoom = 14; // hardcoded — z14 provides full road detail
+  const nRuns = parseInt(runsInputEl.value, 10) || 10;
   const rawPauseMs = Number.isFinite(pauseInputEl?.valueAsNumber)
     ? pauseInputEl.valueAsNumber
     : Number.parseFloat(pauseInputEl?.value ?? '0');
   const routePauseMs = Math.max(0, Number.isFinite(rawPauseMs) ? Math.floor(rawPauseMs) : 0);
+  const maxSuccessRoutes = Math.max(0, parseInt(successRoutesInput.value, 10) || 0);
   const routes = getSelectedRoutes();
-  const selectedCategories = [...document.querySelectorAll('#category-filters input:checked')].map((el) => el.value);
-  const selectedLengths = [...document.querySelectorAll('#length-filters input:checked')].map((el) => el.value);
+  const selectedCategories = getCheckedValues(categoryFiltersEl);
+  const selectedLengths = getCheckedValues(lengthFiltersEl);
 
   if (routes.length === 0) {
     alert('No routes selected. Check the category/length filters.');
@@ -185,22 +251,23 @@ document.getElementById('run-btn').addEventListener('click', async () => {
         { parallelOrSerial: 'serial', sharedArrayBuffer: false, forceSerialRouting: false },
       ];
   _abortController = new AbortController();
-  window.__benchmarkResults = [];
-  document.getElementById('run-btn').disabled = true;
-  document.getElementById('stop-btn').disabled = false;
-  document.getElementById('progress-section').hidden = false;
-  document.getElementById('results-section').hidden = true;
-  document.getElementById('results-tbody').innerHTML = '';
-  document.getElementById('summary-cards').innerHTML = '';
-  document.getElementById('summary-tbody').innerHTML = '';
-  document.getElementById('summary-thead').innerHTML = '';
-  document.getElementById('cost-summary-tbody').innerHTML = '';
-  document.getElementById('cost-summary-thead').innerHTML = '';
-  document.getElementById('auto-selector-summary').hidden = true;
-  document.getElementById('auto-selector-cards').innerHTML = '';
-  document.getElementById('copilot-report').hidden = true;
-  document.getElementById('copilot-report-output').value = '';
-  document.getElementById('copy-report-status').textContent = '';
+  _pendingSummaryUpdate = false;
+  _pendingChartRedraw = false;
+  _updateScheduled = false;
+  _results = [];
+  window.__benchmarkResults = _results;
+  runBtn.disabled = true;
+  stopBtn.disabled = false;
+  progressSectionEl.hidden = false;
+  resultsSectionEl.hidden = true;
+  resultsTbodyEl.innerHTML = '';
+  summaryCardsEl.innerHTML = '';
+  summaryTbodyEl.innerHTML = '';
+  summaryTheadEl.innerHTML = '';
+  costSummaryTbodyEl.innerHTML = '';
+  costSummaryTheadEl.innerHTML = '';
+  autoSelectorSummaryEl.hidden = true;
+  autoSelectorCardsEl.innerHTML = '';
   if (_chartScatter) { _chartScatter.destroy(); _chartScatter = null; }
   if (_chartDensity) { _chartDensity.destroy(); _chartDensity = null; }
   if (_cleanupTooltip) { _cleanupTooltip(); _cleanupTooltip = null; }
@@ -220,7 +287,11 @@ document.getElementById('run-btn').addEventListener('click', async () => {
     const totalTasks = totalRoutes * runPasses.length;
     let completedTasks = 0;
     let startedTasks = 0;
+    let successfulRouteCount = 0;
+    let finishedEarly = false;
+    const successThreshold = maxSuccessRoutes > 0 ? maxSuccessRoutes : Infinity;
 
+    outerRouteLoop:
     for (let routeIndex = 0; routeIndex < totalRoutes; routeIndex++) {
       if (_stopped) throw new Error('Benchmark stopped by user');
       const routeDef = routes[routeIndex];
@@ -258,7 +329,7 @@ document.getElementById('run-btn').addEventListener('click', async () => {
             engineRunTimeoutMs: 20_000,
           },
           (progress) => {
-            if (_stopped) throw new Error('Benchmark stopped by user');
+            if (_stopped && !finishedEarly) throw new Error('Benchmark stopped by user');
 
             const { routeName, result, pauseMs, phase } = progress;
             const displayCompleted = completedTasks + (progress.done ? 1 : 0);
@@ -269,8 +340,8 @@ document.getElementById('run-btn').addEventListener('click', async () => {
               : '';
             const activeTasks = Math.max(0, startedTasks - displayCompleted);
 
-            document.getElementById('progress-bar').style.width = `${pct}%`;
-            document.getElementById('progress-text').textContent = progress.done
+            progressBarEl.style.width = `${pct}%`;
+            progressTextEl.textContent = progress.done
               ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
               : phase === 'pausing'
                 ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}`
@@ -278,12 +349,16 @@ document.getElementById('run-btn').addEventListener('click', async () => {
 
             if (result) {
               passResults[passIndex].push(result);
-              const combinedResults = passResults.flat();
-              _results = combinedResults;
-              window.__benchmarkResults = _results;
+              _results.push(result);
+              if (!result.error) successfulRouteCount += 1;
               appendRow(result);
-              updateSummary(_results);
-              redrawCharts(_results);
+              _pendingSummaryUpdate = true;
+              _pendingChartRedraw = true;
+              scheduleUIUpdate();
+              if (successfulRouteCount >= successThreshold) {
+                _stopped = true;
+                finishedEarly = true;
+              }
             }
 
             if (progress.done) {
@@ -291,6 +366,8 @@ document.getElementById('run-btn').addEventListener('click', async () => {
             }
           }
         );
+
+        if (finishedEarly) break outerRouteLoop;
       }
 
       if (routePauseMs > 0 && routeIndex < totalRoutes - 1) {
@@ -299,9 +376,10 @@ document.getElementById('run-btn').addEventListener('click', async () => {
     }
 
     if (passResults.some((pass) => pass.length > 0)) {
-      const combinedResults = passResults.flat();
+      const combinedResults = runPasses.length === 1
+        ? passResults[0]
+        : passResults[0].concat(...passResults.slice(1));
       _results = combinedResults;
-      window.__benchmarkResults = _results;
       showResults(_results);
     }
 
@@ -320,58 +398,33 @@ document.getElementById('run-btn').addEventListener('click', async () => {
   } catch (err) {
     if (!_stopped && err?.name !== 'AbortError') console.error('Benchmark error:', err);
   } finally {
-    document.getElementById('run-btn').disabled = false;
-    document.getElementById('stop-btn').disabled = true;
+    runBtn.disabled = false;
+    stopBtn.disabled = true;
     _abortController = null;
     _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
   }
 });
 
-document.getElementById('stop-btn').addEventListener('click', () => {
+stopBtn.addEventListener('click', () => {
   _stopped = true;
   _abortController?.abort();
 });
 
 // ── Download ──────────────────────────────────────────────────────────────
-document.getElementById('download-btn').addEventListener('click', () => {
+downloadBtn.addEventListener('click', () => {
   if (_results.length > 0) {
-    const mode = document.getElementById('mode-select').value;
+    const mode = modeSelectEl.value;
     downloadCSV(_results, `benchmark_${mode}_${new Date().toISOString().slice(0,10)}.csv`);
   }
 });
 
-document.getElementById('copy-report-btn').addEventListener('click', async () => {
-  const output = document.getElementById('copilot-report-output');
-  const status = document.getElementById('copy-report-status');
-  if (!output.value) return;
-
-  const copyWithFallback = async (text) => {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    output.focus();
-    output.select();
-    output.setSelectionRange(0, output.value.length);
-    return document.execCommand('copy');
-  };
-
-  try {
-    await copyWithFallback(output.value);
-    status.textContent = 'Copied.';
-  } catch (error) {
-    console.error('Copy failed:', error);
-    status.textContent = 'Copy failed. Select the text manually.';
-  }
-});
-
 // ── Table sorting ─────────────────────────────────────────────────────────
-document.querySelectorAll('#results-table thead th[data-col]').forEach(th => {
+resultsTableSortHeaders.forEach(th => {
   th.addEventListener('click', () => {
     const col = th.dataset.col;
     if (_sortCol === col) { _sortAsc = !_sortAsc; }
     else { _sortCol = col; _sortAsc = true; }
-    document.querySelectorAll('#results-table thead th').forEach(t => t.classList.remove('sorted'));
+    resultsTableSortHeaders.forEach(t => t.classList.remove('sorted'));
     th.classList.add('sorted');
     th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (_sortAsc ? ' ▲' : ' ▼');
     renderTable(_results);
@@ -434,11 +487,10 @@ function formatEngineErrors(r) {
 }
 
 function appendRow(r) {
-  document.getElementById('results-section').hidden = false;
-  const tbody = document.getElementById('results-tbody');
+  resultsSectionEl.hidden = false;
   const tr = document.createElement('tr');
   tr.innerHTML = buildRowHTML(r);
-  tbody.appendChild(tr);
+  resultsTbodyEl.appendChild(tr);
 }
 
 function buildRowHTML(r) {
@@ -497,8 +549,8 @@ function summarizeAutoSelector(results) {
 
 function renderAutoSelectorSummary(results) {
   const summary = summarizeAutoSelector(results);
-  const wrap = document.getElementById('auto-selector-summary');
-  const cards = document.getElementById('auto-selector-cards');
+  const wrap = autoSelectorSummaryEl;
+  const cards = autoSelectorCardsEl;
   if (summary.coverage === 0) {
     wrap.hidden = true;
     cards.innerHTML = '';
@@ -544,40 +596,16 @@ function buildReportWithContextHeader(report, context) {
 
 function updateRunContextLabels(context) {
   const label = buildRunContextLabel(context);
-  const resultsContextEl = document.getElementById('results-run-context');
-  const reportContextEl = document.getElementById('report-run-context');
 
   if (!label) {
-    resultsContextEl.hidden = true;
-    resultsContextEl.innerHTML = '';
-    reportContextEl.hidden = true;
-    reportContextEl.innerHTML = '';
+    resultsRunContextEl.hidden = true;
+    resultsRunContextEl.innerHTML = '';
     return;
   }
 
   const formatted = `<strong>${label}</strong>`;
-  resultsContextEl.hidden = false;
-  resultsContextEl.innerHTML = formatted;
-  reportContextEl.hidden = false;
-  reportContextEl.innerHTML = formatted;
-}
-
-function renderCopilotReport(results) {
-  const wrap = document.getElementById('copilot-report');
-  const output = document.getElementById('copilot-report-output');
-  const status = document.getElementById('copy-report-status');
-  const done = results.filter((row) => row && (!row.error || row.winner));
-  if (results.length === 0 || done.length === 0) {
-    wrap.hidden = true;
-    output.value = '';
-    status.textContent = '';
-    return;
-  }
-
-  const report = generateCopilotReport(results, _runContext ?? {});
-  output.value = buildReportWithContextHeader(report, _runContext ?? {});
-  status.textContent = '';
-  wrap.hidden = false;
+  resultsRunContextEl.hidden = false;
+  resultsRunContextEl.innerHTML = formatted;
 }
 
 function renderTable(results) {
@@ -587,8 +615,7 @@ function renderTable(results) {
     if (typeof va === 'string') return _sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     return _sortAsc ? va - vb : vb - va;
   });
-  document.getElementById('results-tbody').innerHTML =
-    sorted.map(r => `<tr>${buildRowHTML(r)}</tr>`).join('');
+  resultsTbodyEl.innerHTML = sorted.map(r => `<tr>${buildRowHTML(r)}</tr>`).join('');
 }
 
 function updateSummary(results) {
@@ -640,7 +667,7 @@ function updateSummary(results) {
     'ultra-dijkstra': '#f59e0b'
   };
 
-  document.getElementById('summary-cards').innerHTML = `
+  summaryCardsEl.innerHTML = `
     <div class="card"><div class="card-val">${results.length}</div><div class="card-lbl">Routes run</div></div>
     ${Object.entries(engineWins).map(([engine, count]) => 
       `<div class="card"><div class="card-val">${count}</div><div class="card-lbl">${engineNames[engine]} wins</div></div>`
@@ -649,18 +676,19 @@ function updateSummary(results) {
     ${errCount > 0 ? `<div class="card"><div class="card-val">${errCount}</div><div class="card-lbl">Errors</div></div>` : ''}
   `;
   renderAutoSelectorSummary(results);
-  renderCopilotReport(results);
 }
 
 function redrawCharts(results) {
-  _chartScatter = drawScatter(document.getElementById('scatter'), results, {}, _chartScatter);
-  _chartDensity = drawDensityScatter(document.getElementById('density'), results, {}, _chartDensity);
+  _chartScatter = drawScatter(scatterEl, results, {}, _chartScatter);
+  _chartDensity = drawDensityScatter(densityEl, results, {}, _chartDensity);
+  _chartHistogram = drawFeatureHistogram(histogramEl, results, {}, _chartHistogram);
+  _chartBubble = drawTimingBubble(bubbleEl, results, {}, _chartBubble);
   if (_cleanupTooltip) { _cleanupTooltip(); }
   _cleanupTooltip = installTooltip(null, results, null);
 }
 
 function showResults(results) {
-  document.getElementById('results-section').hidden = false;
+  resultsSectionEl.hidden = false;
   updateRunContextLabels(_runContext ?? {});
   updateSummary(results);
   renderTable(results);
@@ -669,7 +697,7 @@ function showResults(results) {
   renderCostSummaryTable(results);
   
   // Hide threshold suggestion (no longer relevant for multi-engine comparison)
-  document.getElementById('suggestion-wrap').hidden = true;
+  suggestionWrapEl.hidden = true;
 }
 
 function deriveEngineWins(results) {
@@ -748,14 +776,14 @@ function buildClusteringRows(results) {
         engineMedianMs: row?.[key] ?? null,
         engineSamplesMs: samplesByEngine?.[engineId] ?? [],
         engineSampleStats: statsByEngine?.[engineId] ?? null,
-        routeError: row?.error ?? null,
+        routeError: row?.routeError ?? row?.error ?? null,
         engineError: engineId === 'bidirectional-astar'
-          ? row?.bidirectional_astar_error ?? null
+          ? row?.bidirectional_astar_error ?? row?.bidirectional_astar_timed_error ?? null
           : engineId === 'adaptive-barrier'
-            ? row?.adaptive_barrier_error ?? null
+            ? row?.adaptive_barrier_error ?? row?.adaptive_barrier_timed_error ?? null
             : engineId === 'delta-stepping'
-              ? row?.delta_stepping_error ?? null
-              : row?.ultra_dijkstra_error ?? null,
+              ? row?.delta_stepping_error ?? row?.delta_stepping_timed_error ?? null
+              : row?.ultra_dijkstra_error ?? row?.ultra_dijkstra_timed_error ?? null,
         beelineM: row?.beelineM ?? null,
         N: row?.N ?? null,
         E: row?.E ?? null,
@@ -792,6 +820,13 @@ const ENGINE_ERROR_KEYS = {
   'ultra-dijkstra': 'ultra_dijkstra_error',
 };
 
+const ENGINE_TIMED_ERROR_KEYS = {
+  'bidirectional-astar': 'bidirectional_astar_timed_error',
+  'adaptive-barrier': 'adaptive_barrier_timed_error',
+  'delta-stepping': 'delta_stepping_timed_error',
+  'ultra-dijkstra': 'ultra_dijkstra_timed_error',
+};
+
 function round4(value) {
   return Number.isFinite(value) ? Math.round(value * 10000) / 10000 : null;
 }
@@ -815,7 +850,7 @@ function normalizeBenchmarkRow(row) {
   const engineErrors = Object.fromEntries(
     Object.entries(ENGINE_ERROR_KEYS).map(([engineId, key]) => [
       engineId,
-      row[key] ?? null,
+      row[key] ?? row[ENGINE_TIMED_ERROR_KEYS[engineId]] ?? null,
     ]),
   );
 
@@ -864,7 +899,8 @@ function normalizeBenchmarkRow(row) {
   const anyEngineError = Boolean(
     row.error ||
     Object.values(engineErrors).some((value) => !!value) ||
-    Object.values(row.errors ?? {}).some((value) => !!value),
+    Object.values(row.errors ?? {}).some((value) => !!value) ||
+    Object.values(ENGINE_TIMED_ERROR_KEYS).some((key) => Boolean(row[key])),
   );
 
   const costWinner = row.costWinner ?? Object.entries(engineCosts)
@@ -910,6 +946,14 @@ function normalizeBenchmarkRow(row) {
     auto_matches_winner: autoMatchesWinner,
     winner,
     costWinner,
+    routeError: normalizedRow.routeError ?? normalizedRow.error ?? null,
+    beelineM: normalizedRow.beelineM ?? (Number.isFinite(normalizedRow.safeBeelineKm)
+      ? Math.round(normalizedRow.safeBeelineKm * 1000)
+      : null),
+    N: normalizedRow.N ?? normalizedRow.safeN ?? null,
+    E: normalizedRow.E ?? normalizedRow.safeE ?? null,
+    edgesPerKmBeeline: normalizedRow.edgesPerKmBeeline ?? normalizedRow.edgesPerKm ?? null,
+    nodesPerKmBeeline: normalizedRow.nodesPerKmBeeline ?? normalizedRow.nodesPerKm ?? null,
   };
 
   return {
@@ -924,10 +968,6 @@ function buildBenchmarkJsonPayload(results, context) {
     : [];
   const perfSummary = generatePerformanceSummary(normalizedResults);
   const costSummary = generateCostSummary(normalizedResults);
-  const report = buildReportWithContextHeader(
-    generateCopilotReport(normalizedResults, context ?? {}),
-    context ?? {},
-  );
   const completed = normalizedResults.filter((row) => !row.error);
   const errored = normalizedResults.filter((row) => !!row.error);
   const tied = completed.filter((row) => Number(row.winner_tied) === 1);
@@ -950,7 +990,6 @@ function buildBenchmarkJsonPayload(results, context) {
       winnerCounts: deriveEngineWins(normalizedResults),
       autoSelector: summarizeAutoSelectorForArtifact(normalizedResults),
     },
-    shareableAnalysisReport: report,
     summaries: {
       performance: {
         groupKeys: perfSummary.groupKeys,
@@ -1010,7 +1049,7 @@ function renderCostSummaryTable(results) {
     }
   });
 
-  const thead = document.getElementById('cost-summary-thead');
+  const thead = costSummaryTheadEl;
   thead.innerHTML = '';
   const headerRow = document.createElement('tr');
   headerRow.innerHTML = '<th style="text-align: left; padding: 8px 10px;">Engine</th>';
@@ -1029,7 +1068,7 @@ function renderCostSummaryTable(results) {
   });
   thead.appendChild(headerRow);
 
-  const tbody = document.getElementById('cost-summary-tbody');
+  const tbody = costSummaryTbodyEl;
   tbody.innerHTML = '';
   rows.forEach(row => {
     const tr = document.createElement('tr');
@@ -1078,7 +1117,7 @@ function renderSummaryTable(results) {
   });
   
   // Build header
-  const thead = document.getElementById('summary-thead');
+  const thead = summaryTheadEl;
   thead.innerHTML = '';
   const headerRow = document.createElement('tr');
   headerRow.innerHTML = '<th style="text-align: left; padding: 8px 10px;">Engine</th>';
@@ -1098,7 +1137,7 @@ function renderSummaryTable(results) {
   thead.appendChild(headerRow);
   
   // Build body
-  const tbody = document.getElementById('summary-tbody');
+  const tbody = summaryTbodyEl;
   tbody.innerHTML = '';
   rows.forEach(row => {
     const tr = document.createElement('tr');

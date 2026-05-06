@@ -77,25 +77,43 @@ import { haversineDistance } from '../utils/misc.js';
  */
 export function getAllGraphMetrics(preparedGraph, rawGraph, sourceId, targetId, opts = {}) {
     const { mode = 'distance', densityOpts = {} } = opts;
-    const nodeCount = countNodes(preparedGraph);
-    const edgeCount = countEdges(preparedGraph);
+    const nodeCount = preparedGraph.N ?? preparedGraph.coordsArr?.length ?? 0;
+    const edgeCount = preparedGraph.E ?? preparedGraph.edges?.length ?? 0;
     const src = preparedGraph.coordsArr?.[sourceId];
     const tgt = preparedGraph.coordsArr?.[targetId];
     const beelineM = (src && tgt) ? haversineDistance(src, tgt) : 0;
     const centralityGraph = mode === 'car' && rawGraph?.edges ? rawGraph : preparedGraph;
-    const centralities = nodeCentralityForNodes(centralityGraph, [sourceId, targetId], mode);
+    const {
+        sourceCentrality,
+        targetCentrality,
+    } = nodeCentralityForPair(centralityGraph, sourceId, targetId, mode);
     const averageOutDegree = nodeCount ? edgeCount / nodeCount : 0;
-    const { emptyRatio, globalCoverage, relativeDensity } = beelineM ? getDensityFeatures(preparedGraph, src, tgt, densityOpts) : {};
+    const adjPtr = preparedGraph.adjPtr;
+    const nodeDegreeSource = adjPtr && sourceId >= 0 && sourceId + 1 < adjPtr.length
+        ? adjPtr[sourceId + 1] - adjPtr[sourceId]
+        : nodeDegree(preparedGraph, sourceId);
+    const nodeDegreeTarget = adjPtr && targetId >= 0 && targetId + 1 < adjPtr.length
+        ? adjPtr[targetId + 1] - adjPtr[targetId]
+        : nodeDegree(preparedGraph, targetId);
+    let emptyRatio = 0;
+    let globalCoverage = 0;
+    let relativeDensity = 0;
+    if (beelineM) {
+        const density = getDensityFeatures(preparedGraph, src, tgt, densityOpts);
+        emptyRatio = density.emptyRatio;
+        globalCoverage = density.globalCoverage;
+        relativeDensity = density.relativeDensity;
+    }
 
     return {
         nodeCount,
         edgeCount,
         averageNodeDegree: averageOutDegree,
         beelinePerNode: beelineM ? beelineM / (nodeCount || 1) : 0,
-        nodeDegreeSource: nodeDegree(preparedGraph, sourceId),
-        nodeDegreeTarget: nodeDegree(preparedGraph, targetId),
-        nodeCentralitySource: centralities[sourceId] ?? 0,
-        nodeCentralityTarget: centralities[targetId] ?? 0,
+        nodeDegreeSource,
+        nodeDegreeTarget,
+        nodeCentralitySource: sourceCentrality,
+        nodeCentralityTarget: targetCentrality,
         emptyRatio,
         globalCoverage,
         relativeDensity,
@@ -160,43 +178,60 @@ export function averageNodeDegree(preparedGraph) {
     return (countEdges(preparedGraph) || 0) / n;
 }
 
-function nodeCentralityForNodes(graph, nodeIds, mode = '') {
+function nodeCentralityForPair(graph, sourceId, targetId, mode = '') {
     if (graph.adjPtr) {
-        const result = Object.create(null);
-        for (const nodeId of nodeIds) {
-            result[nodeId] = nodeDegree(graph, nodeId);
-        }
-        return result;
+        const adjPtr = graph.adjPtr;
+        return {
+            sourceCentrality: sourceId >= 0 && sourceId + 1 < adjPtr.length
+                ? adjPtr[sourceId + 1] - adjPtr[sourceId]
+                : 0,
+            targetCentrality: targetId >= 0 && targetId + 1 < adjPtr.length
+                ? adjPtr[targetId + 1] - adjPtr[targetId]
+                : 0,
+        };
     }
 
-    if (!graph.edges || nodeIds.length === 0) return Object.create(null);
+    if (!graph.edges) {
+        return { sourceCentrality: 0, targetCentrality: 0 };
+    }
 
-    const result = Object.create(null);
     if (mode === 'car' && graph.outCarCentrality) {
-        for (const nodeId of nodeIds) {
-            result[nodeId] = graph.outCarCentrality[nodeId] ?? 0;
-        }
-        return result;
+        return {
+            sourceCentrality: graph.outCarCentrality[sourceId] ?? 0,
+            targetCentrality: graph.outCarCentrality[targetId] ?? 0,
+        };
     }
 
     if (graph.outDegree) {
-        for (const nodeId of nodeIds) {
-            result[nodeId] = graph.outDegree[nodeId] ?? 0;
-        }
-        return result;
+        return {
+            sourceCentrality: graph.outDegree[sourceId] ?? 0,
+            targetCentrality: graph.outDegree[targetId] ?? 0,
+        };
     }
 
+    let sourceCentrality = 0;
+    let targetCentrality = 0;
     const weighted = mode === 'car';
-    for (const nodeId of nodeIds) {
-        result[nodeId] = 0;
+    const edges = graph.edges;
+
+    if (sourceId === targetId) {
+        for (const edge of edges) {
+            if (edge.source === sourceId) {
+                sourceCentrality += weighted ? (edge.fibonacciScore ?? 1) : 1;
+            }
+        }
+        return { sourceCentrality, targetCentrality: sourceCentrality };
     }
 
-    for (const edge of graph.edges) {
-        const current = result[edge.source];
-        if (current === undefined) continue;
-        result[edge.source] = current + (weighted ? (edge.fibonacciScore ?? 1) : 1);
+    for (const edge of edges) {
+        if (edge.source === sourceId) {
+            sourceCentrality += weighted ? (edge.fibonacciScore ?? 1) : 1;
+        } else if (edge.source === targetId) {
+            targetCentrality += weighted ? (edge.fibonacciScore ?? 1) : 1;
+        }
     }
-    return result;
+
+    return { sourceCentrality, targetCentrality };
 }
 
 /**
@@ -210,7 +245,10 @@ function nodeCentralityForNodes(graph, nodeIds, mode = '') {
  */
 export function nodeCentrality(graph, nodeId, mode = '') {
     if (graph.adjPtr) {
-        return nodeDegree(graph, nodeId);
+        const adjPtr = graph.adjPtr;
+        return nodeId >= 0 && nodeId + 1 < adjPtr.length
+            ? adjPtr[nodeId + 1] - adjPtr[nodeId]
+            : 0;
     }
 
     if (!graph.edges || nodeId < 0) return 0;
@@ -224,7 +262,8 @@ export function nodeCentrality(graph, nodeId, mode = '') {
 
     let centrality = 0;
     const weighted = mode === 'car';
-    for (const edge of graph.edges) {
+    const edges = graph.edges;
+    for (const edge of edges) {
         if (edge.source === nodeId) {
             centrality += weighted ? (edge.fibonacciScore ?? 1) : 1;
         }
@@ -243,13 +282,18 @@ export function nodeCentrality(graph, nodeId, mode = '') {
 export function getDensityFeatures(preparedGraph, srcCoords, tgtCoords, opts = {}) {
     const maxRes = opts.maxRes || 256;
     const totalNodes = preparedGraph.N || 0;
+    if (!totalNodes || !preparedGraph.coordsArr) {
+        return { emptyRatio: 1, globalCoverage: 0, relativeDensity: 0 };
+    }
+
     const expectedLength = totalNodes * 2;
+    const coordsArr = preparedGraph.coordsArr;
 
     let coords = preparedGraph.coordsFloat32;
     if (!coords || coords.length !== expectedLength) {
         coords = new Float32Array(expectedLength);
         for (let i = 0; i < totalNodes; i++) {
-            const c = preparedGraph.coordsArr[i];
+            const c = coordsArr[i];
             coords[i * 2] = c[0];
             coords[i * 2 + 1] = c[1];
         }
@@ -257,11 +301,15 @@ export function getDensityFeatures(preparedGraph, srcCoords, tgtCoords, opts = {
     }
 
     let samplerCache = preparedGraph._densitySamplerByRes;
+    const lastSampler = preparedGraph._densitySampler;
     if (!samplerCache) {
         samplerCache = preparedGraph._densitySamplerByRes = new Map();
     }
 
-    let sampler = samplerCache.get(maxRes);
+    let sampler = lastSampler?.maxRes === maxRes
+        ? lastSampler
+        : samplerCache.get(maxRes);
+
     if (!sampler) {
         sampler = new UniversalGraphSampler(coords, maxRes);
         samplerCache.set(maxRes, sampler);
@@ -314,13 +362,15 @@ class UniversalGraphSampler {
 
     _build(coords) {
         const grid = new Uint8Array(this.totalCells);
+        const sat = this.sat;
         const { minX, minY } = this.bounds;
         const scaleX = this.scaleX;
         const scaleY = this.scaleY;
         const resX = this.resX;
         const resY = this.resY;
+        const coordsLen = coords.length;
 
-        for (let i = 0; i < coords.length; i += 2) {
+        for (let i = 0; i < coordsLen; i += 2) {
             const gx = Math.floor((coords[i] - minX) * scaleX);
             const gy = Math.floor((coords[i + 1] - minY) * scaleY);
             grid[gy * resX + gx] = 1;
@@ -333,8 +383,8 @@ class UniversalGraphSampler {
             const aboveOffset = rowOffset - resX;
             for (let x = 0; x < resX; x++) {
                 rowSum += grid[rowOffset + x];
-                const above = y > 0 ? this.sat[aboveOffset + x] : 0;
-                this.sat[rowOffset + x] = rowSum + above;
+                const above = y > 0 ? sat[aboveOffset + x] : 0;
+                sat[rowOffset + x] = rowSum + above;
             }
         }
 

@@ -17,9 +17,10 @@ Check the live example at [https://abelvm.github.io/omt-router/example](https://
 
 - **Zero backend, zero-provider** — No need for a routing backend or relying on a 3rd party API provider, `omt-router` builds the routing graph on-the-fly from **OpenMapTiles** formatted vector tiles
 - **Multi-engine routing** — bidirectional A*, Adaptive Barrier SSSP, Delta-Stepping, and Ultra Dijkstra
-- **Automatic best engine selection** — using modelization based on real-world data
+- **Automatic best engine selection** — runtime engine chooser uses benchmark-derived models and a generated selector module in `src/tuning/tuning.js`
 - **Three transport modes** — `car`, `pedestrian`, `bicycle`; respects OpenMapTiles access tags and road class hierarchy
-- **Two optimizacion strategies**  — route length or travel time
+- **Two optimization strategies** — route length or travel time
+- **Endpoint snapping with quality guard** — nearest-node lookup plus segment-projection snap, with `maxAcceptableSnapDistanceM` limiting distant off-road snaps
 - **Seamless tile stitching** — [Liang-Barsky](https://en.wikipedia.org/wiki/Liang%E2%80%93Barsky_algorithm) clipping ensures road segments share bit-identical boundary nodes across neighbouring tiles with no proximity snapping
 - **Worker pool + tile cache** — Using [performance-helpers](https://abelvm.github.io/performance-helpers) to get the best performance always: parallel tile parsing and parallel engines execution via **PowerPool**, parsed tiles are cached with **PowerCache** so repeated queries can reuse tiles until TTL/LRU eviction
 
@@ -43,29 +44,30 @@ Notes:
 
 ## ML-based engine selector
 
-Engine selection is data-driven. The file `src/tuning.js` is generated from benchmark data by `benchmark/cluster_engine_selector.py`.
+Engine selection is data-driven and can be regenerated from benchmark results. `src/tuning/tuning.js` is built from the benchmark pipeline, and `src/tuning/model.js` is the compact runtime model artifact produced by `benchmark/train_engine_selector_ml.py`.
 
-At runtime, the selector computes route/graph features such as:
+At runtime, the selector evaluates route and graph features such as:
 
 - edge count (`E`) and node count (`N`)
 - beeline distance between endpoints
 - derived density/branch indicators (`edgesPerKm`, average out-degree)
-- binned signatures (`sizeBand`, `beelineBand`, `densityBand`, `branchBand`)
+- discrete feature bands such as `sizeBand`, `beelineBand`, `densityBand`, and `branchBand`
 
-Selection flow:
+Selector flow:
 
-1. Build selector features from `(E, N, beeline)`.
-2. Detect runtime capability (`SharedArrayBuffer`, Worker, cross-origin isolation) to decide `sab_on` vs `sab_off` rules for parallelization.
-3. Apply generated rule sets for `distance` or `travelTime` optimization.
-4. Optionally apply per-engine parallelization policy thresholds.
+1. Build the route/graph feature vector from the corridor graph and query endpoints.
+2. Detect runtime capability (`SharedArrayBuffer`, Worker, cross-origin isolation) to choose `sabOn` vs `sabOff` rules.
+3. Evaluate the generated selector in `src/tuning/tuning.js`, which uses the compact `src/tuning/model.js` artifact when available.
+4. Select the recommended engine and apply per-engine parallelization/correctness fallback logic.
 
 Why this exists:
 
-- No single engine wins every route shape.
-- The selector minimizes regret using offline benchmark-trained rules.
-- Tuning can be regenerated as your benchmark corpus grows.
+- No single engine is best for every route graph shape.
+- The selector minimizes runtime regret using offline benchmark-trained models.
+- The training workflow supports both serial (`sabOff`) and parallel (`sabOn`) profiles.
+- The model pipeline includes `runtime-linear`, `xgboost`, and a compact 2-layer `mlp` option.
 
-See [benchmark/README.md](benchmark/README.md) for full benchmark, analysis, and sweep workflow.
+See [benchmark/README.md](benchmark/README.md) for the current benchmark and selector training workflow.
 
 ---
 
@@ -105,9 +107,9 @@ You can also use other OpenMapTiles-compatible providers (for example MapTiler) 
 
 Route quality depends on source data quality. The better [OpenStreetMap](https://www.openstreetmap.org/) coverage and tagging are in your area, the better the result. If you find inaccuracies, consider [contributing](https://wiki.openstreetmap.org/wiki/How_to_contribute) to improve OSM data.
 
-Endpoints must snap to routable nodes. If origin or destination is too far from a valid road/path for the chosen mode, routing can fail with `no_node` or `poor_snap`. For example, avoid starting a car route in pedestrian-only areas.
+Endpoints must snap to routable graph edges. The routing code first looks for the nearest graph node, then it may use a segment-projection snap when that improves route validity. Snapping is guarded by `maxAcceptableSnapDistanceM` (default `60` m), so points that are too far from a usable road/path will fail with `no_node` or `poor_snap` rather than producing a misleading route.
 
-For bidirectional streets, the side of the road you pick might change the proposed route considerably.
+For bidirectional streets, the side of the road you click can still affect the computed route, especially when one-way restrictions are present.
 
 Tile requests are performed in-browser from a Worker. Your tile server must include CORS headers (for example `Access-Control-Allow-Origin`) for uncached cross-origin requests. If that is not possible, route tile URLs through a same-origin proxy (see `options.tileProxyTemplate`).
 
@@ -270,6 +272,8 @@ route()
 
 In `route()`, corridor radius can auto-expand when a pass fails with `no_path`, `no_node`, `poor_snap`, or `incomplete_path`. This keeps normal requests small while still handling larger real-world detours.
 
+The tile retry loop also means route failure reasons are more informative: `no_node` means no nearby graph node was found, `poor_snap` means endpoint snapping quality exceeded `maxAcceptableSnapDistanceM`, and `incomplete_path` means the selected engine produced an invalid route that will be retried or surfaced to the caller.
+
 Both `zxy` (XYZ) and `tms` (TMS, Y-flipped) schemas are supported.
 
 ### 2. Graph construction — `graphBuilder.js`
@@ -303,7 +307,7 @@ Endpoints are snapped to graph nodes with a cached `KDBush` spatial index and a 
 
 ### 4. Routing execution and engine selection — `chRouter.js`
 
-`queryRoute` supports explicit engine IDs and an `auto` mode. In `auto`, the selector in `src/tuning.js` uses route and graph features (`E`, `N`, beeline, density and branching bands) plus runtime capability (for example SharedArrayBuffer and Worker availability) to choose the best engine for each query.
+`queryRoute` supports explicit engine IDs and an `auto` mode. In `auto`, the selector in `src/tuning/tuning.js` uses route and graph features (`E`, `N`, beeline, density and branching bands) plus runtime capability (for example SharedArrayBuffer and Worker availability) to choose the best engine for each query.
 
 Execution flow:
 

@@ -32,10 +32,11 @@ const _hwConcurrency =
 const TILE_POOL_MAX_SIZE = Math.min(8, Math.max(1, _hwConcurrency - 1));
 const TILE_POOL_BASE_SIZE = Math.min(2, TILE_POOL_MAX_SIZE);
 let _pool = null;
+const IS_WORKER_AVAILABLE = typeof Worker !== 'undefined';
 
 function getSharedPool() {
   if (_pool) return _pool;
-  if (typeof Worker === 'undefined') {
+  if (!IS_WORKER_AVAILABLE) {
     throw new Error('Web Worker is not available in this environment.');
   }
 
@@ -72,6 +73,7 @@ const _tileCache = new PowerCache({ maxEntries: 5000, defaultTTL: 300_000 });
 // toggle back to a previously used mode). 50 entries is enough for typical use.
 const _graphCache = new PowerCache({ maxEntries: 50, defaultTTL: 300_000 });
 const VALID_COST_FIELDS = new Set(['distance', 'travelTime']);
+const DEG_TO_RAD = Math.PI / 180;
 
 function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate } = {}) {
   const rawURL = interpolate(urlTemplate, { z: tile.z, x: tile.x, y: tile.y });
@@ -147,7 +149,7 @@ function normalizePenalties(penalties = {}) {
  */
 function computeRadius(start, end, zoom) {
   const midLat = (start[1] + end[1]) / 2;
-  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(midLat * Math.PI / 180)) / (2 ** zoom);
+  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(midLat * DEG_TO_RAD)) / (2 ** zoom);
   const beelineM = haversineDistance(start, end);
   const bufferM = Math.max(600, beelineM * 0.15);
   return Math.min(3, Math.max(1, Math.ceil(bufferM / tileWidthM)));
@@ -198,18 +200,20 @@ export const route = async (
   // exceed the old radius=4 ceiling, while still preventing unbounded growth.
   const maxRadius = normalizedMaxAutoRadius;
 
+  const pool = getSharedPool();
   let lastResult;
   for (let r = initialRadius; r <= maxRadius; r++) {
-    const pool = getSharedPool();
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
     const tiles = candidateTiles.map((tile) => {
-      const url = buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate });
-      return { ...tile, url };
+      tile.url = buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate });
+      return tile;
     });
 
     // Stable graph cache key: sorted tile ids + mode so the order of
     // getTilesAlongLine does not affect cache hits.
-    const graphKey = `v2:${mode}:${tiles.map(t => `${t.z}/${t.x}/${t.y}`).sort().join(',')}`;
+    const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
+    tileIds.sort();
+    const graphKey = `v2:${mode}:${tileIds.join(',')}`;
     let graph = _graphCache.get(graphKey);
     if (!graph) {
       graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });

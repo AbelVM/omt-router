@@ -1475,7 +1475,7 @@ function generateCityRoutes(cityKey, cityName, anchor, regionType = 'urban') {
  * Coordinates are approximate city centers.
  */
 const CITY_DEFINITIONS = [
-/*  ['bcn', 'Barcelona', [2.1686, 41.3851]],
+  ['bcn', 'Barcelona', [2.1686, 41.3851]],
   ['lon', 'London', [-0.1276, 51.5074]],
   ['ber', 'Berlin', [13.4050, 52.5200]],
   ['rom', 'Rome', [12.4964, 41.9028]],
@@ -1576,7 +1576,31 @@ const CITY_DEFINITIONS = [
   ['dre', 'Dresde', [13.7373, 51.0504]],
   ['kau', 'Kaunas', [23.8813, 54.8985]],
   ['man', 'Manchester', [-2.2426, 53.4808]],
-  */
+  ['sfo', 'San Francisco', [-122.4194, 37.7749]],
+  ['nyc', 'New York City', [-74.0060, 40.7128]],
+  ['chi', 'Chicago', [-87.6298, 41.8781]],
+  ['la', 'Los Angeles', [-118.2437, 34.0522]],
+  ['tyo', 'Tokyo', [139.6917, 35.6895]],
+  ['sao', 'Sao Paulo', [-46.6333, -23.5505]],
+  ['cpt', 'Cape Town', [18.4241, -33.9249]],
+  [ 'dhk', 'Dhaka', [90.4125, 23.8103]],
+  [ 'acc', 'Accra', [-0.186964, 5.603717]],
+  ['rec', 'Recife', [-34.8813, -8.0476]],
+  ['ry', 'Reykjavik', [-21.8277, 64.1355]],
+  ['xna', 'Xian', [108.9398, 34.3416]],
+  ['cgn', 'Cologne', [6.9603, 50.9375]],
+  ['vce', 'Venice', [12.3155, 45.4408]],
+  ['mar', 'Marseille', [5.3698, 43.2965]],
+  ['str', 'Strasbourg', [7.7521, 48.5734]],
+  ['stp', 'St. Petersburg', [30.3351, 59.9343]],
+  ['kgn', 'Kingston', [-76.7928, 17.9712]],
+  ['cba', 'Cordoba', [-64.1811, -31.4201]],
+  ['ros', 'Rosario', [-60.6393, -32.9442]],
+  ['mon', 'Monterrey', [-100.3161, 25.6866]],
+  ['gua', 'Guadalajara', [-103.3496, 20.6597]],
+  ['mall', 'Mallorca', [2.6502, 39.5696]],
+  ['can', 'Canberra', [149.1300, -35.2809]],
+  ['per', 'Perth', [115.8605, -32.0000]]
 ];
 
 // Generate and merge all city routes

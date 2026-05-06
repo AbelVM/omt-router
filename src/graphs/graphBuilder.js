@@ -45,7 +45,10 @@ function coordKey(lng, lat) {
  */
 function isAccessible(props, mode) {
   // Respect explicit access restrictions regardless of mode
-  if (props.access === 'no' || props.access === false) return false;
+  const access = props.access ?? '';
+  if (access === 'no' || access === 'private') {
+    return false;
+  }
 
   const rules = ways[mode];
   const cls = props.class ?? '';
@@ -59,15 +62,15 @@ function isAccessible(props, mode) {
 
   if (mode === 'pedestrian') {
     const foot = props.foot ?? '';
+    if (foot === 'no' || foot === 'private') return false;
     return rules.class.has(cls) || rules.subclass.has(sub) || rules.foot.has(foot);
   }
 
   if (mode === 'bicycle') {
     if (rules.exclude_classes.has(cls)) return false;
     const bicycle = props.bicycle ?? '';
-    return (
-      rules.class.has(cls) || rules.subclass.has(sub) || rules.bicycle.has(bicycle)
-    );
+    if (bicycle === 'no' || bicycle === 'private') return false;
+    return rules.class.has(cls) || rules.subclass.has(sub) || rules.bicycle.has(bicycle); 
   }
 
   return false;
@@ -97,9 +100,9 @@ export function parseTile(buffer, x, y, z, mode) {
   // tileToLngLat recomputes 2**z and all the scale factors on every call;
   // hoisting them cuts ~6 multiplications and a Math.pow per vertex.
   const n = 2 ** z;
-  const lngBase  = (x / n) * 360 - 180;
+  const lngBase = (x / n) * 360 - 180;
   const lngScale = 360 / (n * layer.extent);
-  const latYBase  = 1 - (2 * y) / n;
+  const latYBase = 1 - (2 * y) / n;
   const latYScale = -2 / (n * layer.extent);
   const toDeg = 180 / Math.PI;
 

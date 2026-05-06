@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildGraph, parseTile } from '../src/graphs/graphBuilder.js';
 import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
-import { nearestNode, buildCH, selectBestEngine } from '../src/engines/router.js';
+import { computeRoute, nearestNode, buildCH, selectBestEngine } from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance } from '../src/utils/misc.js';
 import { hasParallelRoutingRuntime } from '../src/tuning/tuning.js';
@@ -125,6 +125,251 @@ describe('nearestNode', () => {
     // Query 10 km away with a 500 m limit
     const result = nearestNode([-3.6038, 40.4168], g, 500);
     expect(result).toBe(-1);
+  });
+
+  it('snaps to a long segment when nearby nodes belong to a different edge', async () => {
+    const nodes = new Map([
+      [0, { id: 0, coords: [0, 0] }],
+      [1, { id: 1, coords: [0.01, 0] }],
+      [2, { id: 2, coords: [0.005, 0.002] }],
+      [3, { id: 3, coords: [0.006, 0.002] }],
+    ]);
+    const edges = [
+      {
+        source: 0,
+        target: 1,
+        cost: 1113,
+        reverseCost: 1113,
+        length: 1113,
+        speed: 50,
+        travelTime: 1113 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 2,
+        target: 3,
+        cost: 111,
+        reverseCost: 111,
+        length: 111,
+        speed: 50,
+        travelTime: 111 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+    ];
+    const graph = { nodes, edges };
+    const startCoords = [0.005, 0.0005];
+    const endCoords = [0, 0];
+
+    const result = await computeRoute(startCoords, endCoords, graph, { costField: 'distance' });
+
+    expect(result.found).toBe(true);
+    expect(result.startSnapDistanceM).toBeGreaterThan(0);
+    expect(result.startSnapDistanceM).toBeLessThanOrEqual(60);
+    expect(result.cost).toBeGreaterThan(500);
+    expect(result.cost).toBeLessThan(600);
+    expect(result.coordinates[0]).toEqual(expect.any(Array));
+    expect(result.path.length).toBeGreaterThan(1);
+  });
+
+  it('uses segment-projected start nodes even when a closer real node exists', async () => {
+    const nodes = new Map([
+      [0, { id: 0, coords: [0, 0] }],
+      [1, { id: 1, coords: [0.0004, 0] }],
+      [2, { id: 2, coords: [0.0004, 0.0002] }],
+      [3, { id: 3, coords: [0.02, 0.02] }],
+    ]);
+    const edges = [
+      {
+        source: 0,
+        target: 1,
+        cost: 44,
+        reverseCost: 44,
+        length: 44,
+        speed: 50,
+        travelTime: 44 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 1,
+        target: 2,
+        cost: 22,
+        reverseCost: 22,
+        length: 22,
+        speed: 50,
+        travelTime: 22 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 2,
+        target: 3,
+        cost: 2800,
+        reverseCost: 2800,
+        length: 2800,
+        speed: 50,
+        travelTime: 2800 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+    ];
+    const graph = { nodes, edges };
+    const startCoords = [0.0001, 0.0001];
+    const endCoords = [0.02, 0.02];
+
+    const result = await computeRoute(startCoords, endCoords, graph, { costField: 'distance' });
+
+    expect(result.found).toBe(true);
+    expect(result.coordinates[0]).toEqual([0.0004, 0.0001]);
+    expect(result.path[0]).toBe(4);
+    expect(result.startSnapDistanceM).toBeGreaterThan(0);
+    expect(result.startSnapDistanceM).toBeLessThanOrEqual(60);
+  });
+
+  it('prefers the closest street segment over a nearer wrong graph node', async () => {
+    const nodes = new Map([
+      [0, { id: 0, coords: [0, 0] }],
+      [1, { id: 1, coords: [0, 0.02] }],
+      [2, { id: 2, coords: [0.0002, 0.009] }],
+      [3, { id: 3, coords: [0.0002, 0.011] }],
+    ]);
+    const edges = [
+      {
+        source: 0,
+        target: 1,
+        cost: 2226,
+        reverseCost: 2226,
+        length: 2226,
+        speed: 50,
+        travelTime: 2226 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 2,
+        target: 3,
+        cost: 222,
+        reverseCost: 222,
+        length: 222,
+        speed: 50,
+        travelTime: 222 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+    ];
+    const graph = { nodes, edges };
+    const startCoords = [0, 0.01];
+    const endCoords = [0, 0];
+
+    const result = await computeRoute(startCoords, endCoords, graph, { costField: 'distance' });
+
+    expect(result.found).toBe(true);
+    expect(result.startSnapDistanceM).toBeLessThan(1);
+    expect(result.coordinates[0]).toEqual([0, 0.01]);
+    expect(result.path[0]).toBe(4);
+    expect(result.cost).toBeGreaterThan(1100);
+    expect(result.cost).toBeLessThan(2300);
+  });
+
+  it('retries with segment snap when a closer wrong node yields no_path', async () => {
+    const nodes = new Map([
+      [0, { id: 0, coords: [0, 0] }],
+      [1, { id: 1, coords: [0.02, 0] }],
+      [2, { id: 2, coords: [0.02, 0.02] }],
+      [3, { id: 3, coords: [0.0001, 0.0002] }],
+      [4, { id: 4, coords: [0.0001, 0.0003] }],
+    ]);
+    const edges = [
+      {
+        source: 0,
+        target: 1,
+        cost: 2226,
+        reverseCost: 2226,
+        length: 2226,
+        speed: 50,
+        travelTime: 2226 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 1,
+        target: 2,
+        cost: 2226,
+        reverseCost: 2226,
+        length: 2226,
+        speed: 50,
+        travelTime: 2226 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 3,
+        target: 4,
+        cost: 111,
+        reverseCost: 111,
+        length: 111,
+        speed: 50,
+        travelTime: 111 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+    ];
+    const graph = { nodes, edges };
+    const startCoords = [0.0002, 0.0004];
+    const endCoords = [0.02, 0.02];
+
+    const result = await computeRoute(startCoords, endCoords, graph, { costField: 'distance' });
+
+    expect(result.found).toBe(true);
+    expect(result.coordinates[0]).toEqual([0.0002, 0]);
+    expect(result.startSnapDistanceM).toBeGreaterThan(0);
+    expect(result.startSnapDistanceM).toBeLessThanOrEqual(60);
+    expect(result.cost).toBeGreaterThan(4000);
+    expect(result.cost).toBeLessThan(5000);
+  });
+
+  it('falls back to nearest-node routing when a reverse-only segment snap blocks the route', async () => {
+    const nodes = new Map([
+      [0, { id: 0, coords: [0, 0] }],
+      [1, { id: 1, coords: [0.02, 0] }],
+      [2, { id: 2, coords: [0.04, 0] }],
+    ]);
+    const edges = [
+      {
+        source: 0,
+        target: 1,
+        cost: -1,
+        reverseCost: 200,
+        length: 200,
+        speed: 50,
+        travelTime: 200 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 1,
+        target: 2,
+        cost: 200,
+        reverseCost: 200,
+        length: 200,
+        speed: 50,
+        travelTime: 200 / (50 / 3.6),
+        properties: {},
+        fibonacciScore: 1,
+      },
+    ];
+    const graph = { nodes, edges };
+    const startCoords = [0.018, 0];
+    const endCoords = [0.04, 0];
+
+    const result = await computeRoute(startCoords, endCoords, graph, { costField: 'distance' });
+
+    expect(result.found).toBe(true);
+    expect(result.coordinates[0]).toEqual([0.02, 0]);
+    expect(result.path[0]).toBe(1);
+    expect(result.cost).toBeGreaterThan(0);
   });
 });
 

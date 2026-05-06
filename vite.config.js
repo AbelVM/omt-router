@@ -58,6 +58,7 @@ export default defineConfig({
     watch: null
   },
   build: {
+    target: 'es2020',
     lib: {
       entry: resolve(__dirname, 'src/index.js'),
       name: 'OpenMapTiles Router',
@@ -65,7 +66,20 @@ export default defineConfig({
       formats: ['es', 'cjs'],
     },
     minify: 'terser',
-    sourcemap: true,
+    sourcemap: false,
+    terserOptions: {
+      ecma: 2020,
+      compress: {
+        passes: 3,
+        drop_console: true,
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'assert'],
+      },
+      mangle: true,
+      format: {
+        comments: false,
+      },
+    },
     rollupOptions: {
       external: ['perf_hooks', 'crypto'],
     },
