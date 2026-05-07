@@ -110,6 +110,66 @@ Use these scripts for validation or diagnostics:
 - `benchmark/analyze_feature_importance.py`
 - `benchmark/analyze_feature_transform_signal.py`
 - `benchmark/compare_engine_selector_results.py`
+- `benchmark/analyze_benchmark_errors.py` — checks the benchmark JSON schema for warm-up vs timed engine failure semantics and reports any mismatches between top-level error flags and diagnostics.
+
+## Benchmark error schema
+
+The benchmark output now preserves separate route-level, engine warm-up, and engine timed error signals.
+This makes the final route row more precise:
+- a route can still be considered successfully benchmarked even if one or more engines experienced recoverable warm-up failures;
+- timed execution failures are treated as engine-level faults rather than route-level route failures when possible;
+- warm-up diagnostics are preserved for analysis even when the timed phase later succeeds, so these recoveries are visible without being treated as final route failures.
+
+### Route-level errors
+- `routeError` / `error`: top-level route failure reason when the benchmark could not complete the route itself.
+- Common route failures include graph or tile build failures, missing tiles, invalid route validation, or other route preparation problems.
+- If a route-level failure exists, engine results may be missing or only partially populated.
+- Route-level failure is orthogonal to engine diagnostics: route errors describe the benchmark outcome for the whole route, not individual engine execution issues.
+
+### Engine-level diagnostics
+- `<engine>_warm_error`: the engine failed during the warm-up run.
+- `<engine>_timed_error`: the engine failed during the timed sampling phase.
+- `any_engine_warm_error`: at least one engine had a warm-up failure.
+- `any_engine_timed_error`: at least one engine had a timed execution failure.
+- `any_engine_error`: a broad final indicator that the route or its engine execution was not clean.
+  - This is typically true for route-level failures and timed engine failures.
+  - It is not set for recoverable warm-up failures that were fixed by later successful timed execution.
+
+### Final engine result semantics
+- `<engine>_result_source`: one of `timed`, `warm`, or `none`.
+  - `timed`: the final engine result came from successful timed samples.
+  - `warm`: the timed phase failed, so the benchmark fell back to the warm-up result.
+  - `none`: no usable engine result was produced.
+- `<engine>_status`: one of:
+  - `ok`: warm-up and timed execution completed cleanly.
+  - `warm_error`: warm-up failed and no timed samples were available.
+  - `warm_error_recovered`: warm-up failed, but timed execution succeeded and produced the final result.
+  - `timed_error`: timed execution failed and the engine has no final timed result.
+
+### Route vs engine error relationship
+- `routeError` / `error` describes whether the route benchmark itself failed to complete.
+- Engine-level error fields describe individual engine execution health within a route that was otherwise benchmarked.
+- A route with `routeError` set may still contain engine diagnostic metadata, but those engine measurements are not the primary route outcome.
+- A successful route row (`routeError` unset) can still have engine-specific problems, such as warm-up failures or timed engine failures.
+- Recovered warm-up failures are recorded via `<engine>_warm_error` and `<engine>_status === 'warm_error_recovered'`, but they do not set `any_engine_error`.
+
+### Diagnostic payload
+The benchmark also includes a raw diagnostics payload in `rawDiagnostics.execution`:
+- `warmupErrorsByEngine`
+- `timedErrorsByEngine`
+- `warmupErrorMessagesByEngine`
+- `timedErrorMessagesByEngine`
+- `finalResultSourceByEngine`
+- `finalEngineStatusByEngine`
+
+### Analyzer support
+The analyzer script `benchmark/analyze_benchmark_errors.py` now reports:
+- rows with warm-up only failures,
+- rows with timed failures,
+- rows where warm-up errors were recovered by valid timed execution,
+- rows where `any_engine_error` is inconsistent with recorded diagnostics,
+- rows where recoverable warm-up-only routes are incorrectly flagged as `any_engine_error`,
+- and rows where route-level failures are missing diagnostic payloads.
 
 ## Prerequisites
 

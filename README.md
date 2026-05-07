@@ -101,6 +101,32 @@ OpenFreeMap links:
 
 You can also use other OpenMapTiles-compatible providers (for example MapTiler) as long as URL template and CORS requirements are satisfied.
 
+### MapLibre control usage
+
+The library exports `MapLibreRoutingControl` for MapLibre GL JS demos and integrations.
+
+```js
+import { MapLibreRoutingControl, route, getEngineWorkerStatus, onEngineWorkerStatusChange, cancelRunningEngine } from 'omt-router';
+
+const control = new MapLibreRoutingControl({
+  routeFunction: route,
+  getEngineWorkerStatus,
+  onEngineWorkerStatusChange,
+  cancelRunningEngine,
+  tileMetadataUrl: 'https://tiles.openfreemap.org/planet',
+  maplibre: maplibregl,
+});
+map.addControl(control, 'top-left');
+
+map.on('click', (e) => control.setOriginFromMap(e.lngLat));
+map.on('contextmenu', (e) => {
+  e.originalEvent.preventDefault();
+  control.setDestFromMap(e.lngLat);
+});
+```
+
+You can customize route settings using `routeOptions` and pass a different tile metadata URL if your provider differs from OpenFreeMap.
+
 ---
 
 ## Caveats

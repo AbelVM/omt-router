@@ -137,7 +137,36 @@ function softmax(scores) {
   return scores;
 }
 
-function resolveMlFeatureValues(features = {}) {
+export function findTopTwoIndices(probs) {
+  if (!Array.isArray(probs) || probs.length === 0) {
+    return { bestIndex: -1, secondIndex: -1 };
+  }
+
+  if (probs.length === 1) {
+    return { bestIndex: 0, secondIndex: 0 };
+  }
+
+  let bestIndex = 0;
+  let secondIndex = 1;
+  if (probs[1] > probs[0]) {
+    bestIndex = 1;
+    secondIndex = 0;
+  }
+
+  for (let i = 2; i < probs.length; i += 1) {
+    const probability = probs[i];
+    if (probability > probs[bestIndex]) {
+      secondIndex = bestIndex;
+      bestIndex = i;
+    } else if (probability > probs[secondIndex]) {
+      secondIndex = i;
+    }
+  }
+
+  return { bestIndex, secondIndex };
+}
+
+export function resolveMlFeatureValues(features = {}) {
   const {
     safeN: safeNRaw,
     safeE: safeERaw,
@@ -162,11 +191,18 @@ function resolveMlFeatureValues(features = {}) {
     nodeDegreeTarget: nodeDegreeTargetRaw,
     nodeCentralitySource: nodeCentralitySourceRaw,
     nodeCentralityTarget: nodeCentralityTargetRaw,
+    nodeCount: nodeCountRaw,
+    edgeCount: edgeCountRaw,
+    averageNodeDegree: averageNodeDegreeRaw,
+    haversineDistance: haversineDistanceRaw,
   } = features;
 
-  const safeN = safeNumber(safeNRaw, 1);
-  const safeE = safeNumber(safeERaw, safeN);
-  const safeBeelineKm = safeNumber(safeBeelineKmRaw, 0.25);
+  const safeN = safeNumber(safeNRaw, safeNumber(nodeCountRaw, 1));
+  const safeE = safeNumber(safeERaw, safeNumber(edgeCountRaw, safeN));
+  const safeBeelineKm = safeNumber(
+    safeBeelineKmRaw,
+    Math.max(0.25, safeNumber(haversineDistanceRaw, 0) / 1000),
+  );
   const beelinePerNode = safeNumber(beelinePerNodeRaw, safeBeelineKm / safeN);
   const edgesPerKm = safeNumber(edgesPerKmRaw, safeE / safeBeelineKm);
   const nodesPerKm = safeNumber(nodesPerKmRaw, safeN / safeBeelineKm);
@@ -175,7 +211,7 @@ function resolveMlFeatureValues(features = {}) {
   const emptyRatio = safeNumber(emptyRatioRaw, 1);
   const avgBranchFactor = safeNumber(
     avgBranchFactorRaw,
-    safeNumber(avgOutDegreeRaw, safeE / safeN),
+    safeNumber(avgOutDegreeRaw, safeNumber(averageNodeDegreeRaw, safeE / safeN)),
   );
   const relativeDensity = safeNumber(relativeDensityRaw, safeNumber(graphDensityRaw, 0));
   const sourceDegree = safeNumber(sourceDegreeRaw, safeNumber(nodeDegreeSourceRaw, 0));
@@ -334,17 +370,7 @@ function inferDistanceEngineWithMl(features, profileKey) {
   const probs = inferDistanceEngineWithRuntimeLinear(regressors, normalized, classes);
   if (!probs || !probs.length) return fallbackEngine;
 
-  let bestIndex = 0;
-  let secondIndex = 0;
-  for (let i = 1; i < probs.length; i += 1) {
-    if (probs[i] > probs[bestIndex]) {
-      secondIndex = bestIndex;
-      bestIndex = i;
-    } else if (i !== bestIndex && probs[i] > probs[secondIndex]) {
-      secondIndex = i;
-    }
-  }
-
+  const { bestIndex, secondIndex } = findTopTwoIndices(probs);
   const confidence = probs[bestIndex];
   const margin = probs[bestIndex] - probs[secondIndex];
   if (confidence < minConfidence || margin < minMargin) {

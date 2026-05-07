@@ -13,10 +13,18 @@
  *
  * Exports: buildCH, queryRoute, computeRoute, nearestNode
  */
-import KDBush from 'kdbush';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerCache } from 'performance-helpers/powerCache';
 import { haversineDistance as haversine } from '../utils/misc.js';
+import {
+  DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
+  buildSpatialIndex,
+  chooseEndpointCandidate,
+  createAugmentedGraph,
+  findEndpointCandidate,
+  isValidCoords,
+  nearestNode,
+} from '../graphs/snapper.js';
 import {
   getParallelPolicyForEngine,
   hasParallelRoutingRuntime,
@@ -29,13 +37,11 @@ import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
 import EngineMainWorker from './engineMainWorker?worker&inline';
 import { getAllGraphMetrics } from '../graphs/graphMetrics.js'; 
 
-export { selectBestEngine };
+export { selectBestEngine, nearestNode };
 
 const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router' });
 
 const DIST_SCALE = 10;
-const DEG_TO_RAD = Math.PI / 180;
-const LATITUDE_METERS = 111_320;
 const PARALLEL_ROUTING_RUNTIME_AVAILABLE = hasParallelRoutingRuntime();
 // ── Route result cache ──────────────────────────────────────────────────────
 // Keyed by `${startId}:${endId}:${costField}`, stored on each `prepared`
@@ -44,9 +50,6 @@ const PARALLEL_ROUTING_RUNTIME_AVAILABLE = hasParallelRoutingRuntime();
 const ROUTE_CACHE_MAX = 200;
 const ROUTE_CACHE_TTL = 10 * 60_000; // 10 min
 const ROUTE_CACHE_KEY_VERSION = 'v2';
-const DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M = 60;
-const SEGMENT_SNAP_EXTRA_M = 250;
-const SEGMENT_SNAP_SPAN_FACTOR = 0.5;
 const ENGINE_WORKER_STATES = Object.freeze({
   IDLE: 'idle',
   RUNNING: 'running',
@@ -66,9 +69,23 @@ function normalizeEngineId(engineId, fallback = 'bidirectional-astar') {
   return ENGINE_ID_ALIASES[engineId] ?? engineId;
 }
 
+function getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targetId, opts = {}) {
+  const penaltyKey = getPenaltyKey(costField, normalizedPenalties);
+  let prepared = graph._prepared?.[costField]?.[penaltyKey];
+  if (!prepared) {
+    prepared = buildCH(graph, costField, normalizedPenalties);
+    (graph._prepared ??= {})[costField] ??= {};
+    graph._prepared[costField][penaltyKey] = prepared;
+  }
+  prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
+  return prepared;
+}
+
 let _engineWorker = null;
 let _engineWorkerRequestId = 0;
 let _activeEngineJob = null;
+let _engineWorkerPreparedIdInWorker = null;
+let _engineWorkerPreparedIdCounter = 0;
 let _engineWorkerStatus = {
   state: ENGINE_WORKER_STATES.IDLE,
   running: false,
@@ -108,6 +125,7 @@ function terminateEngineWorker() {
     // Best-effort cleanup.
   }
   _engineWorker = null;
+  _engineWorkerPreparedIdInWorker = null;
 }
 
 function makeEngineError(message, code = 'engine_error') {
@@ -208,19 +226,49 @@ function ensureEngineWorker() {
   return _engineWorker;
 }
 
+function getEngineWorkerPreparedId(prepared) {
+  if (!prepared._engineWorkerPreparedId) {
+    prepared._engineWorkerPreparedId = `prepared-${++_engineWorkerPreparedIdCounter}`;
+  }
+  return prepared._engineWorkerPreparedId;
+}
+
 function serializePreparedForEngineWorker(prepared) {
+  const coordsX = new Float32Array(prepared.N);
+  const coordsY = new Float32Array(prepared.N);
+  for (let i = 0; i < prepared.N; i += 1) {
+    const coords = prepared.coordsArr[i];
+    coordsX[i] = coords?.[0] ?? 0;
+    coordsY[i] = coords?.[1] ?? 0;
+  }
+
   return {
-    adjPtr: prepared.adjPtr,
-    adjTo: prepared.adjTo,
-    adjCost: prepared.adjCost,
-    revAdjPtr: prepared.revAdjPtr,
-    revAdjFrom: prepared.revAdjFrom,
-    revAdjCost: prepared.revAdjCost,
+    preparedId: getEngineWorkerPreparedId(prepared),
+    adjPtr: prepared.adjPtr.slice(),
+    adjTo: prepared.adjTo.slice(),
+    adjCost: prepared.adjCost.slice(),
+    revAdjPtr: prepared.revAdjPtr.slice(),
+    revAdjFrom: prepared.revAdjFrom.slice(),
+    revAdjCost: prepared.revAdjCost.slice(),
     N: prepared.N,
     E: prepared.E,
-    coordsArr: prepared.coordsArr,
+    coordsX,
+    coordsY,
     costField: prepared.costField,
   };
+}
+
+function getPreparedWorkerTransferables(serializedPrepared) {
+  return [
+    serializedPrepared.adjPtr.buffer,
+    serializedPrepared.adjTo.buffer,
+    serializedPrepared.adjCost.buffer,
+    serializedPrepared.revAdjPtr.buffer,
+    serializedPrepared.revAdjFrom.buffer,
+    serializedPrepared.revAdjCost.buffer,
+    serializedPrepared.coordsX.buffer,
+    serializedPrepared.coordsY.buffer,
+  ];
 }
 
 async function runEngineDirect(selectedEngine, startId, endId, prepared, beelineM, {
@@ -286,6 +334,16 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
       lastError: null,
     });
 
+    const preparedId = getEngineWorkerPreparedId(prepared);
+    if (_engineWorkerPreparedIdInWorker !== preparedId) {
+      const serializedPrepared = serializePreparedForEngineWorker(prepared);
+      worker.postMessage(
+        { type: 'prepare', prepared: serializedPrepared },
+        getPreparedWorkerTransferables(serializedPrepared),
+      );
+      _engineWorkerPreparedIdInWorker = preparedId;
+    }
+
     worker.postMessage({
       type: 'run',
       requestId,
@@ -294,7 +352,7 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
       endId,
       forceSerialRouting,
       parallelPolicy,
-      prepared: serializePreparedForEngineWorker(prepared),
+      preparedId,
     });
   });
 }
@@ -757,308 +815,106 @@ export async function queryRoute(startId, endId, prepared, {
   return result;
 }
 
-/**
- * Build a KDBush spatial index over graph nodes and cache it on the graph object.
- * Index insertion order matches node IDs (0..N-1), so within() results are node IDs directly.
- * @param {{ nodes: Map<number, { id: number, coords: [number, number] }> }} graph
- * @returns {KDBush}
- */
-function buildSpatialIndex(graph) {
-  const { nodes } = graph;
-  const size = nodes.size;
-  const index = new KDBush(size);
-  const coordsArr = new Array(size);
-  for (let id = 0; id < size; id++) {
-    const { coords } = nodes.get(id);
-    index.add(coords[0], coords[1]); // add(lng, lat)
-    coordsArr[id] = coords;
+export function prepareRoutableGraph(
+  graph,
+  startCoords,
+  endCoords,
+  {
+    snapDistancesM,
+    maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
+  } = {},
+) {
+  const distances =
+    Array.isArray(snapDistancesM) && snapDistancesM.length > 0
+      ? snapDistancesM
+      : [250, 500, 800];
+
+  let workingGraph = graph;
+  let startId = -1;
+  let endId = -1;
+  let usedSnapDistanceM = distances[distances.length - 1];
+
+  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
+    return {
+      graph: workingGraph,
+      startId,
+      endId,
+      startSnapDistanceM: Infinity,
+      endSnapDistanceM: Infinity,
+      usedSnapDistanceM,
+    };
   }
-  index.finish();
-  return { index, coordsArr };
-}
 
-function getNearbyNodeIds(graph, coords, maxDistM) {
-  if (!graph._spatialIndex) {
-    graph._spatialIndex = buildSpatialIndex(graph);
+  let startCandidate = { type: 'none' };
+  let endCandidate = { type: 'none' };
+
+  for (const maxDistM of distances) {
+    startCandidate = chooseEndpointCandidate(startCoords, workingGraph, maxDistM, maxAcceptableSnapDistanceM);
+    endCandidate = chooseEndpointCandidate(endCoords, workingGraph, maxDistM, maxAcceptableSnapDistanceM);
+    usedSnapDistanceM = maxDistM;
+    if (startCandidate.type !== 'none' && endCandidate.type !== 'none') break;
   }
 
-  const { index } = graph._spatialIndex;
-  const [lng, lat] = coords;
-  const cosLat = Math.cos(lat * DEG_TO_RAD);
-  const radiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
-  return index.within(lng, lat, radiusDeg);
-}
+  let startSnapDistanceM = startCandidate.snapDistanceM ?? Infinity;
+  let endSnapDistanceM = endCandidate.snapDistanceM ?? Infinity;
+  let startSnapApplied = false;
+  let endSnapApplied = false;
 
-function buildIncidentEdgeIndex(graph) {
-  if (graph._incidentEdgeIndex) return graph._incidentEdgeIndex;
-  const count = graph.nodes.size;
-  const incident = Array.from({ length: count }, () => []);
-  for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex++) {
-    const edge = graph.edges[edgeIndex];
-    if (edge.source >= 0 && edge.source < count) incident[edge.source].push(edgeIndex);
-    if (edge.target >= 0 && edge.target < count) incident[edge.target].push(edgeIndex);
+  if (startCandidate.type === 'none' || endCandidate.type === 'none') {
+    return {
+      graph: workingGraph,
+      startId: -1,
+      endId: -1,
+      startSnapDistanceM,
+      endSnapDistanceM,
+      usedSnapDistanceM,
+    };
   }
-  graph._incidentEdgeIndex = incident;
-  return incident;
-}
 
-function projectPointOnSegment(coords, a, b, cosLat) {
-  const px = coords[0] * cosLat;
-  const py = coords[1];
-  const ax = a[0] * cosLat;
-  const ay = a[1];
-  const bx = b[0] * cosLat;
-  const by = b[1];
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return null;
-  const t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  if (startCandidate.type === 'segment' && startCandidate.snapDistanceM <= maxAcceptableSnapDistanceM) {
+    const snapResult = createAugmentedGraph(workingGraph, startCandidate.segmentSnap);
+    workingGraph = snapResult;
+    startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+    startSnapDistanceM = startCandidate.snapDistanceM;
+    startSnapApplied = true;
+  } else if (startCandidate.type === 'node') {
+    startId = startCandidate.nodeId;
+  }
+
+  if (startSnapApplied) {
+    endCandidate = findEndpointCandidate(endCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+    endSnapDistanceM = endCandidate.snapDistanceM;
+  }
+
+  if (endCandidate.type === 'segment' && endCandidate.snapDistanceM <= maxAcceptableSnapDistanceM) {
+    const snapResult = createAugmentedGraph(workingGraph, endCandidate.segmentSnap);
+    workingGraph = snapResult;
+    endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+    endSnapDistanceM = endCandidate.snapDistanceM;
+    endSnapApplied = true;
+  } else if (endCandidate.type === 'node') {
+    endId = endCandidate.nodeId;
+  }
+
+  if (startId === -1 || endId === -1) {
+    return {
+      graph: workingGraph,
+      startId,
+      endId,
+      startSnapDistanceM,
+      endSnapDistanceM,
+      usedSnapDistanceM,
+    };
+  }
+
   return {
-    t,
-    projected: [ax + dx * t, ay + dy * t],
+    graph: workingGraph,
+    startId,
+    endId,
+    startSnapDistanceM,
+    endSnapDistanceM,
+    usedSnapDistanceM,
   };
-}
-
-function findClosestSegmentProjection(coords, graph, maxDistM) {
-  const nodeIds = getNearbyNodeIds(graph, coords, maxDistM + SEGMENT_SNAP_EXTRA_M);
-  const incident = buildIncidentEdgeIndex(graph);
-  const candidateEdges = new Set();
-  for (const nodeId of nodeIds) {
-    const edges = incident[nodeId];
-    if (!edges) continue;
-    for (const edgeIndex of edges) candidateEdges.add(edgeIndex);
-  }
-
-  if (candidateEdges.size === 0) {
-    for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex++) {
-      candidateEdges.add(edgeIndex);
-    }
-  }
-
-  const cosLat = Math.cos(coords[1] * DEG_TO_RAD);
-  const spanThreshold = Math.max(1, maxDistM * SEGMENT_SNAP_SPAN_FACTOR);
-  let best = null;
-
-  const scanEdge = (edgeIndex) => {
-    const edge = graph.edges[edgeIndex];
-    if (!edge) return;
-    const a = graph.nodes.get(edge.source)?.coords;
-    const b = graph.nodes.get(edge.target)?.coords;
-    if (!a || !b) return;
-    if (edge.cost === -1 && edge.reverseCost === -1) return;
-
-    const projection = projectPointOnSegment(coords, a, b, cosLat);
-    if (!projection) return;
-    const { t, projected } = projection;
-    if (t <= 0 || t >= 1) return;
-
-    const projectedCoords = [projected[0] / cosLat, projected[1]];
-    const distanceM = haversine(coords, projectedCoords);
-    if (distanceM > maxDistM) return;
-
-    const distToA = haversine(coords, a);
-    const distToB = haversine(coords, b);
-    if (distToA <= spanThreshold || distToB <= spanThreshold) return;
-
-    if (!best || distanceM < best.distanceM) {
-      best = {
-        edge,
-        edgeIndex,
-        projectedCoords,
-        distanceM,
-        source: edge.source,
-        target: edge.target,
-        t,
-      };
-    }
-  };
-
-  for (const edgeIndex of candidateEdges) {
-    scanEdge(edgeIndex);
-  }
-
-  if (candidateEdges.size > 0) {
-    for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex++) {
-      if (candidateEdges.has(edgeIndex)) continue;
-      scanEdge(edgeIndex);
-    }
-  }
-
-  return best;
-}
-
-function createAugmentedNodes(baseNodes, newNodeId, projectedCoords) {
-  return {
-    size: baseNodes.size + 1,
-    get(id) {
-      return id === newNodeId ? { id: newNodeId, coords: projectedCoords } : baseNodes.get(id);
-    },
-  };
-}
-
-function createAugmentedEdges(baseEdges, removedEdgeIndex, insertedEdges) {
-  const baseLength = baseEdges.length;
-  const length = baseLength - 1 + insertedEdges.length;
-
-  const getEdgeAt = (index) => {
-    if (index < 0 || index >= length) return undefined;
-    if (index < removedEdgeIndex) return baseEdges[index];
-    if (index < baseLength - 1) return baseEdges[index + 1];
-    return insertedEdges[index - (baseLength - 1)];
-  };
-
-  const edgeContainer = { baseEdges, removedEdgeIndex, insertedEdges };
-
-  return new Proxy(edgeContainer, {
-    get(target, prop, receiver) {
-      if (prop === 'length') return length;
-      if (prop === Symbol.iterator) {
-        return function* () {
-          for (let i = 0; i < length; i++) yield getEdgeAt(i);
-        };
-      }
-
-      if (typeof prop === 'symbol') {
-        return Reflect.get(target, prop, receiver);
-      }
-
-      const index = Number(prop);
-      if (!Number.isNaN(index) && String(index) === prop) {
-        return getEdgeAt(index);
-      }
-
-      return Reflect.get(target, prop, receiver);
-    },
-    has(target, prop) {
-      if (typeof prop === 'symbol') {
-        return prop in target;
-      }
-      const index = Number(prop);
-      if (!Number.isNaN(index) && String(index) === prop) {
-        return index >= 0 && index < length;
-      }
-      return prop in target;
-    },
-    ownKeys() {
-      const keys = [];
-      for (let i = 0; i < length; i++) keys.push(String(i));
-      keys.push('length');
-      return keys;
-    },
-    getOwnPropertyDescriptor(target, prop) {
-      if (prop === 'length') {
-        return { configurable: true, enumerable: false, value: length, writable: false };
-      }
-      if (typeof prop === 'symbol') {
-        return Reflect.getOwnPropertyDescriptor(target, prop);
-      }
-      const index = Number(prop);
-      if (!Number.isNaN(index) && String(index) === prop && index >= 0 && index < length) {
-        return { configurable: true, enumerable: true, value: getEdgeAt(index), writable: false };
-      }
-      return Reflect.getOwnPropertyDescriptor(target, prop);
-    },
-  });
-}
-
-function createAugmentedGraph(graph, snap) {
-  const newNodeId = graph.nodes.size;
-  const augmentedNodes = createAugmentedNodes(graph.nodes, newNodeId, snap.projectedCoords);
-
-  const sourceCoords = graph.nodes.get(snap.edge.source).coords;
-  const targetCoords = graph.nodes.get(snap.edge.target).coords;
-  const lengthA = haversine(sourceCoords, snap.projectedCoords);
-  const lengthB = haversine(snap.projectedCoords, targetCoords);
-  const travelTimeA = lengthA / (snap.edge.speed / 3.6);
-  const travelTimeB = lengthB / (snap.edge.speed / 3.6);
-  const props = snap.edge.properties;
-  const score = snap.edge.fibonacciScore;
-  const baseEdgeId = Number.isFinite(snap.edge.id) ? snap.edge.id : graph.edges.length;
-  const firstEdgeId = -(baseEdgeId * 2 + 1);
-  const secondEdgeId = -(baseEdgeId * 2 + 2);
-
-  const costA = snap.edge.cost === -1 ? -1 : lengthA;
-  const costB = snap.edge.cost === -1 ? -1 : lengthB;
-  const reverseCostA = snap.edge.reverseCost === -1 ? -1 : lengthA;
-  const reverseCostB = snap.edge.reverseCost === -1 ? -1 : lengthB;
-
-  const insertedEdges = [
-    {
-      id: firstEdgeId,
-      source: snap.edge.source,
-      target: newNodeId,
-      cost: costA,
-      reverseCost: reverseCostA,
-      length: lengthA,
-      speed: snap.edge.speed,
-      travelTime: travelTimeA,
-      properties: props,
-      fibonacciScore: score,
-    },
-    {
-      id: secondEdgeId,
-      source: newNodeId,
-      target: snap.edge.target,
-      cost: costB,
-      reverseCost: reverseCostB,
-      length: lengthB,
-      speed: snap.edge.speed,
-      travelTime: travelTimeB,
-      properties: props,
-      fibonacciScore: score,
-    },
-  ];
-
-  const augmentedEdges = createAugmentedEdges(graph.edges, snap.edgeIndex, insertedEdges);
-
-  const augmentedGraph = {
-    ...graph,
-    nodes: augmentedNodes,
-    edges: augmentedEdges,
-    nodeIndex: graph.nodeIndex && new Map(graph.nodeIndex),
-  };
-  delete augmentedGraph._spatialIndex;
-  delete augmentedGraph._incidentEdgeIndex;
-  delete augmentedGraph._prepared;
-  return augmentedGraph;
-}
-
-function tryAddSegmentSnap(graph, coords, maxDistM) {
-  const snap = findClosestSegmentProjection(coords, graph, maxDistM);
-  if (!snap) return null;
-  const augmentedGraph = createAugmentedGraph(graph, snap);
-  return {
-    graph: augmentedGraph,
-    nodeId: augmentedGraph.nodes.size - 1,
-    snapDistanceM: snap.distanceM,
-  };
-}
-
-export function nearestNode(coords, graph, maxDistM = 500) {
-  if (!graph._spatialIndex) {
-    graph._spatialIndex = buildSpatialIndex(graph);
-  }
-  const { index, coordsArr } = graph._spatialIndex;
-
-  const [lng, lat] = coords;
-  const cosLat = Math.cos(lat * DEG_TO_RAD);
-  const radiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
-  const candidates = index.within(lng, lat, radiusDeg);
-
-  if (candidates.length === 0) return -1;
-
-  let bestId = -1;
-  let bestDist = maxDistM;
-  for (const id of candidates) {
-    // Direct array lookup — avoids Map.get() per candidate.
-    const d = haversine(coords, coordsArr[id]);
-    if (d < bestDist) {
-      bestDist = d;
-      bestId = id;
-    }
-  }
-  return bestId;
 }
 
 export async function computeRoute(startCoords, endCoords, graph, options = {}) {
@@ -1086,6 +942,10 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   let endId = -1;
   let usedSnapDistance = distances[distances.length - 1];
 
+  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
+    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: 'no_node' };
+  }
+
   let workingGraph = graph;
   for (const maxDistM of distances) {
     startId = nearestNode(startCoords, workingGraph, maxDistM);
@@ -1095,23 +955,25 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   }
   logger.log(() => `nearestNode: start=${startId}, end=${endId}, snap=${usedSnapDistance} m`);
 
-  if (startId === -1 || endId === -1) {
-    logger.warn(() => `No node found within ${usedSnapDistance} m of start or end coordinates`);
+  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
     return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: 'no_node' };
   }
 
-  const spatialCoordsArr = workingGraph._spatialIndex?.coordsArr;
-  let startSnapDistanceM = haversine(
-    startCoords,
-    spatialCoordsArr?.[startId] ?? workingGraph.nodes.get(startId).coords,
-  );
-  let endSnapDistanceM = haversine(
-    endCoords,
-    spatialCoordsArr?.[endId] ?? workingGraph.nodes.get(endId).coords,
-  );
+  if (startId === -1 || endId === -1) {
+    logger.warn(() => `No node found within ${usedSnapDistance} m of start or end coordinates`);
+  }
 
-  const startSegmentSnap = findClosestSegmentProjection(startCoords, workingGraph, maxAcceptableSnapDistanceM);
-  const endSegmentSnap = findClosestSegmentProjection(endCoords, workingGraph, maxAcceptableSnapDistanceM);
+  let startSnapDistanceM = startId === -1
+    ? Infinity
+    : haversine(startCoords, workingGraph.nodes.get(startId).coords);
+  let endSnapDistanceM = endId === -1
+    ? Infinity
+    : haversine(endCoords, workingGraph.nodes.get(endId).coords);
+
+  let startCandidate = findEndpointCandidate(startCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+  let endCandidate = findEndpointCandidate(endCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+  let startSegmentSnap = startCandidate.segmentSnap;
+  let endSegmentSnap = endCandidate.segmentSnap;
   let startSnapApplied = false;
   let endSnapApplied = false;
   const baseGraph = workingGraph;
@@ -1120,42 +982,34 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   const originalStartSnapDistanceM = startSnapDistanceM;
   const originalEndSnapDistanceM = endSnapDistanceM;
 
-  if (
-    startSegmentSnap
-    && startSegmentSnap.distanceM <= maxAcceptableSnapDistanceM
-  ) {
-    const snapResult = createAugmentedGraph(workingGraph, startSegmentSnap);
+  if (startCandidate.type === 'segment') {
+    const snapResult = createAugmentedGraph(workingGraph, startCandidate.segmentSnap);
     workingGraph = snapResult;
-    startId = workingGraph.nodes.size - 1;
-    startSnapDistanceM = startSegmentSnap.distanceM;
+    startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+    startSnapDistanceM = startCandidate.snapDistanceM;
     startSnapApplied = true;
-  } else if (startSnapDistanceM > maxAcceptableSnapDistanceM) {
-    const snapResult = tryAddSegmentSnap(workingGraph, startCoords, maxAcceptableSnapDistanceM);
-    if (snapResult) {
-      workingGraph = snapResult.graph;
-      startId = snapResult.nodeId;
-      startSnapDistanceM = snapResult.snapDistanceM;
-      startSnapApplied = true;
-    }
+
+    endCandidate = findEndpointCandidate(endCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+    endSegmentSnap = endCandidate.segmentSnap;
+    endSnapDistanceM = endCandidate.snapDistanceM;
+  } else if (startCandidate.type === 'node') {
+    startId = startCandidate.nodeId;
+    startSnapDistanceM = startCandidate.snapDistanceM;
   }
 
-  if (
-    endSegmentSnap
-    && endSegmentSnap.distanceM <= maxAcceptableSnapDistanceM
-  ) {
-    const snapResult = createAugmentedGraph(workingGraph, endSegmentSnap);
+  if (endCandidate.type === 'segment') {
+    const snapResult = createAugmentedGraph(workingGraph, endCandidate.segmentSnap);
     workingGraph = snapResult;
-    endId = workingGraph.nodes.size - 1;
-    endSnapDistanceM = endSegmentSnap.distanceM;
+    endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+    endSnapDistanceM = endCandidate.snapDistanceM;
     endSnapApplied = true;
-  } else if (endSnapDistanceM > maxAcceptableSnapDistanceM) {
-    const snapResult = tryAddSegmentSnap(workingGraph, endCoords, maxAcceptableSnapDistanceM);
-    if (snapResult) {
-      workingGraph = snapResult.graph;
-      endId = snapResult.nodeId;
-      endSnapDistanceM = snapResult.snapDistanceM;
-      endSnapApplied = true;
-    }
+  } else if (endCandidate.type === 'node') {
+    endId = endCandidate.nodeId;
+    endSnapDistanceM = endCandidate.snapDistanceM;
+  }
+
+  if (startId === -1 || endId === -1) {
+    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: 'no_node' };
   }
 
   if (
@@ -1178,7 +1032,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   }
 
   if (startId === endId) {
-    const coords = spatialCoordsArr?.[startId] ?? workingGraph.nodes.get(startId).coords;
+    const coords = workingGraph.nodes.get(startId).coords;
     return {
       path: [startId],
       coordinates: [coords],
@@ -1191,15 +1045,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     };
   }
 
-  const prepared = workingGraph._prepared?.[costField]?.[penaltyKey] ?? (() => {
-    const p = buildCH(workingGraph, costField, normalizedPenalties);
-    const metrics = getAllGraphMetrics(p, workingGraph, startId, endId);
-    (workingGraph._prepared ??= {});
-    (workingGraph._prepared[costField] ??= {});
-    workingGraph._prepared[costField][penaltyKey] = p;
-    p.metrics = metrics;
-    return p;
-  })();
+  const prepared = getPreparedGraph(workingGraph, costField, normalizedPenalties, startId, endId);
 
   logger.log('dispatching route query...');
   const result = await queryRoute(startId, endId, prepared, { graphCategory, costField });
@@ -1216,17 +1062,17 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       if (canFallbackWithStartSnap) {
         const snapResult = createAugmentedGraph(fallbackGraph, startSegmentSnap);
         fallbackGraph = snapResult;
-        fallbackStartId = fallbackGraph.nodes.size - 1;
+        fallbackStartId = fallbackGraph._lastAddedNodeId ?? fallbackGraph.nodes.size - 1;
       }
 
       if (canFallbackWithEndSnap) {
         const snapResult = createAugmentedGraph(fallbackGraph, endSegmentSnap);
         fallbackGraph = snapResult;
-        fallbackEndId = fallbackGraph.nodes.size - 1;
+        fallbackEndId = fallbackGraph._lastAddedNodeId ?? fallbackGraph.nodes.size - 1;
       }
 
       if (fallbackGraph !== workingGraph) {
-        const fallbackPrepared = buildCH(fallbackGraph, costField, normalizedPenalties);
+        const fallbackPrepared = getPreparedGraph(fallbackGraph, costField, normalizedPenalties, fallbackStartId, fallbackEndId);
         const fallbackResult = await queryRoute(fallbackStartId, fallbackEndId, fallbackPrepared, { graphCategory, costField });
         if (fallbackResult.found) {
           const fallbackCoordinates = fallbackResult.path.map((id) => fallbackGraph.nodes.get(id).coords);
@@ -1243,7 +1089,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     }
 
     if ((startSnapApplied || endSnapApplied) && (result.reason === 'no_path' || result.reason === 'incomplete_path')) {
-      const basePrepared = buildCH(baseGraph, costField, normalizedPenalties);
+      const basePrepared = getPreparedGraph(baseGraph, costField, normalizedPenalties, baseStartId, baseEndId);
       const baseResult = await queryRoute(baseStartId, baseEndId, basePrepared, { graphCategory, costField });
       if (baseResult.found) {
         const baseCoordinates = baseResult.path.map((id) => baseGraph.nodes.get(id).coords);
@@ -1304,19 +1150,5 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
 
 export function prepareGraph(graph, costField = 'distance', penalties = {}, sourceId = -1, targetId = -1, opts = {}) {
   const normalizedPenalties = normalizePenalties(penalties);
-  const penaltyKey = getPenaltyKey(costField, normalizedPenalties);
-  const prepared = graph._prepared?.[costField]?.[penaltyKey];
-  if (prepared) {
-    if (!prepared.metrics) {
-      prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
-    }
-    return prepared;
-  }
-
-  const p = buildCH(graph, costField, normalizedPenalties);
-  p.metrics = getAllGraphMetrics(p, graph, sourceId, targetId, opts);
-  (graph._prepared ??= {});
-  (graph._prepared[costField] ??= {});
-  graph._prepared[costField][penaltyKey] = p;
-  return p;
+  return getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targetId, opts);
 }

@@ -7,9 +7,12 @@ yarn-error.log*
 lerna-debug.log*
 tmp/
 notes.md
-benchmark/results/
+benchmark/results/old/
+benchmark/results/*.json
+benchmark/results/analysis/engine_selector_ml_latest_baseline*
 .vscode/
 __pycache__/
+.venv/
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

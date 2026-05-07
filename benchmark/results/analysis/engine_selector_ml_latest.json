@@ -1,6 +1,4 @@
-
-
-export const ROUTER_TUNING_ML_MODEL = Object.freeze({
+{
   "generatedAt": "2026-05-07T09:56:04.200215+00:00",
   "featureOrder": [
     "safeN",
@@ -1749,6 +1747,1236 @@ export const ROUTER_TUNING_ML_MODEL = Object.freeze({
         "featureSelectionApplied": true,
         "featureSelectionScoreGain": 0.044939,
         "samples": 9587
+      },
+      "featureImportance": {
+        "topFeatures": [
+          {
+            "feature": "logGlobalCoverage",
+            "category": "log",
+            "meanAbsCoefficient": 0.797576877010921,
+            "maxAbsCoefficient": 1.3051226961643323,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -1.3051226961643323,
+              "adaptive-barrier": -0.7555490979278507,
+              "delta-stepping": -0.5871553777322432,
+              "ultra-dijkstra": -0.5424803362192572
+            }
+          },
+          {
+            "feature": "logCoverageEmptyContrast",
+            "category": "log",
+            "meanAbsCoefficient": 0.6951695117018671,
+            "maxAbsCoefficient": 1.4751172762617384,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 1.4751172762617384,
+              "adaptive-barrier": 0.39061978106314266,
+              "delta-stepping": 0.4068920868259631,
+              "ultra-dijkstra": 0.5080489026566241
+            }
+          },
+          {
+            "feature": "safeE",
+            "category": "base",
+            "meanAbsCoefficient": 0.4415868157512429,
+            "maxAbsCoefficient": 0.8829319113675991,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.8829319113675991,
+              "adaptive-barrier": 0.5660981843569954,
+              "delta-stepping": 0.1824591666645739,
+              "ultra-dijkstra": -0.13485800061580333
+            }
+          },
+          {
+            "feature": "logE",
+            "category": "log",
+            "meanAbsCoefficient": 0.4151888152625537,
+            "maxAbsCoefficient": 0.4683485453038677,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": 0.38526134004751655,
+              "adaptive-barrier": 0.4683485453038677,
+              "delta-stepping": 0.34363114385792803,
+              "ultra-dijkstra": 0.4635142318409025
+            }
+          },
+          {
+            "feature": "coverageEmptyContrast",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.4059485113810164,
+            "maxAbsCoefficient": 0.9577451952829442,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.9577451952829442,
+              "adaptive-barrier": -0.12254838845595299,
+              "delta-stepping": -0.17067095320017023,
+              "ultra-dijkstra": -0.37282950858499814
+            }
+          },
+          {
+            "feature": "densityBySize",
+            "category": "other",
+            "meanAbsCoefficient": 0.35169998087715504,
+            "maxAbsCoefficient": 0.49035281887443044,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": -0.35877773843910377,
+              "adaptive-barrier": -0.49035281887443044,
+              "delta-stepping": -0.3514977567587313,
+              "ultra-dijkstra": -0.20617160943635465
+            }
+          },
+          {
+            "feature": "logN",
+            "category": "log",
+            "meanAbsCoefficient": 0.3507953320290929,
+            "maxAbsCoefficient": 0.4709339883515347,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.15887392066030265,
+              "adaptive-barrier": 0.4008198131524192,
+              "delta-stepping": 0.3725536059521151,
+              "ultra-dijkstra": 0.4709339883515347
+            }
+          },
+          {
+            "feature": "logBeelineKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.35037284311076505,
+            "maxAbsCoefficient": 0.8767496453133989,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.8767496453133989,
+              "adaptive-barrier": 0.18845151678066235,
+              "delta-stepping": 0.31025283110703344,
+              "ultra-dijkstra": -0.02603737924196555
+            }
+          },
+          {
+            "feature": "globalCoverageTimesEmptyRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.3480379755070976,
+            "maxAbsCoefficient": 0.6534189673248405,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.6534189673248405,
+              "adaptive-barrier": 0.2575185729625983,
+              "delta-stepping": 0.2188601632642237,
+              "ultra-dijkstra": 0.26235419847672803
+            }
+          },
+          {
+            "feature": "safeN",
+            "category": "base",
+            "meanAbsCoefficient": 0.3463568105454604,
+            "maxAbsCoefficient": 0.5186618469762597,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": -0.3141347075771165,
+              "adaptive-barrier": 0.2169751689552697,
+              "delta-stepping": 0.33565551867319576,
+              "ultra-dijkstra": 0.5186618469762597
+            }
+          },
+          {
+            "feature": "coverageEmptyContrastTimesLogAvgBranchFactor",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.30195490137512754,
+            "maxAbsCoefficient": 0.5314277187618132,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5314277187618132,
+              "adaptive-barrier": 0.21774114073523976,
+              "delta-stepping": 0.22962770031782867,
+              "ultra-dijkstra": 0.22902304568562865
+            }
+          },
+          {
+            "feature": "safeBeelineKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.19107745815910693,
+            "maxAbsCoefficient": 0.3471756431756933,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.3471756431756933,
+              "adaptive-barrier": 0.10041428792482505,
+              "delta-stepping": 0.18795147274626572,
+              "ultra-dijkstra": 0.12876842878964362
+            }
+          },
+          {
+            "feature": "safeBeelineKmOverSizeRatioEN",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.18618814958596486,
+            "maxAbsCoefficient": 0.32758615103244487,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.014100844344882572,
+              "adaptive-barrier": -0.23493118353735004,
+              "delta-stepping": -0.32758615103244487,
+              "ultra-dijkstra": -0.16813441942918192
+            }
+          },
+          {
+            "feature": "sizeRatioEN",
+            "category": "base",
+            "meanAbsCoefficient": 0.1661497416015794,
+            "maxAbsCoefficient": 0.5655376123900308,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.5655376123900308,
+              "adaptive-barrier": 0.03747426707397304,
+              "delta-stepping": 0.0491747689967621,
+              "ultra-dijkstra": -0.012412317945551676
+            }
+          },
+          {
+            "feature": "avgOutDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.16614974160143525,
+            "maxAbsCoefficient": 0.5655376123895399,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.5655376123895399,
+              "adaptive-barrier": 0.037474267073940616,
+              "delta-stepping": 0.04917476899671972,
+              "ultra-dijkstra": -0.012412317945540754
+            }
+          },
+          {
+            "feature": "avgBranchFactor",
+            "category": "base",
+            "meanAbsCoefficient": 0.16614974159943643,
+            "maxAbsCoefficient": 0.5655376123827333,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.5655376123827333,
+              "adaptive-barrier": 0.03747426707332716,
+              "delta-stepping": 0.04917476899620751,
+              "ultra-dijkstra": -0.012412317945477792
+            }
+          },
+          {
+            "feature": "logEoverN",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657129855,
+            "maxAbsCoefficient": 0.5145727330925333,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330925333,
+              "adaptive-barrier": -0.04947688657503142,
+              "delta-stepping": -0.06045227310818545,
+              "ultra-dijkstra": 0.0047479335094440635
+            }
+          },
+          {
+            "feature": "logAvgBranchFactor",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657101767,
+            "maxAbsCoefficient": 0.5145727330917905,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330917905,
+              "adaptive-barrier": -0.049476886574682626,
+              "delta-stepping": -0.0604522731079666,
+              "ultra-dijkstra": 0.004747933509630894
+            }
+          },
+          {
+            "feature": "logAvgOutDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657098866,
+            "maxAbsCoefficient": 0.5145727330917135,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330917135,
+              "adaptive-barrier": -0.049476886574820945,
+              "delta-stepping": -0.060452273108038176,
+              "ultra-dijkstra": 0.004747933509382038
+            }
+          },
+          {
+            "feature": "edgesPerKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.0889462524899846,
+            "maxAbsCoefficient": 0.2684893777936258,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.2684893777936258,
+              "adaptive-barrier": 0.04163932410257375,
+              "delta-stepping": 0.032828639681735265,
+              "ultra-dijkstra": 0.012827668382003554
+            }
+          }
+        ],
+        "topDerivedFeatures": [
+          {
+            "feature": "logGlobalCoverage",
+            "category": "log",
+            "meanAbsCoefficient": 0.797576877010921,
+            "maxAbsCoefficient": 1.3051226961643323,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -1.3051226961643323,
+              "adaptive-barrier": -0.7555490979278507,
+              "delta-stepping": -0.5871553777322432,
+              "ultra-dijkstra": -0.5424803362192572
+            }
+          },
+          {
+            "feature": "logCoverageEmptyContrast",
+            "category": "log",
+            "meanAbsCoefficient": 0.6951695117018671,
+            "maxAbsCoefficient": 1.4751172762617384,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 1.4751172762617384,
+              "adaptive-barrier": 0.39061978106314266,
+              "delta-stepping": 0.4068920868259631,
+              "ultra-dijkstra": 0.5080489026566241
+            }
+          },
+          {
+            "feature": "logE",
+            "category": "log",
+            "meanAbsCoefficient": 0.4151888152625537,
+            "maxAbsCoefficient": 0.4683485453038677,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": 0.38526134004751655,
+              "adaptive-barrier": 0.4683485453038677,
+              "delta-stepping": 0.34363114385792803,
+              "ultra-dijkstra": 0.4635142318409025
+            }
+          },
+          {
+            "feature": "coverageEmptyContrast",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.4059485113810164,
+            "maxAbsCoefficient": 0.9577451952829442,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.9577451952829442,
+              "adaptive-barrier": -0.12254838845595299,
+              "delta-stepping": -0.17067095320017023,
+              "ultra-dijkstra": -0.37282950858499814
+            }
+          },
+          {
+            "feature": "densityBySize",
+            "category": "other",
+            "meanAbsCoefficient": 0.35169998087715504,
+            "maxAbsCoefficient": 0.49035281887443044,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": -0.35877773843910377,
+              "adaptive-barrier": -0.49035281887443044,
+              "delta-stepping": -0.3514977567587313,
+              "ultra-dijkstra": -0.20617160943635465
+            }
+          },
+          {
+            "feature": "logN",
+            "category": "log",
+            "meanAbsCoefficient": 0.3507953320290929,
+            "maxAbsCoefficient": 0.4709339883515347,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.15887392066030265,
+              "adaptive-barrier": 0.4008198131524192,
+              "delta-stepping": 0.3725536059521151,
+              "ultra-dijkstra": 0.4709339883515347
+            }
+          },
+          {
+            "feature": "logBeelineKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.35037284311076505,
+            "maxAbsCoefficient": 0.8767496453133989,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.8767496453133989,
+              "adaptive-barrier": 0.18845151678066235,
+              "delta-stepping": 0.31025283110703344,
+              "ultra-dijkstra": -0.02603737924196555
+            }
+          },
+          {
+            "feature": "globalCoverageTimesEmptyRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.3480379755070976,
+            "maxAbsCoefficient": 0.6534189673248405,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.6534189673248405,
+              "adaptive-barrier": 0.2575185729625983,
+              "delta-stepping": 0.2188601632642237,
+              "ultra-dijkstra": 0.26235419847672803
+            }
+          },
+          {
+            "feature": "coverageEmptyContrastTimesLogAvgBranchFactor",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.30195490137512754,
+            "maxAbsCoefficient": 0.5314277187618132,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5314277187618132,
+              "adaptive-barrier": 0.21774114073523976,
+              "delta-stepping": 0.22962770031782867,
+              "ultra-dijkstra": 0.22902304568562865
+            }
+          },
+          {
+            "feature": "safeBeelineKmOverSizeRatioEN",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.18618814958596486,
+            "maxAbsCoefficient": 0.32758615103244487,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.014100844344882572,
+              "adaptive-barrier": -0.23493118353735004,
+              "delta-stepping": -0.32758615103244487,
+              "ultra-dijkstra": -0.16813441942918192
+            }
+          },
+          {
+            "feature": "logEoverN",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657129855,
+            "maxAbsCoefficient": 0.5145727330925333,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330925333,
+              "adaptive-barrier": -0.04947688657503142,
+              "delta-stepping": -0.06045227310818545,
+              "ultra-dijkstra": 0.0047479335094440635
+            }
+          },
+          {
+            "feature": "logAvgBranchFactor",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657101767,
+            "maxAbsCoefficient": 0.5145727330917905,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330917905,
+              "adaptive-barrier": -0.049476886574682626,
+              "delta-stepping": -0.0604522731079666,
+              "ultra-dijkstra": 0.004747933509630894
+            }
+          },
+          {
+            "feature": "logAvgOutDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657098866,
+            "maxAbsCoefficient": 0.5145727330917135,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330917135,
+              "adaptive-barrier": -0.049476886574820945,
+              "delta-stepping": -0.060452273108038176,
+              "ultra-dijkstra": 0.004747933509382038
+            }
+          },
+          {
+            "feature": "logEdgesPerKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.08123387995612667,
+            "maxAbsCoefficient": 0.1525732273247515,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.027934325339284947,
+              "adaptive-barrier": -0.09203724475301205,
+              "delta-stepping": -0.0523907224074582,
+              "ultra-dijkstra": -0.1525732273247515
+            }
+          },
+          {
+            "feature": "logCoverageDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.07105661080424806,
+            "maxAbsCoefficient": 0.16789934770407208,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.16789934770407208,
+              "adaptive-barrier": 0.03136949128759399,
+              "delta-stepping": -0.05582122443698226,
+              "ultra-dijkstra": 0.02913637978834386
+            }
+          },
+          {
+            "feature": "avgOutDegreeTimesLogRelativeDensity",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.05017108202586571,
+            "maxAbsCoefficient": 0.10798475353554403,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.10798475353554403,
+              "adaptive-barrier": 0.029261313050539816,
+              "delta-stepping": 0.04854159771999221,
+              "ultra-dijkstra": 0.01489666379738678
+            }
+          },
+          {
+            "feature": "logBeelinePerNode",
+            "category": "log",
+            "meanAbsCoefficient": 0.04949160713678716,
+            "maxAbsCoefficient": 0.08769834324356408,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.026543312663116304,
+              "adaptive-barrier": -0.038518322687524933,
+              "delta-stepping": -0.08769834324356408,
+              "ultra-dijkstra": -0.04520644995294332
+            }
+          },
+          {
+            "feature": "logSourceDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.01842535386610313,
+            "maxAbsCoefficient": 0.03756785398073496,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.011726071265902638,
+              "adaptive-barrier": 0.00949589261153851,
+              "delta-stepping": 0.03756785398073496,
+              "ultra-dijkstra": 0.01491159760623641
+            }
+          },
+          {
+            "feature": "logSourceTargetCentralityRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.0034049733713669116,
+            "maxAbsCoefficient": 0.00610941384695378,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.002169679952628663,
+              "adaptive-barrier": -0.002418090782724569,
+              "delta-stepping": -0.00610941384695378,
+              "ultra-dijkstra": -0.0029227089031606352
+            }
+          },
+          {
+            "feature": "logRelativeDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          }
+        ],
+        "featureRankings": [
+          {
+            "feature": "logGlobalCoverage",
+            "category": "log",
+            "meanAbsCoefficient": 0.797576877010921,
+            "maxAbsCoefficient": 1.3051226961643323,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -1.3051226961643323,
+              "adaptive-barrier": -0.7555490979278507,
+              "delta-stepping": -0.5871553777322432,
+              "ultra-dijkstra": -0.5424803362192572
+            }
+          },
+          {
+            "feature": "logCoverageEmptyContrast",
+            "category": "log",
+            "meanAbsCoefficient": 0.6951695117018671,
+            "maxAbsCoefficient": 1.4751172762617384,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 1.4751172762617384,
+              "adaptive-barrier": 0.39061978106314266,
+              "delta-stepping": 0.4068920868259631,
+              "ultra-dijkstra": 0.5080489026566241
+            }
+          },
+          {
+            "feature": "safeE",
+            "category": "base",
+            "meanAbsCoefficient": 0.4415868157512429,
+            "maxAbsCoefficient": 0.8829319113675991,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.8829319113675991,
+              "adaptive-barrier": 0.5660981843569954,
+              "delta-stepping": 0.1824591666645739,
+              "ultra-dijkstra": -0.13485800061580333
+            }
+          },
+          {
+            "feature": "logE",
+            "category": "log",
+            "meanAbsCoefficient": 0.4151888152625537,
+            "maxAbsCoefficient": 0.4683485453038677,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": 0.38526134004751655,
+              "adaptive-barrier": 0.4683485453038677,
+              "delta-stepping": 0.34363114385792803,
+              "ultra-dijkstra": 0.4635142318409025
+            }
+          },
+          {
+            "feature": "coverageEmptyContrast",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.4059485113810164,
+            "maxAbsCoefficient": 0.9577451952829442,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.9577451952829442,
+              "adaptive-barrier": -0.12254838845595299,
+              "delta-stepping": -0.17067095320017023,
+              "ultra-dijkstra": -0.37282950858499814
+            }
+          },
+          {
+            "feature": "densityBySize",
+            "category": "other",
+            "meanAbsCoefficient": 0.35169998087715504,
+            "maxAbsCoefficient": 0.49035281887443044,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": -0.35877773843910377,
+              "adaptive-barrier": -0.49035281887443044,
+              "delta-stepping": -0.3514977567587313,
+              "ultra-dijkstra": -0.20617160943635465
+            }
+          },
+          {
+            "feature": "logN",
+            "category": "log",
+            "meanAbsCoefficient": 0.3507953320290929,
+            "maxAbsCoefficient": 0.4709339883515347,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.15887392066030265,
+              "adaptive-barrier": 0.4008198131524192,
+              "delta-stepping": 0.3725536059521151,
+              "ultra-dijkstra": 0.4709339883515347
+            }
+          },
+          {
+            "feature": "logBeelineKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.35037284311076505,
+            "maxAbsCoefficient": 0.8767496453133989,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.8767496453133989,
+              "adaptive-barrier": 0.18845151678066235,
+              "delta-stepping": 0.31025283110703344,
+              "ultra-dijkstra": -0.02603737924196555
+            }
+          },
+          {
+            "feature": "globalCoverageTimesEmptyRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.3480379755070976,
+            "maxAbsCoefficient": 0.6534189673248405,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.6534189673248405,
+              "adaptive-barrier": 0.2575185729625983,
+              "delta-stepping": 0.2188601632642237,
+              "ultra-dijkstra": 0.26235419847672803
+            }
+          },
+          {
+            "feature": "safeN",
+            "category": "base",
+            "meanAbsCoefficient": 0.3463568105454604,
+            "maxAbsCoefficient": 0.5186618469762597,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": -0.3141347075771165,
+              "adaptive-barrier": 0.2169751689552697,
+              "delta-stepping": 0.33565551867319576,
+              "ultra-dijkstra": 0.5186618469762597
+            }
+          },
+          {
+            "feature": "coverageEmptyContrastTimesLogAvgBranchFactor",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.30195490137512754,
+            "maxAbsCoefficient": 0.5314277187618132,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5314277187618132,
+              "adaptive-barrier": 0.21774114073523976,
+              "delta-stepping": 0.22962770031782867,
+              "ultra-dijkstra": 0.22902304568562865
+            }
+          },
+          {
+            "feature": "safeBeelineKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.19107745815910693,
+            "maxAbsCoefficient": 0.3471756431756933,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.3471756431756933,
+              "adaptive-barrier": 0.10041428792482505,
+              "delta-stepping": 0.18795147274626572,
+              "ultra-dijkstra": 0.12876842878964362
+            }
+          },
+          {
+            "feature": "safeBeelineKmOverSizeRatioEN",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.18618814958596486,
+            "maxAbsCoefficient": 0.32758615103244487,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.014100844344882572,
+              "adaptive-barrier": -0.23493118353735004,
+              "delta-stepping": -0.32758615103244487,
+              "ultra-dijkstra": -0.16813441942918192
+            }
+          },
+          {
+            "feature": "sizeRatioEN",
+            "category": "base",
+            "meanAbsCoefficient": 0.1661497416015794,
+            "maxAbsCoefficient": 0.5655376123900308,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.5655376123900308,
+              "adaptive-barrier": 0.03747426707397304,
+              "delta-stepping": 0.0491747689967621,
+              "ultra-dijkstra": -0.012412317945551676
+            }
+          },
+          {
+            "feature": "avgOutDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.16614974160143525,
+            "maxAbsCoefficient": 0.5655376123895399,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.5655376123895399,
+              "adaptive-barrier": 0.037474267073940616,
+              "delta-stepping": 0.04917476899671972,
+              "ultra-dijkstra": -0.012412317945540754
+            }
+          },
+          {
+            "feature": "avgBranchFactor",
+            "category": "base",
+            "meanAbsCoefficient": 0.16614974159943643,
+            "maxAbsCoefficient": 0.5655376123827333,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.5655376123827333,
+              "adaptive-barrier": 0.03747426707332716,
+              "delta-stepping": 0.04917476899620751,
+              "ultra-dijkstra": -0.012412317945477792
+            }
+          },
+          {
+            "feature": "logEoverN",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657129855,
+            "maxAbsCoefficient": 0.5145727330925333,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330925333,
+              "adaptive-barrier": -0.04947688657503142,
+              "delta-stepping": -0.06045227310818545,
+              "ultra-dijkstra": 0.0047479335094440635
+            }
+          },
+          {
+            "feature": "logAvgBranchFactor",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657101767,
+            "maxAbsCoefficient": 0.5145727330917905,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330917905,
+              "adaptive-barrier": -0.049476886574682626,
+              "delta-stepping": -0.0604522731079666,
+              "ultra-dijkstra": 0.004747933509630894
+            }
+          },
+          {
+            "feature": "logAvgOutDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.15731245657098866,
+            "maxAbsCoefficient": 0.5145727330917135,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5145727330917135,
+              "adaptive-barrier": -0.049476886574820945,
+              "delta-stepping": -0.060452273108038176,
+              "ultra-dijkstra": 0.004747933509382038
+            }
+          },
+          {
+            "feature": "edgesPerKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.0889462524899846,
+            "maxAbsCoefficient": 0.2684893777936258,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.2684893777936258,
+              "adaptive-barrier": 0.04163932410257375,
+              "delta-stepping": 0.032828639681735265,
+              "ultra-dijkstra": 0.012827668382003554
+            }
+          },
+          {
+            "feature": "nodesPerKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.08137133800783447,
+            "maxAbsCoefficient": 0.20481300432639352,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.20481300432639352,
+              "adaptive-barrier": 0.03019666781123249,
+              "delta-stepping": 0.027599170723968718,
+              "ultra-dijkstra": 0.06287650916974319
+            }
+          },
+          {
+            "feature": "logEdgesPerKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.08123387995612667,
+            "maxAbsCoefficient": 0.1525732273247515,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.027934325339284947,
+              "adaptive-barrier": -0.09203724475301205,
+              "delta-stepping": -0.0523907224074582,
+              "ultra-dijkstra": -0.1525732273247515
+            }
+          },
+          {
+            "feature": "logCoverageDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.07105661080424806,
+            "maxAbsCoefficient": 0.16789934770407208,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.16789934770407208,
+              "adaptive-barrier": 0.03136949128759399,
+              "delta-stepping": -0.05582122443698226,
+              "ultra-dijkstra": 0.02913637978834386
+            }
+          },
+          {
+            "feature": "globalCoverage",
+            "category": "base",
+            "meanAbsCoefficient": 0.06738099154873106,
+            "maxAbsCoefficient": 0.10112005186880675,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.10112005186880675,
+              "adaptive-barrier": 0.09075635810664216,
+              "delta-stepping": 0.043049176776228375,
+              "ultra-dijkstra": -0.03459837944324698
+            }
+          },
+          {
+            "feature": "avgOutDegreeTimesLogRelativeDensity",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.05017108202586571,
+            "maxAbsCoefficient": 0.10798475353554403,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.10798475353554403,
+              "adaptive-barrier": 0.029261313050539816,
+              "delta-stepping": 0.04854159771999221,
+              "ultra-dijkstra": 0.01489666379738678
+            }
+          },
+          {
+            "feature": "logBeelinePerNode",
+            "category": "log",
+            "meanAbsCoefficient": 0.04949160713678716,
+            "maxAbsCoefficient": 0.08769834324356408,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.026543312663116304,
+              "adaptive-barrier": -0.038518322687524933,
+              "delta-stepping": -0.08769834324356408,
+              "ultra-dijkstra": -0.04520644995294332
+            }
+          },
+          {
+            "feature": "emptyRatio",
+            "category": "base",
+            "meanAbsCoefficient": 0.04040015098479472,
+            "maxAbsCoefficient": 0.11552002067478243,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.11552002067478243,
+              "adaptive-barrier": -0.011563279091319654,
+              "delta-stepping": 0.026055287396823282,
+              "ultra-dijkstra": -0.008462016776253535
+            }
+          },
+          {
+            "feature": "logSourceDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.01842535386610313,
+            "maxAbsCoefficient": 0.03756785398073496,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.011726071265902638,
+              "adaptive-barrier": 0.00949589261153851,
+              "delta-stepping": 0.03756785398073496,
+              "ultra-dijkstra": 0.01491159760623641
+            }
+          },
+          {
+            "feature": "logSourceTargetCentralityRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.0034049733713669116,
+            "maxAbsCoefficient": 0.00610941384695378,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.002169679952628663,
+              "adaptive-barrier": -0.002418090782724569,
+              "delta-stepping": -0.00610941384695378,
+              "ultra-dijkstra": -0.0029227089031606352
+            }
+          },
+          {
+            "feature": "beelinePerNode",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "relativeDensity",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logRelativeDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logEmptyRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "sourceDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "targetDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logTargetDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "sourceCentrality",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logSourceCentrality",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "targetCentrality",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logTargetCentrality",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "sourceTargetDegreeRatio",
+            "category": "derived",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logSourceTargetDegreeRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "sourceTargetCentralityRatio",
+            "category": "derived",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "graphDensity",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logGraphDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logNodesPerKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logDensityBySize",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "coverageDensity",
+            "category": "derived",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "degreeProduct",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logDegreeProduct",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "centralityProduct",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logCentralityProduct",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "beelinePerNodeTimesSourceTargetDegreeRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "densityBySizeTimesSourceCentrality",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          }
+        ]
       }
     },
     "sabOn": {
@@ -3069,6 +4297,1236 @@ export const ROUTER_TUNING_ML_MODEL = Object.freeze({
         "featureSelectionApplied": true,
         "featureSelectionScoreGain": 0.017858,
         "samples": 9587
+      },
+      "featureImportance": {
+        "topFeatures": [
+          {
+            "feature": "logGlobalCoverage",
+            "category": "log",
+            "meanAbsCoefficient": 0.7566560099392692,
+            "maxAbsCoefficient": 0.8546068072416192,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.8546068072416192,
+              "adaptive-barrier": -0.67571370018891,
+              "delta-stepping": -0.8513723012108568,
+              "ultra-dijkstra": -0.644931231115691
+            }
+          },
+          {
+            "feature": "safeE",
+            "category": "base",
+            "meanAbsCoefficient": 0.5914920981381465,
+            "maxAbsCoefficient": 0.9079132052136082,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.7126135221247534,
+              "adaptive-barrier": 0.6234836236614646,
+              "delta-stepping": 0.9079132052136082,
+              "ultra-dijkstra": -0.1219580415527601
+            }
+          },
+          {
+            "feature": "logCoverageEmptyContrast",
+            "category": "log",
+            "meanAbsCoefficient": 0.542664616723758,
+            "maxAbsCoefficient": 1.072530533673748,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 1.072530533673748,
+              "adaptive-barrier": 0.23697227208501478,
+              "delta-stepping": 0.2710478362488967,
+              "ultra-dijkstra": 0.5901078248873725
+            }
+          },
+          {
+            "feature": "densityBySize",
+            "category": "other",
+            "meanAbsCoefficient": 0.4909647616999556,
+            "maxAbsCoefficient": 0.9529623689055406,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.34253631295821874,
+              "adaptive-barrier": -0.4786399795758627,
+              "delta-stepping": -0.9529623689055406,
+              "ultra-dijkstra": -0.18972038536020042
+            }
+          },
+          {
+            "feature": "logE",
+            "category": "log",
+            "meanAbsCoefficient": 0.4908104139939462,
+            "maxAbsCoefficient": 0.6033401696391774,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": 0.40102493413895585,
+              "adaptive-barrier": 0.6033401696391774,
+              "delta-stepping": 0.46819316311814807,
+              "ultra-dijkstra": 0.4906833890795034
+            }
+          },
+          {
+            "feature": "logBeelineKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.45174268217757513,
+            "maxAbsCoefficient": 0.9204236280833983,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.9204236280833983,
+              "adaptive-barrier": 0.2384586022305485,
+              "delta-stepping": 0.587903191864208,
+              "ultra-dijkstra": 0.06018530653214588
+            }
+          },
+          {
+            "feature": "coverageEmptyContrast",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.4139119676833635,
+            "maxAbsCoefficient": 0.8320785239248008,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.8320785239248008,
+              "adaptive-barrier": -0.07314210199704432,
+              "delta-stepping": 0.3431145353000957,
+              "ultra-dijkstra": -0.40731270951151344
+            }
+          },
+          {
+            "feature": "globalCoverageTimesEmptyRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.3045039159121389,
+            "maxAbsCoefficient": 0.4949094471615843,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.4949094471615843,
+              "adaptive-barrier": 0.22207689340899517,
+              "delta-stepping": 0.1919439031081966,
+              "ultra-dijkstra": 0.3090854199697795
+            }
+          },
+          {
+            "feature": "logN",
+            "category": "log",
+            "meanAbsCoefficient": 0.2864607906101153,
+            "maxAbsCoefficient": 0.43569727776235434,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.06535096077949183,
+              "adaptive-barrier": 0.23632401926778945,
+              "delta-stepping": 0.43569727776235434,
+              "ultra-dijkstra": 0.40847090463082575
+            }
+          },
+          {
+            "feature": "coverageEmptyContrastTimesLogAvgBranchFactor",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.27113388351754114,
+            "maxAbsCoefficient": 0.5556834099286861,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5556834099286861,
+              "adaptive-barrier": 0.2500382682972967,
+              "delta-stepping": 0.056047294674742364,
+              "ultra-dijkstra": 0.22276656116943935
+            }
+          },
+          {
+            "feature": "safeBeelineKmOverSizeRatioEN",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.25261313605548064,
+            "maxAbsCoefficient": 0.7170456569569449,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.12472288488034368,
+              "adaptive-barrier": -0.04388565214670227,
+              "delta-stepping": -0.7170456569569449,
+              "ultra-dijkstra": -0.12479835023793172
+            }
+          },
+          {
+            "feature": "safeN",
+            "category": "base",
+            "meanAbsCoefficient": 0.24905074577707206,
+            "maxAbsCoefficient": 0.47249781032012883,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": -0.15457951251857793,
+              "adaptive-barrier": 0.1250231581454632,
+              "delta-stepping": 0.24410250212411838,
+              "ultra-dijkstra": 0.47249781032012883
+            }
+          },
+          {
+            "feature": "safeBeelineKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.18426181866090463,
+            "maxAbsCoefficient": 0.3389477373365175,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.2081439612379411,
+              "adaptive-barrier": -0.10124947457771229,
+              "delta-stepping": 0.3389477373365175,
+              "ultra-dijkstra": 0.08870610149144766
+            }
+          },
+          {
+            "feature": "logBeelinePerNode",
+            "category": "log",
+            "meanAbsCoefficient": 0.15936055911351332,
+            "maxAbsCoefficient": 0.26735822729416076,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.05096392098334665,
+              "adaptive-barrier": -0.15852298990895905,
+              "delta-stepping": -0.26735822729416076,
+              "ultra-dijkstra": -0.16059709826758678
+            }
+          },
+          {
+            "feature": "emptyRatio",
+            "category": "base",
+            "meanAbsCoefficient": 0.150363856297308,
+            "maxAbsCoefficient": 0.3433236983521411,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.11037633440540125,
+              "adaptive-barrier": 0.10538569562397097,
+              "delta-stepping": 0.3433236983521411,
+              "ultra-dijkstra": 0.0423696968077186
+            }
+          },
+          {
+            "feature": "sizeRatioEN",
+            "category": "base",
+            "meanAbsCoefficient": 0.13852727773554618,
+            "maxAbsCoefficient": 0.4235365824643646,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.4235365824643646,
+              "adaptive-barrier": 0.05469806269905382,
+              "delta-stepping": 0.06840253569117181,
+              "ultra-dijkstra": -0.007471930087594483
+            }
+          },
+          {
+            "feature": "avgBranchFactor",
+            "category": "base",
+            "meanAbsCoefficient": 0.13852727773518184,
+            "maxAbsCoefficient": 0.4235365824682934,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.4235365824682934,
+              "adaptive-barrier": 0.05469806270698932,
+              "delta-stepping": 0.06840253567247469,
+              "ultra-dijkstra": -0.007471930092970001
+            }
+          },
+          {
+            "feature": "avgOutDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.13852727773518114,
+            "maxAbsCoefficient": 0.4235365824682906,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.4235365824682906,
+              "adaptive-barrier": 0.05469806270698944,
+              "delta-stepping": 0.06840253567247474,
+              "ultra-dijkstra": -0.007471930092969801
+            }
+          },
+          {
+            "feature": "globalCoverage",
+            "category": "base",
+            "meanAbsCoefficient": 0.13520921671638067,
+            "maxAbsCoefficient": 0.2902514716700055,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.13124385700767896,
+              "adaptive-barrier": 0.09493860606451943,
+              "delta-stepping": 0.2902514716700055,
+              "ultra-dijkstra": -0.024402932123318805
+            }
+          },
+          {
+            "feature": "logAvgBranchFactor",
+            "category": "log",
+            "meanAbsCoefficient": 0.1348834801458916,
+            "maxAbsCoefficient": 0.37192248743853085,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.37192248743853085,
+              "adaptive-barrier": -0.07397043178217272,
+              "delta-stepping": -0.0923823575638611,
+              "ultra-dijkstra": -0.0012586437990017864
+            }
+          }
+        ],
+        "topDerivedFeatures": [
+          {
+            "feature": "logGlobalCoverage",
+            "category": "log",
+            "meanAbsCoefficient": 0.7566560099392692,
+            "maxAbsCoefficient": 0.8546068072416192,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.8546068072416192,
+              "adaptive-barrier": -0.67571370018891,
+              "delta-stepping": -0.8513723012108568,
+              "ultra-dijkstra": -0.644931231115691
+            }
+          },
+          {
+            "feature": "logCoverageEmptyContrast",
+            "category": "log",
+            "meanAbsCoefficient": 0.542664616723758,
+            "maxAbsCoefficient": 1.072530533673748,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 1.072530533673748,
+              "adaptive-barrier": 0.23697227208501478,
+              "delta-stepping": 0.2710478362488967,
+              "ultra-dijkstra": 0.5901078248873725
+            }
+          },
+          {
+            "feature": "densityBySize",
+            "category": "other",
+            "meanAbsCoefficient": 0.4909647616999556,
+            "maxAbsCoefficient": 0.9529623689055406,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.34253631295821874,
+              "adaptive-barrier": -0.4786399795758627,
+              "delta-stepping": -0.9529623689055406,
+              "ultra-dijkstra": -0.18972038536020042
+            }
+          },
+          {
+            "feature": "logE",
+            "category": "log",
+            "meanAbsCoefficient": 0.4908104139939462,
+            "maxAbsCoefficient": 0.6033401696391774,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": 0.40102493413895585,
+              "adaptive-barrier": 0.6033401696391774,
+              "delta-stepping": 0.46819316311814807,
+              "ultra-dijkstra": 0.4906833890795034
+            }
+          },
+          {
+            "feature": "logBeelineKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.45174268217757513,
+            "maxAbsCoefficient": 0.9204236280833983,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.9204236280833983,
+              "adaptive-barrier": 0.2384586022305485,
+              "delta-stepping": 0.587903191864208,
+              "ultra-dijkstra": 0.06018530653214588
+            }
+          },
+          {
+            "feature": "coverageEmptyContrast",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.4139119676833635,
+            "maxAbsCoefficient": 0.8320785239248008,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.8320785239248008,
+              "adaptive-barrier": -0.07314210199704432,
+              "delta-stepping": 0.3431145353000957,
+              "ultra-dijkstra": -0.40731270951151344
+            }
+          },
+          {
+            "feature": "globalCoverageTimesEmptyRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.3045039159121389,
+            "maxAbsCoefficient": 0.4949094471615843,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.4949094471615843,
+              "adaptive-barrier": 0.22207689340899517,
+              "delta-stepping": 0.1919439031081966,
+              "ultra-dijkstra": 0.3090854199697795
+            }
+          },
+          {
+            "feature": "logN",
+            "category": "log",
+            "meanAbsCoefficient": 0.2864607906101153,
+            "maxAbsCoefficient": 0.43569727776235434,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.06535096077949183,
+              "adaptive-barrier": 0.23632401926778945,
+              "delta-stepping": 0.43569727776235434,
+              "ultra-dijkstra": 0.40847090463082575
+            }
+          },
+          {
+            "feature": "coverageEmptyContrastTimesLogAvgBranchFactor",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.27113388351754114,
+            "maxAbsCoefficient": 0.5556834099286861,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5556834099286861,
+              "adaptive-barrier": 0.2500382682972967,
+              "delta-stepping": 0.056047294674742364,
+              "ultra-dijkstra": 0.22276656116943935
+            }
+          },
+          {
+            "feature": "safeBeelineKmOverSizeRatioEN",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.25261313605548064,
+            "maxAbsCoefficient": 0.7170456569569449,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.12472288488034368,
+              "adaptive-barrier": -0.04388565214670227,
+              "delta-stepping": -0.7170456569569449,
+              "ultra-dijkstra": -0.12479835023793172
+            }
+          },
+          {
+            "feature": "logBeelinePerNode",
+            "category": "log",
+            "meanAbsCoefficient": 0.15936055911351332,
+            "maxAbsCoefficient": 0.26735822729416076,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.05096392098334665,
+              "adaptive-barrier": -0.15852298990895905,
+              "delta-stepping": -0.26735822729416076,
+              "ultra-dijkstra": -0.16059709826758678
+            }
+          },
+          {
+            "feature": "logAvgBranchFactor",
+            "category": "log",
+            "meanAbsCoefficient": 0.1348834801458916,
+            "maxAbsCoefficient": 0.37192248743853085,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.37192248743853085,
+              "adaptive-barrier": -0.07397043178217272,
+              "delta-stepping": -0.0923823575638611,
+              "ultra-dijkstra": -0.0012586437990017864
+            }
+          },
+          {
+            "feature": "logEoverN",
+            "category": "log",
+            "meanAbsCoefficient": 0.13488348014589155,
+            "maxAbsCoefficient": 0.3719224874385307,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.3719224874385307,
+              "adaptive-barrier": -0.07397043178217268,
+              "delta-stepping": -0.09238235756386111,
+              "ultra-dijkstra": -0.0012586437990017925
+            }
+          },
+          {
+            "feature": "logAvgOutDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.13488348014587895,
+            "maxAbsCoefficient": 0.3719224874385158,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.3719224874385158,
+              "adaptive-barrier": -0.07397043178216368,
+              "delta-stepping": -0.0923823575638377,
+              "ultra-dijkstra": -0.001258643798998603
+            }
+          },
+          {
+            "feature": "logEmptyRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.13044208376100613,
+            "maxAbsCoefficient": 0.3131355187208549,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.04263193289669916,
+              "adaptive-barrier": -0.11938400793232538,
+              "delta-stepping": -0.3131355187208549,
+              "ultra-dijkstra": -0.04661687549414506
+            }
+          },
+          {
+            "feature": "logCoverageDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0977520157591993,
+            "maxAbsCoefficient": 0.180279021969355,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.180279021969355,
+              "adaptive-barrier": 0.045061682020203886,
+              "delta-stepping": -0.12690938292233708,
+              "ultra-dijkstra": 0.038757976124901214
+            }
+          },
+          {
+            "feature": "logEdgesPerKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.09692088219723297,
+            "maxAbsCoefficient": 0.14409665248452685,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.11069074929190426,
+              "adaptive-barrier": -0.06928274686316796,
+              "delta-stepping": -0.06361338014933281,
+              "ultra-dijkstra": -0.14409665248452685
+            }
+          },
+          {
+            "feature": "logSourceTargetDegreeRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.06758288571849287,
+            "maxAbsCoefficient": 0.1668537161697615,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.08837367002004687,
+              "adaptive-barrier": 0.0007166432260545943,
+              "delta-stepping": 0.1668537161697615,
+              "ultra-dijkstra": 0.014387513458108523
+            }
+          },
+          {
+            "feature": "logCentralityProduct",
+            "category": "log",
+            "meanAbsCoefficient": 0.06506395465409111,
+            "maxAbsCoefficient": 0.15050478854353505,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.08497258804338953,
+              "adaptive-barrier": 0.0057404386532378315,
+              "delta-stepping": 0.15050478854353505,
+              "ultra-dijkstra": 0.019038003376202046
+            }
+          },
+          {
+            "feature": "avgOutDegreeTimesLogRelativeDensity",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.060809650369858435,
+            "maxAbsCoefficient": 0.11099493079641481,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.08551367901664482,
+              "adaptive-barrier": 0.0319122751831396,
+              "delta-stepping": 0.11099493079641481,
+              "ultra-dijkstra": 0.014817716483234517
+            }
+          }
+        ],
+        "featureRankings": [
+          {
+            "feature": "logGlobalCoverage",
+            "category": "log",
+            "meanAbsCoefficient": 0.7566560099392692,
+            "maxAbsCoefficient": 0.8546068072416192,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.8546068072416192,
+              "adaptive-barrier": -0.67571370018891,
+              "delta-stepping": -0.8513723012108568,
+              "ultra-dijkstra": -0.644931231115691
+            }
+          },
+          {
+            "feature": "safeE",
+            "category": "base",
+            "meanAbsCoefficient": 0.5914920981381465,
+            "maxAbsCoefficient": 0.9079132052136082,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.7126135221247534,
+              "adaptive-barrier": 0.6234836236614646,
+              "delta-stepping": 0.9079132052136082,
+              "ultra-dijkstra": -0.1219580415527601
+            }
+          },
+          {
+            "feature": "logCoverageEmptyContrast",
+            "category": "log",
+            "meanAbsCoefficient": 0.542664616723758,
+            "maxAbsCoefficient": 1.072530533673748,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 1.072530533673748,
+              "adaptive-barrier": 0.23697227208501478,
+              "delta-stepping": 0.2710478362488967,
+              "ultra-dijkstra": 0.5901078248873725
+            }
+          },
+          {
+            "feature": "densityBySize",
+            "category": "other",
+            "meanAbsCoefficient": 0.4909647616999556,
+            "maxAbsCoefficient": 0.9529623689055406,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.34253631295821874,
+              "adaptive-barrier": -0.4786399795758627,
+              "delta-stepping": -0.9529623689055406,
+              "ultra-dijkstra": -0.18972038536020042
+            }
+          },
+          {
+            "feature": "logE",
+            "category": "log",
+            "meanAbsCoefficient": 0.4908104139939462,
+            "maxAbsCoefficient": 0.6033401696391774,
+            "bestEngine": "adaptive-barrier",
+            "coefficients": {
+              "bidirectional-astar": 0.40102493413895585,
+              "adaptive-barrier": 0.6033401696391774,
+              "delta-stepping": 0.46819316311814807,
+              "ultra-dijkstra": 0.4906833890795034
+            }
+          },
+          {
+            "feature": "logBeelineKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.45174268217757513,
+            "maxAbsCoefficient": 0.9204236280833983,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.9204236280833983,
+              "adaptive-barrier": 0.2384586022305485,
+              "delta-stepping": 0.587903191864208,
+              "ultra-dijkstra": 0.06018530653214588
+            }
+          },
+          {
+            "feature": "coverageEmptyContrast",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.4139119676833635,
+            "maxAbsCoefficient": 0.8320785239248008,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.8320785239248008,
+              "adaptive-barrier": -0.07314210199704432,
+              "delta-stepping": 0.3431145353000957,
+              "ultra-dijkstra": -0.40731270951151344
+            }
+          },
+          {
+            "feature": "globalCoverageTimesEmptyRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.3045039159121389,
+            "maxAbsCoefficient": 0.4949094471615843,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.4949094471615843,
+              "adaptive-barrier": 0.22207689340899517,
+              "delta-stepping": 0.1919439031081966,
+              "ultra-dijkstra": 0.3090854199697795
+            }
+          },
+          {
+            "feature": "logN",
+            "category": "log",
+            "meanAbsCoefficient": 0.2864607906101153,
+            "maxAbsCoefficient": 0.43569727776235434,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.06535096077949183,
+              "adaptive-barrier": 0.23632401926778945,
+              "delta-stepping": 0.43569727776235434,
+              "ultra-dijkstra": 0.40847090463082575
+            }
+          },
+          {
+            "feature": "coverageEmptyContrastTimesLogAvgBranchFactor",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.27113388351754114,
+            "maxAbsCoefficient": 0.5556834099286861,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.5556834099286861,
+              "adaptive-barrier": 0.2500382682972967,
+              "delta-stepping": 0.056047294674742364,
+              "ultra-dijkstra": 0.22276656116943935
+            }
+          },
+          {
+            "feature": "safeBeelineKmOverSizeRatioEN",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.25261313605548064,
+            "maxAbsCoefficient": 0.7170456569569449,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.12472288488034368,
+              "adaptive-barrier": -0.04388565214670227,
+              "delta-stepping": -0.7170456569569449,
+              "ultra-dijkstra": -0.12479835023793172
+            }
+          },
+          {
+            "feature": "safeN",
+            "category": "base",
+            "meanAbsCoefficient": 0.24905074577707206,
+            "maxAbsCoefficient": 0.47249781032012883,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": -0.15457951251857793,
+              "adaptive-barrier": 0.1250231581454632,
+              "delta-stepping": 0.24410250212411838,
+              "ultra-dijkstra": 0.47249781032012883
+            }
+          },
+          {
+            "feature": "safeBeelineKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.18426181866090463,
+            "maxAbsCoefficient": 0.3389477373365175,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.2081439612379411,
+              "adaptive-barrier": -0.10124947457771229,
+              "delta-stepping": 0.3389477373365175,
+              "ultra-dijkstra": 0.08870610149144766
+            }
+          },
+          {
+            "feature": "logBeelinePerNode",
+            "category": "log",
+            "meanAbsCoefficient": 0.15936055911351332,
+            "maxAbsCoefficient": 0.26735822729416076,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.05096392098334665,
+              "adaptive-barrier": -0.15852298990895905,
+              "delta-stepping": -0.26735822729416076,
+              "ultra-dijkstra": -0.16059709826758678
+            }
+          },
+          {
+            "feature": "emptyRatio",
+            "category": "base",
+            "meanAbsCoefficient": 0.150363856297308,
+            "maxAbsCoefficient": 0.3433236983521411,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.11037633440540125,
+              "adaptive-barrier": 0.10538569562397097,
+              "delta-stepping": 0.3433236983521411,
+              "ultra-dijkstra": 0.0423696968077186
+            }
+          },
+          {
+            "feature": "sizeRatioEN",
+            "category": "base",
+            "meanAbsCoefficient": 0.13852727773554618,
+            "maxAbsCoefficient": 0.4235365824643646,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.4235365824643646,
+              "adaptive-barrier": 0.05469806269905382,
+              "delta-stepping": 0.06840253569117181,
+              "ultra-dijkstra": -0.007471930087594483
+            }
+          },
+          {
+            "feature": "avgBranchFactor",
+            "category": "base",
+            "meanAbsCoefficient": 0.13852727773518184,
+            "maxAbsCoefficient": 0.4235365824682934,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.4235365824682934,
+              "adaptive-barrier": 0.05469806270698932,
+              "delta-stepping": 0.06840253567247469,
+              "ultra-dijkstra": -0.007471930092970001
+            }
+          },
+          {
+            "feature": "avgOutDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.13852727773518114,
+            "maxAbsCoefficient": 0.4235365824682906,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.4235365824682906,
+              "adaptive-barrier": 0.05469806270698944,
+              "delta-stepping": 0.06840253567247474,
+              "ultra-dijkstra": -0.007471930092969801
+            }
+          },
+          {
+            "feature": "globalCoverage",
+            "category": "base",
+            "meanAbsCoefficient": 0.13520921671638067,
+            "maxAbsCoefficient": 0.2902514716700055,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.13124385700767896,
+              "adaptive-barrier": 0.09493860606451943,
+              "delta-stepping": 0.2902514716700055,
+              "ultra-dijkstra": -0.024402932123318805
+            }
+          },
+          {
+            "feature": "logAvgBranchFactor",
+            "category": "log",
+            "meanAbsCoefficient": 0.1348834801458916,
+            "maxAbsCoefficient": 0.37192248743853085,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.37192248743853085,
+              "adaptive-barrier": -0.07397043178217272,
+              "delta-stepping": -0.0923823575638611,
+              "ultra-dijkstra": -0.0012586437990017864
+            }
+          },
+          {
+            "feature": "logEoverN",
+            "category": "log",
+            "meanAbsCoefficient": 0.13488348014589155,
+            "maxAbsCoefficient": 0.3719224874385307,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.3719224874385307,
+              "adaptive-barrier": -0.07397043178217268,
+              "delta-stepping": -0.09238235756386111,
+              "ultra-dijkstra": -0.0012586437990017925
+            }
+          },
+          {
+            "feature": "logAvgOutDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.13488348014587895,
+            "maxAbsCoefficient": 0.3719224874385158,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.3719224874385158,
+              "adaptive-barrier": -0.07397043178216368,
+              "delta-stepping": -0.0923823575638377,
+              "ultra-dijkstra": -0.001258643798998603
+            }
+          },
+          {
+            "feature": "logEmptyRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.13044208376100613,
+            "maxAbsCoefficient": 0.3131355187208549,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.04263193289669916,
+              "adaptive-barrier": -0.11938400793232538,
+              "delta-stepping": -0.3131355187208549,
+              "ultra-dijkstra": -0.04661687549414506
+            }
+          },
+          {
+            "feature": "edgesPerKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.10433665483684251,
+            "maxAbsCoefficient": 0.28018875164893786,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.28018875164893786,
+              "adaptive-barrier": 0.061402420358225906,
+              "delta-stepping": -0.03742753581269363,
+              "ultra-dijkstra": 0.038327911527512665
+            }
+          },
+          {
+            "feature": "nodesPerKm",
+            "category": "base",
+            "meanAbsCoefficient": 0.1037777652839879,
+            "maxAbsCoefficient": 0.2376572223030048,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.2376572223030048,
+              "adaptive-barrier": -0.00040256030654706,
+              "delta-stepping": 0.13680122138990083,
+              "ultra-dijkstra": 0.04025005713649895
+            }
+          },
+          {
+            "feature": "logCoverageDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0977520157591993,
+            "maxAbsCoefficient": 0.180279021969355,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.180279021969355,
+              "adaptive-barrier": 0.045061682020203886,
+              "delta-stepping": -0.12690938292233708,
+              "ultra-dijkstra": 0.038757976124901214
+            }
+          },
+          {
+            "feature": "logEdgesPerKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.09692088219723297,
+            "maxAbsCoefficient": 0.14409665248452685,
+            "bestEngine": "ultra-dijkstra",
+            "coefficients": {
+              "bidirectional-astar": 0.11069074929190426,
+              "adaptive-barrier": -0.06928274686316796,
+              "delta-stepping": -0.06361338014933281,
+              "ultra-dijkstra": -0.14409665248452685
+            }
+          },
+          {
+            "feature": "beelinePerNode",
+            "category": "base",
+            "meanAbsCoefficient": 0.07848725129739142,
+            "maxAbsCoefficient": 0.11427375954882305,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.006919397428151469,
+              "adaptive-barrier": 0.1063701917002947,
+              "delta-stepping": 0.11427375954882305,
+              "ultra-dijkstra": 0.08638565651229646
+            }
+          },
+          {
+            "feature": "logSourceTargetDegreeRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.06758288571849287,
+            "maxAbsCoefficient": 0.1668537161697615,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -0.08837367002004687,
+              "adaptive-barrier": 0.0007166432260545943,
+              "delta-stepping": 0.1668537161697615,
+              "ultra-dijkstra": 0.014387513458108523
+            }
+          },
+          {
+            "feature": "logCentralityProduct",
+            "category": "log",
+            "meanAbsCoefficient": 0.06506395465409111,
+            "maxAbsCoefficient": 0.15050478854353505,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.08497258804338953,
+              "adaptive-barrier": 0.0057404386532378315,
+              "delta-stepping": 0.15050478854353505,
+              "ultra-dijkstra": 0.019038003376202046
+            }
+          },
+          {
+            "feature": "avgOutDegreeTimesLogRelativeDensity",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.060809650369858435,
+            "maxAbsCoefficient": 0.11099493079641481,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.08551367901664482,
+              "adaptive-barrier": 0.0319122751831396,
+              "delta-stepping": 0.11099493079641481,
+              "ultra-dijkstra": 0.014817716483234517
+            }
+          },
+          {
+            "feature": "logSourceDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.05970821659497919,
+            "maxAbsCoefficient": 0.11225441290918928,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.11225441290918928,
+              "adaptive-barrier": 0.026006178381919036,
+              "delta-stepping": 0.08586303984019159,
+              "ultra-dijkstra": 0.014709235248616876
+            }
+          },
+          {
+            "feature": "logSourceCentrality",
+            "category": "log",
+            "meanAbsCoefficient": 0.05105838901644395,
+            "maxAbsCoefficient": 0.11073311456295024,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.11073311456295024,
+              "adaptive-barrier": 0.009169258998684853,
+              "delta-stepping": -0.08081810615600543,
+              "ultra-dijkstra": -0.003513076348135295
+            }
+          },
+          {
+            "feature": "logSourceTargetCentralityRatio",
+            "category": "log",
+            "meanAbsCoefficient": 0.04885708921653048,
+            "maxAbsCoefficient": 0.11026784784398967,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.07001957465878567,
+              "adaptive-barrier": 0.0023077890943399185,
+              "delta-stepping": 0.11026784784398967,
+              "ultra-dijkstra": 0.01283314526900667
+            }
+          },
+          {
+            "feature": "sourceTargetDegreeRatio",
+            "category": "derived",
+            "meanAbsCoefficient": 0.04628051184667027,
+            "maxAbsCoefficient": 0.1592097245883621,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": -4.749664214865638e-05,
+              "adaptive-barrier": -0.014217930115588823,
+              "delta-stepping": -0.1592097245883621,
+              "ultra-dijkstra": -0.011646896040581512
+            }
+          },
+          {
+            "feature": "sourceCentrality",
+            "category": "base",
+            "meanAbsCoefficient": 0.03664272144136564,
+            "maxAbsCoefficient": 0.08100198355117814,
+            "bestEngine": "delta-stepping",
+            "coefficients": {
+              "bidirectional-astar": 0.03793739687508588,
+              "adaptive-barrier": -0.011052351145619357,
+              "delta-stepping": -0.08100198355117814,
+              "ultra-dijkstra": -0.016579154193579193
+            }
+          },
+          {
+            "feature": "logDegreeProduct",
+            "category": "log",
+            "meanAbsCoefficient": 0.02740505224432465,
+            "maxAbsCoefficient": 0.09770553465669488,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": -0.09770553465669488,
+              "adaptive-barrier": -0.007139207644790918,
+              "delta-stepping": 0.0044631177050626645,
+              "ultra-dijkstra": 0.0003123489707501424
+            }
+          },
+          {
+            "feature": "relativeDensity",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logRelativeDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "sourceDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "targetDegree",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logTargetDegree",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "targetCentrality",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logTargetCentrality",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "sourceTargetCentralityRatio",
+            "category": "derived",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "graphDensity",
+            "category": "base",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logGraphDensity",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logNodesPerKm",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "logDensityBySize",
+            "category": "log",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "coverageDensity",
+            "category": "derived",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "degreeProduct",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "centralityProduct",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "beelinePerNodeTimesSourceTargetDegreeRatio",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          },
+          {
+            "feature": "densityBySizeTimesSourceCentrality",
+            "category": "interaction",
+            "meanAbsCoefficient": 0.0,
+            "maxAbsCoefficient": 0.0,
+            "bestEngine": "bidirectional-astar",
+            "coefficients": {
+              "bidirectional-astar": 0.0,
+              "adaptive-barrier": 0.0,
+              "delta-stepping": 0.0,
+              "ultra-dijkstra": 0.0
+            }
+          }
+        ]
       }
     }
   },
@@ -3516,4 +5974,4 @@ export const ROUTER_TUNING_ML_MODEL = Object.freeze({
       }
     }
   ]
-});
+}

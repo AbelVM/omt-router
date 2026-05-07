@@ -5,6 +5,15 @@ import { getTilesAlongLine } from './tiles/tilesManager.js';
 import { buildGraphAsync } from './graphs/graphBuilder.js';
 import { interpolate, haversineDistance } from './utils/misc.js';
 import {
+  validateRouteCoordinates,
+  normalizeRouteMode,
+  validateZoom,
+  normalizeTileSchema,
+  validateUrlTemplate,
+  validateMaxAcceptableSnapDistance,
+  validateRadius,
+} from './utils/routeValidation.js';
+import {
   buildCH,
   queryRoute,
   computeRoute,
@@ -13,6 +22,7 @@ import {
   onEngineWorkerStatusChange,
   cancelRunningEngine,
 } from './engines/router.js';
+import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
 
 export {
   buildCH,
@@ -22,6 +32,8 @@ export {
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
+  MapLibreRoutingControl,
+  buildTileURL,
 };
 
 // Module-level singletons — created once at import time, shared across all
@@ -80,7 +92,10 @@ function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate }
 
   if (typeof tileUrlTransform === 'function') {
     const transformed = tileUrlTransform(rawURL, tile);
-    return typeof transformed === 'string' ? transformed : rawURL;
+    if (typeof transformed !== 'string') {
+      throw new Error('Invalid tileUrlTransform: expected a string return value.');
+    }
+    return transformed;
   }
 
   if (typeof tileProxyTemplate === 'string' && tileProxyTemplate) {
@@ -170,8 +185,18 @@ export const route = async (
     maxAcceptableSnapDistanceM,
     tileUrlTransform,
     tileProxyTemplate,
+    includeGraph = false,
   } = {}
 ) => {
+  validateRouteCoordinates(start, 'start');
+  validateRouteCoordinates(end, 'end');
+  mode = normalizeRouteMode(mode);
+  validateZoom(zoom);
+  schema = normalizeTileSchema(schema);
+  validateUrlTemplate(urlTemplate);
+  validateMaxAcceptableSnapDistance(maxAcceptableSnapDistanceM);
+  if (radius !== undefined) radius = validateRadius(radius);
+
   if (!VALID_COST_FIELDS.has(costField)) {
     throw new Error(`Unknown costField: ${costField}. Expected "distance" or "travelTime".`);
   }
@@ -240,13 +265,13 @@ export const route = async (
       };
     }
 
-    if (lastResult.found) return lastResult;
+    if (lastResult.found) return includeGraph ? { ...lastResult, graph } : lastResult;
     if (
       lastResult.reason !== 'no_path'
       && lastResult.reason !== 'no_node'
       && lastResult.reason !== 'poor_snap'
       && lastResult.reason !== 'incomplete_path'
-    ) return lastResult;
+    ) return includeGraph ? { ...lastResult, graph } : lastResult;
 
     if (r < maxRadius) {
       // Log so the caller can see the retry in dev tools.
@@ -256,5 +281,5 @@ export const route = async (
     }
   }
 
-  return lastResult;
+  return includeGraph ? { ...lastResult, graph } : lastResult;
 };

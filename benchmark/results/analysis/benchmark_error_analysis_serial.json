@@ -1,0 +1,91 @@
+{
+  "files": [
+    {
+      "file": "20260506_233308_benchmark_car_serial.json",
+      "rows": 12375,
+      "routeErrors": 2788,
+      "routeErrorBreakdown": {
+        "no_node": 2788
+      },
+      "diagnosticsRows": 9587,
+      "missingDiagnosticsRows": 2788,
+      "engineErrorRows": 0,
+      "topLevelAnyEngineErrorRows": 9879,
+      "inconsistentAnyEngineErrorRows": 7091,
+      "warmupErrorRows": 0,
+      "timedErrorRows": 0,
+      "rowsWithAllCostMissing": 6892,
+      "rowsWithPartialFound": 7091,
+      "rowsWithPartialCost": 7091,
+      "rowsWithWarmupErrorsOnly": 0,
+      "rowsWithTimedErrorsOnly": 0,
+      "rowsWithBothWarmupAndTimedErrors": 0,
+      "rowsWithAnyTopLevelEngineError": 0,
+      "engineErrorRowsByEngine": {},
+      "foundCounts": {
+        "4": 2496,
+        "0": 6892,
+        "3": 199
+      },
+      "timedCounts": {
+        "4": 9587
+      },
+      "costCounts": {
+        "4": 2496,
+        "0": 6892,
+        "3": 199
+      },
+      "routeFailureMissingDiagnosticsRows": 2788,
+      "validRouteMissingDiagnosticsRows": 0,
+      "routeFailureWithDiagnosticsRows": 0,
+      "engineStatsByEngine": {
+        "bidirectional-astar": {
+          "warmupErrors": 0,
+          "timedErrors": 0,
+          "warmupErrorRows": 0,
+          "timedErrorRows": 0,
+          "errorMessages": {}
+        },
+        "adaptive-barrier": {
+          "warmupErrors": 0,
+          "timedErrors": 0,
+          "warmupErrorRows": 0,
+          "timedErrorRows": 0,
+          "errorMessages": {}
+        },
+        "delta-stepping": {
+          "warmupErrors": 0,
+          "timedErrors": 0,
+          "warmupErrorRows": 0,
+          "timedErrorRows": 0,
+          "errorMessages": {}
+        },
+        "ultra-dijkstra": {
+          "warmupErrors": 0,
+          "timedErrors": 0,
+          "warmupErrorRows": 0,
+          "timedErrorRows": 0,
+          "errorMessages": {}
+        }
+      }
+    }
+  ],
+  "totalRows": 12375,
+  "routeErrors": 2788,
+  "routeErrorBreakdown": {
+    "no_node": 2788
+  },
+  "diagnosticsRows": 9587,
+  "missingDiagnosticsRows": 2788,
+  "routeFailureMissingDiagnosticsRows": 2788,
+  "validRouteMissingDiagnosticsRows": 0,
+  "routeFailureWithDiagnosticsRows": 0,
+  "engineErrorRows": 0,
+  "topLevelAnyEngineErrorRows": 9879,
+  "inconsistentAnyEngineErrorRows": 7091,
+  "warmupErrorRows": 0,
+  "timedErrorRows": 0,
+  "rowsWithAllCostMissing": 6892,
+  "rowsWithPartialFound": 7091,
+  "rowsWithPartialCost": 7091
+}

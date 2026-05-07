@@ -3,11 +3,7 @@ import Pbf from 'pbf';
 import { u82o } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { ways, getDefaultSpeedKmh } from '../utils/ways_defaults.js';
-import {
-  haversineDistance,
-  haversineDistanceCoords,
-  isWithinDistanceMetersCoords,
-} from '../utils/misc.js';
+import { haversineDistance } from '../utils/misc.js';
 
 const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router/graph' });
 const COORD_KEY_SCALE = 1e6;
@@ -50,7 +46,6 @@ function coordKey(lng, lat) {
  * @returns {boolean}
  */
 export function normalizeTagValue(value) {
-  if (typeof value === 'string') return value;
   return value == null ? '' : String(value);
 }
 
@@ -110,10 +105,7 @@ export function isAccessible(props, mode) {
  * @param {number} y   Tile row
  * @param {number} z   Zoom level
  * @param {'car'|'pedestrian'|'bicycle'} mode
- * @returns {Array<number|object>}
- *   Flat segment data encoded as fixed-width tuples:
- *   [c1lng, c1lat, c2lng, c2lat, c1Key, c2Key, oneway, speed, props, roadId,
- *    c1boundary, c2boundary, clipped]
+ * @returns {Array<{ c1: [number,number], c2: [number,number], oneway: number, speed: number, props: object, roadId?: number, c1boundary: boolean, c2boundary: boolean, clipped: boolean }>}
  */
 export function parseTile(buffer, x, y, z, mode) {
   const tile = new VectorTile(new Pbf(buffer));
@@ -131,6 +123,12 @@ export function parseTile(buffer, x, y, z, mode) {
   const toDeg = 180 / Math.PI;
 
   // Convert tile pixel coords to [lng, lat] using precomputed constants.
+  const toLngLat = (lx, ly) => {
+    const lng = lngBase + lx * lngScale;
+    const latRad = Math.atan(Math.sinh(Math.PI * (latYBase + ly * latYScale)));
+    return [lng, latRad * toDeg];
+  };
+
   const segments = [];
   const featureAccessible = (props) => isAccessible(props, mode);
   const isBoundaryPoint = (lx, ly, extent) => {
@@ -146,21 +144,10 @@ export function parseTile(buffer, x, y, z, mode) {
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
     if (feature.type !== 2) continue;
-    const rawProps = feature.properties;
-    const normalizedClass = normalizeTagValue(rawProps.class);
-    const props = {
-      ...rawProps,
-      access: normalizeTagValue(rawProps.access),
-      class: normalizedClass,
-      subclass: normalizeTagValue(rawProps.subclass),
-      foot: normalizeTagValue(rawProps.foot),
-      bicycle: normalizeTagValue(rawProps.bicycle),
-    };
+    const props = feature.properties;
     if (!featureAccessible(props)) continue;
-    const oneway = mode === 'pedestrian'
-      ? 0
-      : normalizeOneway(rawProps.oneway ?? 0);
-    const speed = getDefaultSpeedKmh(mode, normalizedClass);
+    const oneway = normalizeOneway(props.oneway ?? 0);
+    const speed = getDefaultSpeedKmh(mode, normalizeTagValue(props.class));
     const roadId = feature.id == null ? undefined : Math.floor(feature.id / 10);
     for (const line of feature.loadGeometry()) {
       for (let j = 0; j < line.length - 1; j++) {
@@ -177,25 +164,17 @@ export function parseTile(buffer, x, y, z, mode) {
         );
         if (!clipped) continue;
         const [lx1, ly1, lx2, ly2, segmentClipped] = clipped;
-        const c1lng = lngBase + lx1 * lngScale;
-        const c1lat = Math.atan(Math.sinh(Math.PI * (latYBase + ly1 * latYScale))) * toDeg;
-        const c2lng = lngBase + lx2 * lngScale;
-        const c2lat = Math.atan(Math.sinh(Math.PI * (latYBase + ly2 * latYScale))) * toDeg;
-        segments.push(
-          c1lng,
-          c1lat,
-          c2lng,
-          c2lat,
-          coordKey(c1lng, c1lat),
-          coordKey(c2lng, c2lat),
+        segments.push({
+          c1: toLngLat(lx1, ly1),
+          c2: toLngLat(lx2, ly2),
           oneway,
           speed,
           props,
           roadId,
-          isBoundaryPoint(lx1, ly1, layer.extent) ? 1 : 0,
-          isBoundaryPoint(lx2, ly2, layer.extent) ? 1 : 0,
-          segmentClipped ? 1 : 0
-        );
+          c1boundary: isBoundaryPoint(lx1, ly1, layer.extent),
+          c2boundary: isBoundaryPoint(lx2, ly2, layer.extent),
+          clipped: segmentClipped,
+        });
       }
     }
   }
@@ -268,13 +247,9 @@ function createGraphAccumulator(mode) {
   const nodes = new Map();
   /** @type {Map<string, number>} */
   const nodeIndex = new Map();
-  const BOUNDARY_BUCKET_SIZE_DEG = (BOUNDARY_MATCH_DISTANCE_M / 111320) * 2;
-  const getBoundaryBucketCoords = (lng, lat) => [
-    Math.floor(lng / BOUNDARY_BUCKET_SIZE_DEG),
-    Math.floor(lat / BOUNDARY_BUCKET_SIZE_DEG),
-  ];
-  const BOUNDARY_MATCH_DEG = BOUNDARY_MATCH_DISTANCE_M / 111_320;
-  /** @type {Map<number, Map<number, Array<{ id: number, coords: [number, number] }>>>} */
+  /** @type {Map<number, Array<{ id: number, coords: [number, number] }>>} */
+  const roadBoundaryNodeIndex = new Map();
+  /** @type {Map<string, Array<{ id: number, coords: [number, number] }>>} */
   const clippedBoundaryNodeIndex = new Map();
   /** @type {Array<object>} */
   const edges = [];
@@ -288,27 +263,20 @@ function createGraphAccumulator(mode) {
   let edgeCounter = 0;
   const classToFibonacciScore = mode === 'car' ? CAR_CLASS_FIB_SCORE : null;
 
-  const getOrCreateNode = (lng, lat, roadId, boundary, clipped, key) => {
-    const resolvedKey = key ?? coordKey(lng, lat);
-    const existing = nodeIndex.get(resolvedKey);
-    if (existing !== undefined) return existing;
-
-    if (boundary && clipped) {
-      const [bucketX, bucketY] = getBoundaryBucketCoords(lng, lat);
-      for (let dx = -1; dx <= 1; dx++) {
-        const row = clippedBoundaryNodeIndex.get(bucketX + dx);
-        if (!row) continue;
-        for (let dy = -1; dy <= 1; dy++) {
-          const bucket = row.get(bucketY + dy);
+  const getOrCreateNode = (coords, roadId, boundary, clipped) => {
+    const key = coordKey(coords[0], coords[1]);
+    const existing = nodeIndex.get(key);
+    if (existing !== undefined) return existing;    if (boundary && clipped) {
+      const roundedX = Math.round(coords[0] * COORD_KEY_SCALE);
+      const roundedY = Math.round(coords[1] * COORD_KEY_SCALE);
+      for (let dx = -CLIPPED_BOUNDARY_BUCKET_RADIUS; dx <= CLIPPED_BOUNDARY_BUCKET_RADIUS; dx++) {
+        for (let dy = -CLIPPED_BOUNDARY_BUCKET_RADIUS; dy <= CLIPPED_BOUNDARY_BUCKET_RADIUS; dy++) {
+          const bucketKey = `${roundedX + dx},${roundedY + dy}`;
+          const bucket = clippedBoundaryNodeIndex.get(bucketKey);
           if (!bucket) continue;
           for (const { coords: existingCoords, id } of bucket) {
-            const dx = existingCoords[0] - lng;
-            const dy = existingCoords[1] - lat;
-            if (dx > BOUNDARY_MATCH_DEG || dx < -BOUNDARY_MATCH_DEG || dy > BOUNDARY_MATCH_DEG || dy < -BOUNDARY_MATCH_DEG) {
-              continue;
-            }
-            if (isWithinDistanceMetersCoords(existingCoords[0], existingCoords[1], lng, lat, BOUNDARY_MATCH_DISTANCE_M)) {
-              nodeIndex.set(resolvedKey, id);
+            if (haversineDistance(existingCoords, coords) <= BOUNDARY_MATCH_DISTANCE_M) {
+              nodeIndex.set(key, id);
               return id;
             }
           }
@@ -317,20 +285,14 @@ function createGraphAccumulator(mode) {
     }
 
     const id = nodeCounter++;
-    nodeIndex.set(resolvedKey, id);
-    const coords = [lng, lat];
+    nodeIndex.set(key, id);
     nodes.set(id, { id, coords });
     if (boundary && clipped) {
-      const [bucketX, bucketY] = getBoundaryBucketCoords(coords[0], coords[1]);
-      let row = clippedBoundaryNodeIndex.get(bucketX);
-      if (!row) {
-        row = new Map();
-        clippedBoundaryNodeIndex.set(bucketX, row);
-      }
-      let bucket = row.get(bucketY);
+      const boundaryKey = coordKey(coords[0], coords[1]);
+      let bucket = clippedBoundaryNodeIndex.get(boundaryKey);
       if (!bucket) {
         bucket = [];
-        row.set(bucketY, bucket);
+        clippedBoundaryNodeIndex.set(boundaryKey, bucket);
       }
       bucket.push({ id, coords });
     }
@@ -352,83 +314,12 @@ function createGraphAccumulator(mode) {
   };
 }
 
-const SEGMENT_STRIDE = 13;
-
 function appendSegments(acc, segments) {
   const { edgeSet, outDegree, outCarCentrality, mode } = acc;
-  if (segments.length === 0) return;
-
-  const firstSegment = segments[0];
-  if (typeof firstSegment === 'object' && firstSegment !== null && 'c1' in firstSegment) {
-    for (const segment of segments) {
-      const [c1lng, c1lat] = segment.c1;
-      const [c2lng, c2lat] = segment.c2;
-      const c1Key = segment.c1Key ?? coordKey(c1lng, c1lat);
-      const c2Key = segment.c2Key ?? coordKey(c2lng, c2lat);
-      const originalOneway = segment.oneway;
-      const speed = segment.speed;
-      const props = segment.props;
-      const roadId = segment.roadId;
-      const c1boundary = !!segment.c1boundary;
-      const c2boundary = !!segment.c2boundary;
-      const clipped = !!segment.clipped;
-      const oneway = mode === 'pedestrian' ? 0 : originalOneway;
-      const src = acc.getOrCreateNode(c1lng, c1lat, roadId, c1boundary, clipped, c1Key);
-      const tgt = acc.getOrCreateNode(c2lng, c2lat, roadId, c2boundary, clipped, c2Key);
-      let targets = edgeSet.get(src);
-      if (!targets) {
-        targets = new Set();
-        edgeSet.set(src, targets);
-      }
-      if (targets.has(tgt)) continue;
-      targets.add(tgt);
-
-      const length = haversineDistanceCoords(c1lng, c1lat, c2lng, c2lat);
-      const travelTime = length / (speed / 3.6);
-      const edge = {
-        id: acc.edgeCounter++,
-        source: src,
-        target: tgt,
-        cost: oneway === -1 ? -1 : length,
-        reverseCost: oneway === 1 ? -1 : length,
-        length,
-        speed,
-        travelTime,
-        roadId,
-        properties: props,
-      };
-
-      if (acc.classToFibonacciScore) {
-        const roadClass = props.class ?? '';
-        edge.fibonacciScore = acc.classToFibonacciScore[roadClass] ?? 1;
-      }
-
-      outDegree[src] = (outDegree[src] || 0) + 1;
-      if (outCarCentrality) {
-        outCarCentrality[src] = (outCarCentrality[src] || 0) + (edge.fibonacciScore ?? 1);
-      }
-      acc.edges.push(edge);
-    }
-    return;
-  }
-
-  for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
-    const c1lng = segments[i];
-    const c1lat = segments[i + 1];
-    const c2lng = segments[i + 2];
-    const c2lat = segments[i + 3];
-    const c1Key = segments[i + 4];
-    const c2Key = segments[i + 5];
-    const originalOneway = segments[i + 6];
-    const speed = segments[i + 7];
-    const props = segments[i + 8];
-    const roadId = segments[i + 9];
-    const c1boundary = !!segments[i + 10];
-    const c2boundary = !!segments[i + 11];
-    const clipped = !!segments[i + 12];
+  for (const { c1, c2, oneway: originalOneway, speed, props, roadId, c1boundary, c2boundary, clipped } of segments) {
     const oneway = mode === 'pedestrian' ? 0 : originalOneway;
-    const src = acc.getOrCreateNode(c1lng, c1lat, roadId, c1boundary, clipped, c1Key);
-    const tgt = acc.getOrCreateNode(c2lng, c2lat, roadId, c2boundary, clipped, c2Key);
+    const src = acc.getOrCreateNode(c1, roadId, c1boundary, clipped);
+    const tgt = acc.getOrCreateNode(c2, roadId, c2boundary, clipped);
     let targets = edgeSet.get(src);
     if (!targets) {
       targets = new Set();
@@ -437,7 +328,7 @@ function appendSegments(acc, segments) {
     if (targets.has(tgt)) continue;
     targets.add(tgt);
 
-    const length = haversineDistanceCoords(c1lng, c1lat, c2lng, c2lat);
+    const length = haversineDistance(c1, c2);
     const travelTime = length / (speed / 3.6);
     const edge = {
       id: acc.edgeCounter++,

@@ -57,6 +57,7 @@
     <div class="actions">
       <button class="btn btn-primary" id="run-btn">▶ Run Benchmark</button>
       <button class="btn btn-secondary" id="stop-btn" disabled>■ Stop</button>
+      <button class="btn btn-secondary" id="pause-btn" disabled>⏸ Pause</button>
       <span id="route-count" style="align-self:center;font-size:12px;color:var(--subtext)"></span>
     </div>
   </section>
@@ -69,6 +70,7 @@
         <div class="progress-bar-inner" id="progress-bar"></div>
       </div>
       <div class="progress-text" id="progress-text">Starting…</div>
+      <div class="pause-state" id="pause-state" hidden>Paused</div>
     </div>
   </section>
 
@@ -114,6 +116,25 @@
     <!-- Actions -->
     <div class="actions" style="margin-bottom:20px">
       <button class="btn btn-secondary" id="download-btn">⬇ Download CSV</button>
+      <button class="btn btn-secondary" id="report-btn">📄 Generate Report</button>
+      <button class="btn btn-secondary" id="copy-report-btn" disabled>Copy Report</button>
+    </div>
+
+    <div class="report-panel" id="report-panel" hidden>
+      <div class="report-toolbar">
+        <div>
+          <strong id="report-status">Report not generated</strong>
+          <p id="report-note">Generate a benchmark report for the current results.</p>
+        </div>
+        <div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+          <div class="report-type-controls" id="report-type-controls" hidden>
+            <label for="report-view-select" style="font-size:12px;color:var(--subtext);margin-right:8px;display:inline-flex;align-items:center;">Report</label>
+            <select id="report-view-select" style="font-size:13px;padding:6px 8px;min-width:150px;"></select>
+          </div>
+          <div class="report-actions"></div>
+        </div>
+      </div>
+      <textarea id="report-output" class="report-output" readonly></textarea>
     </div>
 
     <!-- Performance Summary Table -->

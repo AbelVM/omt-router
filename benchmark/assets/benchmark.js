@@ -14,8 +14,8 @@
 import {
   buildCH,
   queryRoute,
-  nearestNode,
   prepareGraph,
+  prepareRoutableGraph,
   selectBestEngine,
   validateRouteResult,
   getEngineWorkerStatus,
@@ -209,8 +209,22 @@ function summarizeSamples(samples) {
   };
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms, signal) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal?.aborted) {
+      clearTimeout(timer);
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    if (signal?.addEventListener) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
 }
 
 function createAbortError(message = 'Benchmark aborted') {
@@ -223,10 +237,16 @@ function isAbortSignalAborted(signal) {
   return !!signal?.aborted;
 }
 
-function normalizeEngineError(error) {
+function normalizeEngineErrorMessage(error) {
   if (!error) return 'unknown_error';
-  if (error.name === 'AbortError') return 'aborted';
   return error.message ?? String(error);
+}
+
+function normalizeEngineErrorCode(error) {
+  if (!error) return null;
+  if (error.code) return String(error.code);
+  if (error.name === 'AbortError') return 'aborted';
+  return null;
 }
 
 async function runEngineQuery(startId, endId, prepared, {
@@ -235,6 +255,7 @@ async function runEngineQuery(startId, endId, prepared, {
   forceSerialRouting = false,
   signal,
   engineRunTimeoutMs = 0,
+  allowFallback = false,
 }) {
   if (isAbortSignalAborted(signal)) {
     cancelRunningEngine({ reason: 'benchmark_aborted' });
@@ -245,7 +266,7 @@ async function runEngineQuery(startId, endId, prepared, {
     engineId,
     costField,
     useCache: false,
-    allowFallback: false,
+    allowFallback,
     forceSerialRouting,
   });
 
@@ -479,14 +500,13 @@ async function benchmarkSingleRoute(
   const graph = await buildGraphAsync(tiles, mode, { pool, cache });
   const fetchMs = round2(performance.now() - tFetch0);
 
-  // Prepare (build CH / CSR structures)
+  // Prepare (build CH / CSR structures), including snapped route endpoints.
   onPhase?.({ phase: 'preparing-graph' });
 
-  // Nearest nodes
-  const startId = nearestNode(start, graph);
-  const endId   = nearestNode(end, graph);
+  const routeSetup = prepareRoutableGraph(graph, start, end);
+  const { graph: routedGraph, startId, endId } = routeSetup;
 
-  const prepared = await prepareGraph(graph, costField, {}, startId, endId, { mode });
+  const prepared = await prepareGraph(routedGraph, costField, {}, startId, endId, { mode });
   const selectorMetrics = prepared.metrics;
   const selectorFeatures = classifySelectorFeatures(selectorMetrics);
 
@@ -527,14 +547,18 @@ async function benchmarkSingleRoute(
         forceSerialRouting,
         signal,
         engineRunTimeoutMs,
+        // Warm-up must exercise each engine without algorithm fallback so
+        // benchmark results reflect the engine's own path correctness.
+        allowFallback: false,
       });
       warmTimingsMs[engineId] = performance.now() - warmStart;
       warmErrors[engineId] = null;
     } catch (err) {
       if (err?.name === 'AbortError') throw err;
-      warmResults[engineId] = { error: err.message ?? String(err) };
+      const message = normalizeEngineErrorMessage(err);
+      warmResults[engineId] = { error: message, errorCode: normalizeEngineErrorCode(err) };
       warmTimingsMs[engineId] = performance.now() - warmStart;
-      warmErrors[engineId] = err.message ?? String(err);
+      warmErrors[engineId] = { message, code: normalizeEngineErrorCode(err) };
     }
   }
 
@@ -544,6 +568,7 @@ async function benchmarkSingleRoute(
   // systematically skewing whichever engine happened to run at that moment.
   const timesMap = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, []]));
   const engineRunErrors = {};
+  const timedResults = {};
   const timedErrorCounts = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, 0]));
   const timedRounds = [];
 
@@ -566,12 +591,13 @@ async function benchmarkSingleRoute(
       onPhase?.({ phase: 'timing-engine', engineId, round: i + 1, totalRounds: nRuns });
       try {
         const t0 = performance.now();
-        await runEngineQuery(startId, endId, prepared, {
+        const timedResult = await runEngineQuery(startId, endId, prepared, {
           engineId,
           costField,
           forceSerialRouting,
           signal,
           engineRunTimeoutMs,
+          allowFallback: false,
         });
         let elapsedMs = performance.now() - t0;
 
@@ -587,9 +613,14 @@ async function benchmarkSingleRoute(
               forceSerialRouting,
               signal,
               engineRunTimeoutMs,
+              allowFallback: false,
             });
           }
           elapsedMs = (performance.now() - tb0) / batchRuns;
+        }
+
+        if (!timedResults[engineId]) {
+          timedResults[engineId] = timedResult;
         }
 
         timesMap[engineId].push(elapsedMs);
@@ -600,11 +631,12 @@ async function benchmarkSingleRoute(
         };
       } catch (err) {
         if (err?.name === 'AbortError') throw err;
-        engineRunErrors[engineId] = err.message ?? String(err);
+        const message = normalizeEngineErrorMessage(err);
+        engineRunErrors[engineId] = { message, code: normalizeEngineErrorCode(err) };
         timedErrorCounts[engineId] += 1;
         roundRecord.engines[engineId] = {
           elapsedMs: null,
-          error: engineRunErrors[engineId],
+          error: message,
           skipped: false,
         };
       }
@@ -625,23 +657,45 @@ async function benchmarkSingleRoute(
     const rawWarm = engineId === 'bidirectional-astar'
       ? canonicalWarm
       : normalizeBenchmarkResult(engineId, warmResults[engineId], prepared, referenceCost);
+    const rawTimed = timedResults[engineId]
+      ? normalizeBenchmarkResult(engineId, timedResults[engineId], prepared, referenceCost)
+      : null;
     const warm = rawWarm ?? {};
+    const hasTimedSamples = (timesMap[engineId] ?? []).length > 0;
+    const useTimedResult = rawTimed && !rawTimed.error;
+    const result = useTimedResult ? rawTimed : rawWarm ?? {};
     const runErr = engineRunErrors[engineId] ?? null;
     const warmErr = warm.error ?? null;
+    const warmErrCode = warm.errorCode ?? null;
+    const timedErrMessage = runErr?.message ?? rawTimed?.error ?? null;
+    const timedErrCode = runErr?.code ?? rawTimed?.errorCode ?? null;
+    const resultSource = useTimedResult ? 'timed' : (rawWarm ? 'warm' : 'none');
+    const status = runErr
+      ? 'timed_error'
+      : useTimedResult
+        ? (warmErr ? 'warm_error_recovered' : 'ok')
+        : rawTimed?.error
+          ? 'timed_error'
+          : warmErr
+            ? 'warm_error'
+            : 'ok';
     const samples = timesMap[engineId] ?? [];
-    const hasTimedSamples = samples.length > 0;
+
     results[engineId] = {
       medianMs: hasTimedSamples ? median(samples) : null,
       samplesMs: [...samples],
       sampleStats: summarizeSamples(samples),
       warmupMs: Number.isFinite(warmTimingsMs[engineId]) ? warmTimingsMs[engineId] : null,
-      found: warm.found ?? false,
-      parallelUsed: warm.parallelUsed ?? false,
-      cost: warm.cost ?? null,
-      // Treat warm-up failures as non-fatal if timed samples completed successfully.
-      error: hasTimedSamples ? null : (warmErr ?? runErr),
+      found: result.found ?? false,
+      parallelUsed: result.parallelUsed ?? false,
+      cost: result.cost ?? null,
+      error: runErr ? timedErrMessage : (useTimedResult ? null : (rawTimed?.error ?? warmErr ?? null)),
       warmError: warmErr ?? null,
-      timedError: runErr,
+      warmErrorCode: warmErrCode,
+      timedError: timedErrMessage,
+      timedErrorCode: timedErrCode,
+      resultSource,
+      status,
     };
   }
 
@@ -724,10 +778,14 @@ async function benchmarkSingleRoute(
     n_engines_found: Object.values(results).filter((r) => r.found).length,
     n_engines_timed: Object.values(results).filter((r) => Number.isFinite(r.medianMs)).length,
     n_engines_cost: Object.values(results).filter((r) => r.cost != null).length,
+    n_engines_warm_errors: Object.values(results).filter((r) => Boolean(r.warmError)).length,
+    n_engines_timed_errors: Object.values(results).filter((r) => Boolean(r.timedError)).length,
+    any_engine_warm_error: Object.values(results).some((r) => Boolean(r.warmError)),
+    any_engine_timed_error: Object.values(results).some((r) => Boolean(r.timedError)),
     all_engines_found: Object.values(results).every((r) => r.found),
     all_engines_timed: Object.values(results).every((r) => Number.isFinite(r.medianMs)),
     all_engines_cost: Object.values(results).every((r) => r.cost != null),
-    any_engine_error: Object.values(results).some((r) => Boolean(r.error || r.warmError || r.timedError)),
+    any_engine_error: Object.values(results).some((r) => Boolean(r.error || r.timedError)),
     cost_winner_ms: costWinner ? results[costWinner]?.medianMs ?? null : null,
     winner_vs_cost_pct: costWinner && Number.isFinite(results[costWinner]?.medianMs)
       ? round2((timingWinner.fastestMs - results[costWinner].medianMs) / results[costWinner].medianMs * 100)
@@ -773,10 +831,34 @@ async function benchmarkSingleRoute(
     adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
     delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
     ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
+    bidirectional_astar_warm_error: results['bidirectional-astar'].warmError,
+    adaptive_barrier_warm_error: results['adaptive-barrier'].warmError,
+    delta_stepping_warm_error: results['delta-stepping'].warmError,
+    ultra_dijkstra_warm_error: results['ultra-dijkstra'].warmError,
+    bidirectional_astar_warm_error_code: results['bidirectional-astar'].warmErrorCode,
+    adaptive_barrier_warm_error_code: results['adaptive-barrier'].warmErrorCode,
+    delta_stepping_warm_error_code: results['delta-stepping'].warmErrorCode,
+    ultra_dijkstra_warm_error_code: results['ultra-dijkstra'].warmErrorCode,
+    bidirectional_astar_result_source: results['bidirectional-astar'].resultSource,
+    adaptive_barrier_result_source: results['adaptive-barrier'].resultSource,
+    delta_stepping_result_source: results['delta-stepping'].resultSource,
+    ultra_dijkstra_result_source: results['ultra-dijkstra'].resultSource,
+    bidirectional_astar_status: results['bidirectional-astar'].status,
+    adaptive_barrier_status: results['adaptive-barrier'].status,
+    delta_stepping_status: results['delta-stepping'].status,
+    ultra_dijkstra_status: results['ultra-dijkstra'].status,
     bidirectional_astar_timed_error: results['bidirectional-astar'].timedError,
     adaptive_barrier_timed_error: results['adaptive-barrier'].timedError,
     delta_stepping_timed_error: results['delta-stepping'].timedError,
     ultra_dijkstra_timed_error: results['ultra-dijkstra'].timedError,
+    bidirectional_astar_timed_error_code: results['bidirectional-astar'].timedErrorCode,
+    adaptive_barrier_timed_error_code: results['adaptive-barrier'].timedErrorCode,
+    delta_stepping_timed_error_code: results['delta-stepping'].timedErrorCode,
+    ultra_dijkstra_timed_error_code: results['ultra-dijkstra'].timedErrorCode,
+    bidirectional_astar_error_code: results['bidirectional-astar'].warmErrorCode ?? results['bidirectional-astar'].timedErrorCode,
+    adaptive_barrier_error_code: results['adaptive-barrier'].warmErrorCode ?? results['adaptive-barrier'].timedErrorCode,
+    delta_stepping_error_code: results['delta-stepping'].warmErrorCode ?? results['delta-stepping'].timedErrorCode,
+    ultra_dijkstra_error_code: results['ultra-dijkstra'].warmErrorCode ?? results['ultra-dijkstra'].timedErrorCode,
     engine_errors: summarizeEngineErrors({
       bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
       adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
@@ -811,7 +893,11 @@ async function benchmarkSingleRoute(
         ])),
         warmupErrorMessagesByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
-          warmErrors[engineId] ?? null,
+          warmErrors[engineId]?.message ?? null,
+        ])),
+        warmupErrorCodesByEngine: Object.fromEntries(engineIds.map((engineId) => [
+          engineId,
+          warmErrors[engineId]?.code ?? null,
         ])),
         warmupErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
@@ -819,11 +905,23 @@ async function benchmarkSingleRoute(
         ])),
         timedErrorMessagesByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
-          engineRunErrors[engineId] ?? null,
+          engineRunErrors[engineId]?.message ?? null,
+        ])),
+        timedErrorCodesByEngine: Object.fromEntries(engineIds.map((engineId) => [
+          engineId,
+          engineRunErrors[engineId]?.code ?? null,
         ])),
         timedErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
           timedErrorCounts[engineId] ?? 0,
+        ])),
+        finalResultSourceByEngine: Object.fromEntries(engineIds.map((engineId) => [
+          engineId,
+          results[engineId]?.resultSource ?? null,
+        ])),
+        finalEngineStatusByEngine: Object.fromEntries(engineIds.map((engineId) => [
+          engineId,
+          results[engineId]?.status ?? null,
         ])),
         timingSamplesMsByEngine: Object.fromEntries(engineIds.map((engineId) => [
           engineId,
@@ -870,6 +968,7 @@ export async function runBenchmark(config, onProgress = () => {}) {
     clearCachesAfterEachRoute = false,
     clearCacheOnCategoryBoundary = true,
     signal,
+    pauseController,
     onEngineStatus,
     engineRunTimeoutMs = 20_000,
     pool: suppliedPool,
@@ -903,12 +1002,18 @@ export async function runBenchmark(config, onProgress = () => {}) {
   // Group routes by city/category
   let prevCategory = null;
 
+  const waitForResumeIfPaused = async () => {
+    if (!pauseController?.isPaused?.() || isAbortSignalAborted(signal)) return;
+    await pauseController.waitForResume(signal);
+  };
+
   try {
     for (let i = 0; i < routes.length; i++) {
       if (isAbortSignalAborted(signal)) {
         cancelRunningEngine({ reason: 'benchmark_aborted' });
         throw createAbortError();
       }
+      await waitForResumeIfPaused();
 
       const routeDef = routes[i];
       onProgress({ current: i, total: routes.length, routeName: routeDef.name, results });
@@ -992,6 +1097,7 @@ export async function runBenchmark(config, onProgress = () => {}) {
       prevCategory = routeDef.category;
 
       if (normalizedPauseMs > 0 && i < routes.length - 1) {
+        await waitForResumeIfPaused();
         onProgress({
           current: i + 1,
           total: routes.length,
@@ -1000,7 +1106,8 @@ export async function runBenchmark(config, onProgress = () => {}) {
           phase: 'pausing',
           results,
         });
-        await sleep(normalizedPauseMs);
+        await sleep(normalizedPauseMs, signal);
+        await waitForResumeIfPaused();
       }
     }
 

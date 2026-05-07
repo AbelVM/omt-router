@@ -16,6 +16,7 @@ import {
   suggestThresholds,
   generatePerformanceSummary,
   generateCostSummary,
+  generateCopilotReport,
 } from './benchmark.js';
 
 const root = document;
@@ -47,6 +48,17 @@ const modeSelectEl = root.getElementById('mode-select');
 const runsInputEl = root.getElementById('runs-input');
 const pauseInputEl = root.getElementById('pause-input');
 const downloadBtn = root.getElementById('download-btn');
+const pauseBtn = root.getElementById('pause-btn');
+const reportBtn = root.getElementById('report-btn');
+const copyReportBtn = root.getElementById('copy-report-btn');
+const reportPanelEl = root.getElementById('report-panel');
+const reportTypeControlsEl = root.getElementById('report-type-controls');
+const reportViewSelectEl = root.getElementById('report-view-select');
+const reportStatusEl = root.getElementById('report-status');
+const reportNoteEl = root.getElementById('report-note');
+const reportOutputEl = root.getElementById('report-output');
+const pauseStateEl = root.getElementById('pause-state');
+if (pauseStateEl) pauseStateEl.hidden = true;
 const suggestionWrapEl = root.getElementById('suggestion-wrap');
 const resultsTableSortHeaders = root.querySelectorAll('#results-table thead th[data-col]');
 
@@ -96,6 +108,93 @@ function updateRouteCount() {
     : '';
   routeCountEl.textContent = `${n.toLocaleString()} routes available${thresholdText}`;
 }
+
+function getReportVariantLabel(key) {
+  return key === 'sab_on' ? 'SAB On'
+    : key === 'sab_off' ? 'SAB Off'
+    : 'Combined';
+}
+
+function buildReportVariants() {
+  if (!_reportVariants || _reportVariants.length === 0) {
+    return createReportVariants();
+  }
+  return _reportVariants.slice();
+}
+
+function createReportVariants() {
+  const combinedResults = Array.isArray(_passResults) && _passResults.length > 0
+    ? _passResults[0].concat(..._passResults.slice(1))
+    : _results;
+
+  const variants = [
+    {
+      key: 'combined',
+      label: 'Combined',
+      results: combinedResults,
+      context: {
+        ...buildReportContext(),
+        parallelOrSerial: 'combined',
+      },
+    },
+  ];
+
+  if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
+    _passContexts.forEach((context, index) => {
+      if (!context) return;
+      const key = context.sharedArrayBuffer ? 'sab_on' : 'sab_off';
+      variants.push({
+        key,
+        label: getReportVariantLabel(key),
+        results: _passResults[index] ?? [],
+        context: {
+          ...context,
+          parallelOrSerial: key,
+        },
+      });
+    });
+  }
+
+  return variants;
+}
+
+function updateReportTypeControls() {
+  if (!reportViewSelectEl || !reportTypeControlsEl) return;
+  const variants = buildReportVariants();
+  if (variants.length <= 1) {
+    reportTypeControlsEl.hidden = true;
+    _reportSelection = 'combined';
+    return;
+  }
+
+  reportTypeControlsEl.hidden = false;
+  reportViewSelectEl.innerHTML = '';
+  variants.forEach(({ key, label }) => {
+    const option = document.createElement('option');
+    option.value = key;
+    option.textContent = label;
+    reportViewSelectEl.appendChild(option);
+  });
+
+  if (!variants.some((variant) => variant.key === _reportSelection)) {
+    _reportSelection = 'combined';
+  }
+  reportViewSelectEl.value = _reportSelection;
+}
+
+function getSelectedReportVariant() {
+  const selection = (reportViewSelectEl?.value || _reportSelection || 'combined');
+  _reportSelection = selection;
+  const variants = buildReportVariants();
+  return variants.find((variant) => variant.key === selection) ?? variants[0];
+}
+
+function getReportFilename(variant, mode) {
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const suffix = variant?.key && variant.key !== 'combined' ? `_${variant.key}` : '_combined';
+  return `benchmark_${mode}${suffix}_${timestamp}.csv`;
+}
+
 categoryFiltersEl.addEventListener('change', updateRouteCount);
 lengthFiltersEl.addEventListener('change', updateRouteCount);
 successRoutesInput.addEventListener('input', updateRouteCount);
@@ -108,12 +207,18 @@ let _results = [];
 let _sortCol = 'E';
 let _sortAsc  = true;
 let _stopped  = false;
+let _paused = false;
+let _pauseResolvers = [];
 let _cleanupTooltip = null;
 let _chartScatter = null;
 let _chartDensity = null;
 let _chartHistogram = null;
 let _chartBubble = null;
 let _runContext = null;
+let _passResults = null;
+let _passContexts = null;
+let _reportVariants = [];
+let _reportSelection = 'combined';
 let _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
 let _abortController = null;
 let _updateScheduled = false;
@@ -133,6 +238,45 @@ function scheduleUIUpdate() {
     if (_pendingChartRedraw) {
       redrawCharts(_results);
       _pendingChartRedraw = false;
+    }
+  });
+}
+
+function resumePausedBenchmark() {
+  const resolvers = _pauseResolvers.splice(0, _pauseResolvers.length);
+  _paused = false;
+  resolvers.forEach((resolve) => resolve());
+  if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
+  if (pauseStateEl) pauseStateEl.hidden = true;
+}
+
+function waitForBenchmarkResume(signal) {
+  if (!_paused) return Promise.resolve();
+  return new Promise((resolve) => {
+    let resolved = false;
+    const cleanup = () => {
+      if (signal?.removeEventListener) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    };
+    const onDone = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      const idx = _pauseResolvers.indexOf(onDone);
+      if (idx >= 0) _pauseResolvers.splice(idx, 1);
+      resolve();
+    };
+    const onAbort = () => {
+      onDone();
+    };
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    _pauseResolvers.push(onDone);
+    if (signal?.addEventListener) {
+      signal.addEventListener('abort', onAbort, { once: true });
     }
   });
 }
@@ -251,6 +395,8 @@ runBtn.addEventListener('click', async () => {
         { parallelOrSerial: 'serial', sharedArrayBuffer: false, forceSerialRouting: false },
       ];
   _abortController = new AbortController();
+  _paused = false;
+  _pauseResolvers = [];
   _pendingSummaryUpdate = false;
   _pendingChartRedraw = false;
   _updateScheduled = false;
@@ -258,6 +404,17 @@ runBtn.addEventListener('click', async () => {
   window.__benchmarkResults = _results;
   runBtn.disabled = true;
   stopBtn.disabled = false;
+  if (pauseBtn) pauseBtn.disabled = false;
+  if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
+  if (pauseStateEl) pauseStateEl.hidden = true;
+  if (reportPanelEl) reportPanelEl.hidden = true;
+  if (reportTypeControlsEl) reportTypeControlsEl.hidden = true;
+  if (reportViewSelectEl) reportViewSelectEl.innerHTML = '';
+  _reportSelection = 'combined';
+  if (reportOutputEl) reportOutputEl.value = '';
+  if (copyReportBtn) copyReportBtn.disabled = true;
+  if (reportStatusEl) reportStatusEl.textContent = 'Report not generated';
+  if (reportNoteEl) reportNoteEl.textContent = 'Generate a benchmark report for the current results.';
   progressSectionEl.hidden = false;
   resultsSectionEl.hidden = true;
   resultsTbodyEl.innerHTML = '';
@@ -272,8 +429,8 @@ runBtn.addEventListener('click', async () => {
   if (_chartDensity) { _chartDensity.destroy(); _chartDensity = null; }
   if (_cleanupTooltip) { _cleanupTooltip(); _cleanupTooltip = null; }
 
-  const passResults = runPasses.map(() => []);
-  const passContexts = runPasses.map((pass, passIndex) => ({
+  _passResults = runPasses.map(() => []);
+  _passContexts = runPasses.map((pass, passIndex) => ({
     ...baseRunContext,
     passIndex: passIndex + 1,
     totalPasses: runPasses.length,
@@ -317,12 +474,16 @@ runBtn.addEventListener('click', async () => {
             mode,
             zoom,
             nRuns,
-            routePauseMs: 0,
+            routePauseMs,
             forceSerialRouting: pass.forceSerialRouting,
             clearCacheOnCategoryBoundary: false,
             clearCachesAfterEachRoute: false,
             pool: sharedPool,
             signal: _abortController.signal,
+            pauseController: {
+              isPaused: () => _paused,
+              waitForResume: (signal) => waitForBenchmarkResume(signal),
+            },
             onEngineStatus: (status) => {
               _engineWorkerStatus = status ?? { state: 'idle', engineId: null, running: false, lastError: null };
             },
@@ -339,16 +500,18 @@ runBtn.addEventListener('click', async () => {
               ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
               : '';
             const activeTasks = Math.max(0, startedTasks - displayCompleted);
+            const pausedSuffix = _paused ? ' — paused' : '';
 
             progressBarEl.style.width = `${pct}%`;
+            if (pauseStateEl) pauseStateEl.hidden = !_paused;
             progressTextEl.textContent = progress.done
               ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
               : phase === 'pausing'
-                ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}`
-                : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}`;
+                ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
+                : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
 
             if (result) {
-              passResults[passIndex].push(result);
+              _passResults[passIndex].push(result);
               _results.push(result);
               if (!result.error) successfulRouteCount += 1;
               appendRow(result);
@@ -370,23 +533,22 @@ runBtn.addEventListener('click', async () => {
         if (finishedEarly) break outerRouteLoop;
       }
 
-      if (routePauseMs > 0 && routeIndex < totalRoutes - 1) {
-        await new Promise(resolve => setTimeout(resolve, routePauseMs));
-      }
     }
 
-    if (passResults.some((pass) => pass.length > 0)) {
+    if (_passResults?.some((pass) => pass.length > 0)) {
       const combinedResults = runPasses.length === 1
-        ? passResults[0]
-        : passResults[0].concat(...passResults.slice(1));
+        ? _passResults[0]
+        : _passResults[0].concat(..._passResults.slice(1));
       _results = combinedResults;
+      _reportVariants = createReportVariants();
+      updateReportTypeControls();
       showResults(_results);
     }
 
     for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
-      if (passResults[passIndex].length > 0) {
+      if (_passResults[passIndex].length > 0) {
         try {
-          const saveResult = await saveBenchmarkArtifact(passResults[passIndex], passContexts[passIndex]);
+          const saveResult = await saveBenchmarkArtifact(_passResults[passIndex], _passContexts[passIndex]);
           console.log('[benchmark] Results saved:', saveResult?.path ?? saveResult);
         } catch (saveErr) {
           console.error('[benchmark] Failed to auto-save JSON artifact:', saveErr);
@@ -395,28 +557,121 @@ runBtn.addEventListener('click', async () => {
     }
 
     clearBenchmarkCache();
+    _passResults = null;
+    _passContexts = null;
   } catch (err) {
     if (!_stopped && err?.name !== 'AbortError') console.error('Benchmark error:', err);
   } finally {
     runBtn.disabled = false;
     stopBtn.disabled = true;
+    if (pauseBtn) pauseBtn.disabled = true;
+    _paused = false;
+    resumePausedBenchmark();
     _abortController = null;
     _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
   }
 });
 
-stopBtn.addEventListener('click', () => {
+stopBtn.addEventListener('click', async () => {
   _stopped = true;
+  if (stopBtn) stopBtn.disabled = true;
+  resumePausedBenchmark();
   _abortController?.abort();
+
+  if (_results.length > 0) {
+    showReport(_results, buildReportContext());
+    const savedPaths = [];
+
+    if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
+      for (let passIndex = 0; passIndex < _passResults.length; passIndex++) {
+        const passResults = _passResults[passIndex];
+        const passContext = _passContexts[passIndex];
+        if (passResults.length > 0) {
+          try {
+            const saveResult = await saveBenchmarkArtifact(passResults, passContext);
+            if (saveResult?.path) savedPaths.push(saveResult.path);
+            console.log('[benchmark] Stop requested; pass saved:', saveResult?.path ?? saveResult);
+          } catch (err) {
+            console.error('[benchmark] Failed to save JSON report on stop:', err);
+            if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
+          }
+        }
+      }
+    }
+
+    if (savedPaths.length > 0) {
+      if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
+    } else {
+      try {
+        const context = buildReportContext();
+        const saveResult = await saveBenchmarkArtifact(_results, context);
+        if (saveResult?.path) {
+          if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${saveResult.path}`;
+        } else if (reportStatusEl) {
+          reportStatusEl.textContent = 'Report ready';
+        }
+      } catch (err) {
+        console.error('[benchmark] Failed to save JSON report on stop:', err);
+        if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
+      }
+    }
+  }
 });
 
 // ── Download ──────────────────────────────────────────────────────────────
 downloadBtn.addEventListener('click', () => {
   if (_results.length > 0) {
     const mode = modeSelectEl.value;
-    downloadCSV(_results, `benchmark_${mode}_${new Date().toISOString().slice(0,10)}.csv`);
+    const variant = getSelectedReportVariant();
+    const resultsToDownload = Array.isArray(variant.results) && variant.results.length > 0
+      ? variant.results
+      : _results;
+    downloadCSV(resultsToDownload, getReportFilename(variant, mode));
   }
 });
+
+if (pauseBtn) {
+  pauseBtn.addEventListener('click', () => {
+    _paused = !_paused;
+    if (_paused) {
+      pauseBtn.textContent = '▶ Resume';
+      if (pauseStateEl) pauseStateEl.hidden = false;
+    } else {
+      pauseBtn.textContent = '⏸ Pause';
+      if (pauseStateEl) pauseStateEl.hidden = true;
+      resumePausedBenchmark();
+    }
+  });
+}
+
+if (reportBtn) {
+  reportBtn.addEventListener('click', () => {
+    updateReportTypeControls();
+    showReportVariant(getSelectedReportVariant());
+  });
+}
+
+if (reportViewSelectEl) {
+  reportViewSelectEl.addEventListener('change', () => {
+    _reportSelection = reportViewSelectEl.value;
+    if (reportOutputEl?.value) {
+      showReportVariant(getSelectedReportVariant());
+    }
+  });
+}
+
+if (copyReportBtn) {
+  copyReportBtn.addEventListener('click', async () => {
+    if (!reportOutputEl || !reportOutputEl.value) return;
+    try {
+      await navigator.clipboard.writeText(reportOutputEl.value);
+      if (reportStatusEl) reportStatusEl.textContent = 'Report copied';
+    } catch (err) {
+      console.error('Failed to copy report:', err);
+      if (reportStatusEl) reportStatusEl.textContent = 'Copy failed';
+    }
+  });
+}
 
 // ── Table sorting ─────────────────────────────────────────────────────────
 resultsTableSortHeaders.forEach(th => {
@@ -475,15 +730,28 @@ function speedupCell(r) {
 }
 
 function formatEngineErrors(r) {
-  if (r.engine_errors) return r.engine_errors;
-  const labels = [
-    ['bidirectional_astar_error', 'A*'],
-    ['adaptive_barrier_error', 'Barrier'],
-    ['delta_stepping_error', 'Delta'],
-    ['ultra_dijkstra_error', 'Dijkstra'],
+  const engines = [
+    { id: 'bidirectional-astar', label: 'A★', errorKey: 'bidirectional_astar_error', warmKey: 'bidirectional_astar_warm_error', timedKey: 'bidirectional_astar_timed_error', resultSourceKey: 'bidirectional_astar_result_source' },
+    { id: 'adaptive-barrier', label: 'Barrier', errorKey: 'adaptive_barrier_error', warmKey: 'adaptive_barrier_warm_error', timedKey: 'adaptive_barrier_timed_error', resultSourceKey: 'adaptive_barrier_result_source' },
+    { id: 'delta-stepping', label: 'Delta', errorKey: 'delta_stepping_error', warmKey: 'delta_stepping_warm_error', timedKey: 'delta_stepping_timed_error', resultSourceKey: 'delta_stepping_result_source' },
+    { id: 'ultra-dijkstra', label: 'Dijkstra', errorKey: 'ultra_dijkstra_error', warmKey: 'ultra_dijkstra_warm_error', timedKey: 'ultra_dijkstra_timed_error', resultSourceKey: 'ultra_dijkstra_result_source' },
   ];
-  const failed = labels.filter(([key]) => !!r[key]).map(([, shortName]) => shortName);
-  return failed.length > 0 ? failed.join(',') : '<span style="color:var(--muted)">—</span>';
+
+  const failures = engines.flatMap((engine) => {
+    const entries = [];
+    const recoveredWarmError = r[engine.warmKey] && r[engine.resultSourceKey] === 'timed';
+
+    if (r[engine.errorKey]) entries.push(engine.label);
+    if (r[engine.timedKey]) entries.push(`${engine.label} (timed)`);
+    if (r[engine.warmKey] && !recoveredWarmError) entries.push(`${engine.label} (warm)`);
+    return entries;
+  });
+
+  if (failures.length === 0) {
+    return '<span style="color:var(--muted)">—</span>';
+  }
+
+  return failures.join(', ');
 }
 
 function appendRow(r) {
@@ -594,6 +862,69 @@ function buildReportWithContextHeader(report, context) {
   return label ? `[${label}]\n\n${report}` : report;
 }
 
+function buildReportContext() {
+  const rawPauseMs = Number.isFinite(pauseInputEl?.valueAsNumber)
+    ? pauseInputEl.valueAsNumber
+    : Number.parseFloat(pauseInputEl?.value ?? '0');
+  const routePauseMs = Math.max(0, Number.isFinite(rawPauseMs) ? Math.floor(rawPauseMs) : 0);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    mode: modeSelectEl?.value ?? 'unknown',
+    nRuns: Number.isFinite(runsInputEl?.valueAsNumber) ? runsInputEl.valueAsNumber : Number.parseInt(runsInputEl?.value ?? '0', 10) || 0,
+    routePauseMs,
+    routesSelected: getSelectedRoutes().length,
+    selectedCategories: getCheckedValues(categoryFiltersEl),
+    selectedLengths: getCheckedValues(lengthFiltersEl),
+    userAgent: navigator.userAgent,
+    hardwareConcurrency: navigator.hardwareConcurrency ?? 'unknown',
+    crossOriginIsolated: window.crossOriginIsolated ?? false,
+    sharedArrayBuffer: Boolean(_runContext?.sharedArrayBuffer),
+    parallelOrSerial: _runContext?.parallelOrSerial ?? 'serial',
+  };
+}
+
+function showReport(results, context) {
+  if (!Array.isArray(results) || results.length === 0) {
+    if (reportStatusEl) reportStatusEl.textContent = 'No results to report';
+    if (reportNoteEl) reportNoteEl.textContent = 'Run some benchmark routes before generating a report.';
+    if (reportPanelEl) reportPanelEl.hidden = false;
+    if (reportOutputEl) reportOutputEl.value = '';
+    if (copyReportBtn) copyReportBtn.disabled = true;
+    return null;
+  }
+
+  const report = buildReportWithContextHeader(generateCopilotReport(results, context), context);
+  if (reportPanelEl) reportPanelEl.hidden = false;
+  if (reportOutputEl) reportOutputEl.value = report;
+  if (reportStatusEl) reportStatusEl.textContent = 'Report ready';
+  if (reportNoteEl) reportNoteEl.textContent = 'Use the generated report with other benchmark artifacts.';
+  if (copyReportBtn) copyReportBtn.disabled = false;
+  return report;
+}
+
+function showReportVariant(variant) {
+  updateReportTypeControls();
+  const results = Array.isArray(variant.results) ? variant.results : [];
+  const context = variant.context || buildReportContext();
+  if (!results.length) {
+    if (reportStatusEl) reportStatusEl.textContent = `${variant.label} report not available`;
+    if (reportNoteEl) reportNoteEl.textContent = 'Run a benchmark to generate this report.';
+    if (reportPanelEl) reportPanelEl.hidden = false;
+    if (reportOutputEl) reportOutputEl.value = '';
+    if (copyReportBtn) copyReportBtn.disabled = true;
+    return null;
+  }
+
+  const report = buildReportWithContextHeader(generateCopilotReport(results, context), context);
+  if (reportPanelEl) reportPanelEl.hidden = false;
+  if (reportOutputEl) reportOutputEl.value = report;
+  if (reportStatusEl) reportStatusEl.textContent = `${variant.label} report ready`;
+  if (reportNoteEl) reportNoteEl.textContent = `Use the ${variant.label.toLowerCase()} benchmark report with other benchmark artifacts.`;
+  if (copyReportBtn) copyReportBtn.disabled = false;
+  return report;
+}
+
 function updateRunContextLabels(context) {
   const label = buildRunContextLabel(context);
 
@@ -619,37 +950,22 @@ function renderTable(results) {
 }
 
 function updateSummary(results) {
-  const done = results.filter(r => !r.error);
-  const errCount = results.filter(r => r.error).length;
-  const tieCount = done.filter(r => Number(r.winner_tied) === 1).length;
+  const routeErrorCount = results.filter((r) => r.error || r.routeError).length;
+  const completed = results.filter((r) => !r.error && !r.routeError);
+  const unrecoveredEngineErrorRouteCount = results.filter((r) => (
+    !(r.error || r.routeError) && r.any_engine_error
+  )).length;
+  const tieCount = completed.filter(r => Number(r.winner_tied) === 1).length;
   
-  // Count wins per engine
   const engineWins = {
     'bidirectional-astar': 0,
     'adaptive-barrier': 0,
     'delta-stepping': 0,
-    'ultra-dijkstra': 0
+    'ultra-dijkstra': 0,
   };
-  
-  done.forEach(r => {
+  completed.forEach(r => {
     if (r.winner && engineWins.hasOwnProperty(r.winner)) {
       engineWins[r.winner]++;
-    }
-  });
-  
-  // Calculate median times per engine
-  const engineMedians = {
-    'bidirectional-astar': null,
-    'adaptive-barrier': null,
-    'delta-stepping': null,
-    'ultra-dijkstra': null
-  };
-  
-  Object.keys(engineMedians).forEach(engine => {
-    const times = done.filter(r => r[engine + '_ms'] != null).map(r => r[engine + '_ms']).sort((a, b) => a - b);
-    if (times.length > 0) {
-      const m = Math.floor(times.length / 2);
-      engineMedians[engine] = times.length % 2 ? times[m] : (times[m - 1] + times[m]) / 2;
     }
   });
 
@@ -657,24 +973,41 @@ function updateSummary(results) {
     'bidirectional-astar': 'A★',
     'adaptive-barrier': 'Barrier',
     'delta-stepping': 'Delta',
-    'ultra-dijkstra': 'Dijkstra'
+    'ultra-dijkstra': 'Dijkstra',
   };
-  
   const colors = {
     'bidirectional-astar': '#3b82f6',
     'adaptive-barrier': '#8b5cf6',
     'delta-stepping': '#ec4899',
-    'ultra-dijkstra': '#f59e0b'
+    'ultra-dijkstra': '#f59e0b',
   };
 
-  summaryCardsEl.innerHTML = `
-    <div class="card"><div class="card-val">${results.length}</div><div class="card-lbl">Routes run</div></div>
-    ${Object.entries(engineWins).map(([engine, count]) => 
-      `<div class="card"><div class="card-val">${count}</div><div class="card-lbl">${engineNames[engine]} wins</div></div>`
-    ).join('')}
-    ${tieCount > 0 ? `<div class="card"><div class="card-val">${tieCount}</div><div class="card-lbl">Near-ties</div></div>` : ''}
-    ${errCount > 0 ? `<div class="card"><div class="card-val">${errCount}</div><div class="card-lbl">Errors</div></div>` : ''}
-  `;
+  const cards = [];
+  cards.push(`<div class="card"><div class="card-val">${results.length}</div><div class="card-lbl">Routes run</div></div>`);
+  Object.entries(engineWins).forEach(([engine, count]) => {
+    const className = engine === 'bidirectional-astar' ? 'engine-astar'
+      : engine === 'adaptive-barrier' ? 'engine-barrier'
+      : engine === 'delta-stepping' ? 'engine-delta'
+      : engine === 'ultra-dijkstra' ? 'engine-dijkstra'
+      : '';
+    cards.push(`
+      <div class="card ${className}">
+        <div class="card-val">${count}</div>
+        <div class="card-lbl">${engineNames[engine]} wins</div>
+      </div>
+    `);
+  });
+  if (tieCount > 0) {
+    cards.push(`<div class="card gray"><div class="card-val">${tieCount}</div><div class="card-lbl">Near-ties</div></div>`);
+  }
+  if (routeErrorCount > 0) {
+    cards.push(`<div class="card red"><div class="card-val">${routeErrorCount}</div><div class="card-lbl">Route errors</div></div>`);
+  }
+  if (unrecoveredEngineErrorRouteCount > 0) {
+    cards.push(`<div class="card coral"><div class="card-val">${unrecoveredEngineErrorRouteCount}</div><div class="card-lbl">Routes with unrecovered engine errors</div></div>`);
+  }
+
+  summaryCardsEl.innerHTML = cards.join('');
   renderAutoSelectorSummary(results);
 }
 
@@ -784,6 +1117,34 @@ function buildClusteringRows(results) {
             : engineId === 'delta-stepping'
               ? row?.delta_stepping_error ?? row?.delta_stepping_timed_error ?? null
               : row?.ultra_dijkstra_error ?? row?.ultra_dijkstra_timed_error ?? null,
+        engineWarmError: engineId === 'bidirectional-astar'
+          ? row?.bidirectional_astar_warm_error ?? null
+          : engineId === 'adaptive-barrier'
+            ? row?.adaptive_barrier_warm_error ?? null
+            : engineId === 'delta-stepping'
+              ? row?.delta_stepping_warm_error ?? null
+              : row?.ultra_dijkstra_warm_error ?? null,
+        engineTimedError: engineId === 'bidirectional-astar'
+          ? row?.bidirectional_astar_timed_error ?? null
+          : engineId === 'adaptive-barrier'
+            ? row?.adaptive_barrier_timed_error ?? null
+            : engineId === 'delta-stepping'
+              ? row?.delta_stepping_timed_error ?? null
+              : row?.ultra_dijkstra_timed_error ?? null,
+        engineResultSource: engineId === 'bidirectional-astar'
+          ? row?.bidirectional_astar_result_source ?? null
+          : engineId === 'adaptive-barrier'
+            ? row?.adaptive_barrier_result_source ?? null
+            : engineId === 'delta-stepping'
+              ? row?.delta_stepping_result_source ?? null
+              : row?.ultra_dijkstra_result_source ?? null,
+        engineStatus: engineId === 'bidirectional-astar'
+          ? row?.bidirectional_astar_status ?? null
+          : engineId === 'adaptive-barrier'
+            ? row?.adaptive_barrier_status ?? null
+            : engineId === 'delta-stepping'
+              ? row?.delta_stepping_status ?? null
+              : row?.ultra_dijkstra_status ?? null,
         beelineM: row?.beelineM ?? null,
         N: row?.N ?? null,
         E: row?.E ?? null,
@@ -827,6 +1188,27 @@ const ENGINE_TIMED_ERROR_KEYS = {
   'ultra-dijkstra': 'ultra_dijkstra_timed_error',
 };
 
+const ENGINE_WARM_ERROR_KEYS = {
+  'bidirectional-astar': 'bidirectional_astar_warm_error',
+  'adaptive-barrier': 'adaptive_barrier_warm_error',
+  'delta-stepping': 'delta_stepping_warm_error',
+  'ultra-dijkstra': 'ultra_dijkstra_warm_error',
+};
+
+const ENGINE_RESULT_SOURCE_KEYS = {
+  'bidirectional-astar': 'bidirectional_astar_result_source',
+  'adaptive-barrier': 'adaptive_barrier_result_source',
+  'delta-stepping': 'delta_stepping_result_source',
+  'ultra-dijkstra': 'ultra_dijkstra_result_source',
+};
+
+const ENGINE_STATUS_KEYS = {
+  'bidirectional-astar': 'bidirectional_astar_status',
+  'adaptive-barrier': 'adaptive_barrier_status',
+  'delta-stepping': 'delta_stepping_status',
+  'ultra-dijkstra': 'ultra_dijkstra_status',
+};
+
 function round4(value) {
   return Number.isFinite(value) ? Math.round(value * 10000) / 10000 : null;
 }
@@ -853,6 +1235,32 @@ function normalizeBenchmarkRow(row) {
       row[key] ?? row[ENGINE_TIMED_ERROR_KEYS[engineId]] ?? null,
     ]),
   );
+
+  const engineWarmErrors = Object.fromEntries(
+    Object.entries(ENGINE_WARM_ERROR_KEYS).map(([engineId, key]) => [
+      engineId,
+      row[key] ?? null,
+    ]),
+  );
+
+  const engineResultSources = Object.fromEntries(
+    Object.entries(ENGINE_RESULT_SOURCE_KEYS).map(([engineId, key]) => [
+      engineId,
+      row[key] ?? null,
+    ]),
+  );
+
+  const engineStatuses = Object.fromEntries(
+    Object.entries(ENGINE_STATUS_KEYS).map(([engineId, key]) => [
+      engineId,
+      row[key] ?? null,
+    ]),
+  );
+
+  const nEnginesWarmErrors = Object.values(engineWarmErrors).filter(Boolean).length;
+  const nEnginesTimedErrors = Object.values(ENGINE_TIMED_ERROR_KEYS).filter((key) => Boolean(row[key])).length;
+  const anyEngineWarmError = Object.values(engineWarmErrors).some(Boolean);
+  const anyEngineTimedError = Object.values(ENGINE_TIMED_ERROR_KEYS).some((key) => Boolean(row[key]));
 
   const timeEntries = Object.entries(engineTimes)
     .filter(([, ms]) => Number.isFinite(ms))
@@ -935,6 +1343,10 @@ function normalizeBenchmarkRow(row) {
     n_engines_found: nEnginesFound,
     n_engines_timed: nEnginesTimed,
     n_engines_cost: nEnginesCost,
+    n_engines_warm_errors: nEnginesWarmErrors,
+    n_engines_timed_errors: nEnginesTimedErrors,
+    any_engine_warm_error: anyEngineWarmError,
+    any_engine_timed_error: anyEngineTimedError,
     all_engines_found: allEnginesFound,
     all_engines_timed: allEnginesTimed,
     all_engines_cost: allEnginesCost,

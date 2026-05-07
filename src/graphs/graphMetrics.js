@@ -55,9 +55,14 @@ import { haversineDistance } from '../utils/misc.js';
  *   nodeDegreeTarget: number, -- Outgoing degree of the target node.
  *   nodeCentralitySource: number, -- Centrality of the source node.
  *   nodeCentralityTarget: number, -- Centrality of the target node.
- *  emptyRatio?: number,   -- Ratio of empty nodes in the graph.
- *  globalCoverage?: number, -- Global coverage metric of the graph.
- *  relativeDensity?: number,  -- Relative density of the graph.
+ *   safeN?: number, -- Total number of nodes in the graph.
+ *   safeE?: number, -- Total number of directed edges in the graph.
+ *   safeBeelineKm?: number, -- Straight-line distance between source and target in kilometers.
+ *   avgOutDegree?: number, -- Average outgoing degree per node.
+ *   graphDensity?: number, -- Relative density normalized by expected coverage.
+ *   emptyRatio?: number,   -- Ratio of empty nodes in the graph.
+ *   globalCoverage?: number, -- Global coverage metric of the graph.
+ *   relativeDensity?: number,  -- Relative density of the graph.
  *   haversineDistance: number, -- Haversine distance between source and target nodes.
  * }} GraphMetrics
  */
@@ -108,7 +113,12 @@ export function getAllGraphMetrics(preparedGraph, rawGraph, sourceId, targetId, 
     return {
         nodeCount,
         edgeCount,
+        safeN: nodeCount,
+        safeE: edgeCount,
+        safeBeelineKm: beelineM / 1000,
         averageNodeDegree: averageOutDegree,
+        avgOutDegree: averageOutDegree,
+        graphDensity: relativeDensity,
         beelinePerNode: beelineM ? beelineM / (nodeCount || 1) : 0,
         nodeDegreeSource,
         nodeDegreeTarget,
