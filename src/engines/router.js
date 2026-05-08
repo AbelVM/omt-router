@@ -35,9 +35,36 @@ import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
 import { deltaSteppingRouter } from './DeltaStepping/index.js';
 import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
 import { WAY_PRIORITIES } from '../utils/ways_defaults.js';
+import { normalizePenalties } from '../utils/routeValidation.js';
 import EngineMainWorker from './engineMainWorker?worker&inline';
 import { getAllGraphMetrics } from '../graphs/graphMetrics.js'; 
 
+/**
+ * @typedef {[number, number]} LatLng
+ * @typedef {'distance'|'travelTime'|'optimal'} CostField
+ * @typedef {'cpu'|'gpu'|'auto'|'bidirectional-astar'|'adaptive-barrier'|'delta-stepping'|'ultra-dijkstra'} EngineId
+ *
+ * @typedef {Object} RouteQueryOptions
+ * @property {'cpu'|'gpu'|null} [forceEngine]
+ * @property {EngineId} [engineId]
+ * @property {string} [graphCategory]
+ * @property {CostField} [costField]
+ * @property {boolean} [useCache]
+ * @property {boolean} [allowFallback]
+ * @property {boolean} [forceSerialRouting]
+ *
+ * @typedef {Object} RouteResult
+ * @property {boolean} found
+ * @property {number[]} path
+ * @property {Array<LatLng>} coordinates
+ * @property {number} cost
+ * @property {CostField} costField
+ * @property {string} [engine]
+ * @property {'tile_cors'|'poor_snap'|'no_node'|'no_path'|'incomplete_path'|'missing_result'|'endpoint_mismatch'|'invalid_path'|'cost_mismatch'|'invalid_route'|'no_route'} [reason]
+ * @property {Object} [fallback]
+ * @property {number} [startSnapDistanceM]
+ * @property {number} [endSnapDistanceM]
+ */
 export { selectBestEngine, nearestNode };
 
 const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router' });
@@ -63,6 +90,30 @@ const ENGINE_ID_ALIASES = Object.freeze({
   adaptiveBarrier: 'adaptive-barrier',
   deltaStepping: 'delta-stepping',
   ultraDijkstra: 'ultra-dijkstra',
+});
+
+export const RouteFailureReason = Object.freeze({
+  MISSING_RESULT: 'missing_result',
+  ENDPOINT_MISMATCH: 'endpoint_mismatch',
+  INVALID_PATH: 'invalid_path',
+  COST_MISMATCH: 'cost_mismatch',
+  NO_PATH: 'no_path',
+  NO_NODE: 'no_node',
+  POOR_SNAP: 'poor_snap',
+  INCOMPLETE_PATH: 'incomplete_path',
+  TILE_CORS: 'tile_cors',
+  NO_ROUTE: 'no_route',
+  INVALID_ROUTE: 'invalid_route',
+});
+
+export const EngineErrorCode = Object.freeze({
+  ENGINE_ERROR: 'engine_error',
+  ENGINE_WORKER_FAILED: 'engine_worker_failed',
+  ENGINE_WORKER_CRASHED: 'engine_worker_crashed',
+  ENGINE_WORKER_UNAVAILABLE: 'engine_worker_unavailable',
+  ENGINE_CANCELLED: 'engine_cancelled',
+  ENGINE_SHUTDOWN: 'engine_shutdown',
+  ENGINE_WORKER_BUSY: 'engine_worker_busy',
 });
 
 function normalizeEngineId(engineId, fallback = 'bidirectional-astar') {
@@ -149,7 +200,7 @@ function terminateEngineWorker() {
   _engineWorkerPreparedIdInWorker = null;
 }
 
-function makeEngineError(message, code = 'engine_error') {
+function makeEngineError(message, code = EngineErrorCode.ENGINE_ERROR) {
   const error = new Error(message);
   error.code = code;
   return error;
@@ -231,12 +282,12 @@ function ensureEngineWorker() {
       startedAt: null,
       lastError: message.error?.message ?? 'engine worker error',
     });
-    reject(makeEngineError(message.error?.message ?? 'engine worker failed', 'engine_worker_failed'));
+    reject(makeEngineError(message.error?.message ?? 'engine worker failed', EngineErrorCode.ENGINE_WORKER_FAILED));
   };
 
   _engineWorker.onerror = (event) => {
     const message = event?.message ?? 'engine worker crashed';
-    const error = makeEngineError(message, 'engine_worker_crashed');
+    const error = makeEngineError(message, EngineErrorCode.ENGINE_WORKER_CRASHED);
 
     emitEngineWorkerStatus({
       state: ENGINE_WORKER_STATES.ERROR,
@@ -367,7 +418,7 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
   parallelPolicy = null,
 } = {}) {
   const worker = ensureEngineWorker();
-  if (!worker) throw makeEngineError('engine worker is unavailable', 'engine_worker_unavailable');
+  if (!worker) throw makeEngineError('engine worker is unavailable', EngineErrorCode.ENGINE_WORKER_UNAVAILABLE);
 
   const requestId = ++_engineWorkerRequestId;
   const startedAt = Date.now();
@@ -442,7 +493,7 @@ export function cancelRunningEngine(reason = 'cancelled') {
   });
 
   terminateEngineWorker();
-  rejectAllEngineJobs(makeEngineError(`routing cancelled: ${reason}`, 'engine_cancelled'));
+  rejectAllEngineJobs(makeEngineError(`routing cancelled: ${reason}`, EngineErrorCode.ENGINE_CANCELLED));
 
   emitEngineWorkerStatus({
     state: ENGINE_WORKER_STATES.IDLE,
@@ -455,6 +506,30 @@ export function cancelRunningEngine(reason = 'cancelled') {
   });
 
   return true;
+}
+
+export function shutdownEngineWorker(reason = 'shutdown') {
+  if (_engineWorkerJobs.size > 0) {
+    emitEngineWorkerStatus({
+      state: ENGINE_WORKER_STATES.CANCELLING,
+      running: true,
+      lastError: reason,
+      requestCount: _engineWorkerJobs.size,
+    });
+
+    rejectAllEngineJobs(makeEngineError(`engine shutdown: ${reason}`, EngineErrorCode.ENGINE_SHUTDOWN));
+  }
+
+  terminateEngineWorker();
+  emitEngineWorkerStatus({
+    state: ENGINE_WORKER_STATES.IDLE,
+    running: false,
+    engineId: null,
+    requestId: null,
+    requestCount: 0,
+    startedAt: null,
+    lastError: null,
+  });
 }
 
 function buildRouteCacheKey(prepared, startId, endId, engineId) {
@@ -472,15 +547,7 @@ function buildRouteCacheKey(prepared, startId, endId, engineId) {
   ].join(':');
 }
 
-function normalizePenalties(penalties = {}) {
-  const {
-    intersectionPenaltySec = 0,
-    turnPenaltySec = 0,
-    turnAngleThresholdDeg = 25,
-  } = penalties;
 
-  return { intersectionPenaltySec, turnPenaltySec, turnAngleThresholdDeg };
-}
 
 function getPenaltyKey(costField, penalties = {}) {
   if (!isTravelTimeCostField(costField)) return 'none';
@@ -529,7 +596,7 @@ export function validateRouteResult(result, prepared, expectedEndpoints = null) 
     return {
       valid: Boolean(result),
       actualCost: result?.cost ?? null,
-      reason: result ? null : 'missing_result',
+      reason: result ? null : RouteFailureReason.MISSING_RESULT,
     };
   }
 
@@ -537,17 +604,17 @@ export function validateRouteResult(result, prepared, expectedEndpoints = null) 
   if (expectedEndpoints && path.length > 0) {
     const { startId, endId } = expectedEndpoints;
     if (path[0] !== startId || path[path.length - 1] !== endId) {
-      return { valid: false, actualCost: null, reason: 'endpoint_mismatch' };
+      return { valid: false, actualCost: null, reason: RouteFailureReason.ENDPOINT_MISMATCH };
     }
   }
 
   const actualCost = calculatePathCost(path, prepared);
   if (!Number.isFinite(actualCost)) {
-    return { valid: false, actualCost: null, reason: 'invalid_path' };
+    return { valid: false, actualCost: null, reason: RouteFailureReason.INVALID_PATH };
   }
 
   if (hasMeaningfulCostMismatch(actualCost, result.cost)) {
-    return { valid: false, actualCost, reason: 'cost_mismatch' };
+    return { valid: false, actualCost, reason: RouteFailureReason.COST_MISMATCH };
   }
 
   return { valid: true, actualCost, reason: null };
@@ -709,15 +776,12 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
 
 /**
  * CPU bidirectional A* route query with intelligent engine selection.
- */
-/**
- * @param {number} startId
- * @param {number} endId
- * @param {object} prepared - result of buildCH()
- * @param {{ forceEngine?: 'cpu'|'gpu'|null, engineId?: 'bidirectional-astar'|'adaptive-barrier'|'delta-stepping'|'ultra-dijkstra'|'auto', graphCategory?: string, costField?: 'distance'|'travelTime', useCache?: boolean, allowFallback?: boolean }} [opts]
- *   forceEngine='cpu'|'gpu' is accepted for backward compatibility; routing is CPU-only.
- *   engineId selects the routing algorithm. Use 'auto' for intelligent selection (default).
- *   graphCategory optional: 'city-center' | 'city-consolidated' | 'suburban' | 'countryside' for better heuristics.
+ * @param {number} startId - Graph node ID for the route origin.
+ * @param {number} endId - Graph node ID for the route destination.
+ * @param {object} prepared - Prepared graph produced by buildCH().
+ * @param {RouteQueryOptions} [opts]
+ * @returns {Promise<RouteResult>}
+ * @throws {Error} When route request arguments are invalid.
  */
 export async function queryRoute(startId, endId, prepared, {
   forceEngine = null,
@@ -728,6 +792,16 @@ export async function queryRoute(startId, endId, prepared, {
   allowFallback = true,
   forceSerialRouting = false,
 } = {}) {
+  if (!Number.isInteger(startId) || startId < 0) {
+    throw new Error('Invalid startId: expected a non-negative integer.');
+  }
+  if (!Number.isInteger(endId) || endId < 0) {
+    throw new Error('Invalid endId: expected a non-negative integer.');
+  }
+  if (!prepared || typeof prepared !== 'object' || !Array.isArray(prepared.coordsArr) || !ArrayBuffer.isView(prepared.adjPtr)) {
+    throw new Error('Invalid prepared graph object: expected result of buildCH().');
+  }
+
   // ── Route cache ────────────────────────────────────────────────────────────
   // Benchmarks can disable cache to measure pure engine runtime.
   if (useCache) {
@@ -810,7 +884,7 @@ export async function queryRoute(startId, endId, prepared, {
         parallelPolicy,
       });
     } catch (error) {
-      if (error?.code === 'engine_cancelled' || error?.code === 'engine_worker_busy') {
+      if (error?.code === EngineErrorCode.ENGINE_CANCELLED || error?.code === EngineErrorCode.ENGINE_WORKER_BUSY) {
         throw error;
       }
       logger.warn(
@@ -833,7 +907,7 @@ export async function queryRoute(startId, endId, prepared, {
     fallback = {
       from: normalizedSelectedEngine,
       to: 'bidirectional-astar',
-      reason: 'invalid_route',
+      reason: RouteFailureReason.INVALID_ROUTE,
       detail: validation.reason,
     };
     try {
@@ -862,7 +936,7 @@ export async function queryRoute(startId, endId, prepared, {
     fallback = {
       from: normalizedSelectedEngine,
       to: 'bidirectional-astar',
-      reason: 'no_path',
+      reason: RouteFailureReason.NO_PATH,
       detail: null,
     };
     try {
@@ -880,7 +954,7 @@ export async function queryRoute(startId, endId, prepared, {
   }
 
   if (!result?.found) {
-    result = { ...result, reason: result?.reason ?? 'no_path' };
+    result = { ...result, reason: result?.reason ?? RouteFailureReason.NO_PATH };
   }
 
   if (useCache) {
@@ -991,7 +1065,25 @@ export function prepareRoutableGraph(
   };
 }
 
+/**
+ * Compute a route between two coordinate pairs over a graph.
+ * @param {LatLng} startCoords
+ * @param {LatLng} endCoords
+ * @param {object} graph - Graph object containing nodes and edges.
+ * @param {Object} [options]
+ * @param {CostField} [options.costField='distance']
+ * @param {Object} [options.penalties]
+ * @param {number[]} [options.snapDistancesM]
+ * @param {string} [options.graphCategory]
+ * @param {number} [options.maxAcceptableSnapDistanceM]
+ * @returns {Promise<RouteResult>}
+ * @throws {Error} When input coordinates or the graph are invalid.
+ */
 export async function computeRoute(startCoords, endCoords, graph, options = {}) {
+  if (!graph || typeof graph !== 'object' || !(graph.nodes instanceof Map) || !Array.isArray(graph.edges)) {
+    throw new Error('Invalid graph: expected object with nodes Map and edges array.');
+  }
+
   const {
     costField = 'distance',
     penalties = {},
@@ -1030,7 +1122,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   logger.log(() => `nearestNode: start=${startId}, end=${endId}, snap=${usedSnapDistance} m`);
 
   if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
-    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: 'no_node' };
+    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: RouteFailureReason.NO_NODE };
   }
 
   if (startId === -1 || endId === -1) {
@@ -1083,7 +1175,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   }
 
   if (startId === -1 || endId === -1) {
-    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: 'no_node' };
+    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: RouteFailureReason.NO_NODE };
   }
 
   if (
@@ -1099,7 +1191,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       cost: Infinity,
       costField,
       found: false,
-      reason: 'poor_snap',
+      reason: RouteFailureReason.POOR_SNAP,
       startSnapDistanceM,
       endSnapDistanceM,
     };
@@ -1128,7 +1220,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     const canFallbackWithStartSnap = startSegmentSnap && !startSnapApplied && startSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;
     const canFallbackWithEndSnap = endSegmentSnap && !endSnapApplied && endSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;
 
-    if ((result.reason === 'no_path' || result.reason === 'incomplete_path') && (canFallbackWithStartSnap || canFallbackWithEndSnap)) {
+    if ((result.reason === RouteFailureReason.NO_PATH || result.reason === RouteFailureReason.INCOMPLETE_PATH) && (canFallbackWithStartSnap || canFallbackWithEndSnap)) {
       let fallbackGraph = workingGraph;
       let fallbackStartId = startId;
       let fallbackEndId = endId;
@@ -1162,7 +1254,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       }
     }
 
-    if ((startSnapApplied || endSnapApplied) && (result.reason === 'no_path' || result.reason === 'incomplete_path')) {
+    if ((startSnapApplied || endSnapApplied) && (result.reason === RouteFailureReason.NO_PATH || result.reason === RouteFailureReason.INCOMPLETE_PATH)) {
       const basePrepared = getPreparedGraph(baseGraph, costField, normalizedPenalties, baseStartId, baseEndId);
       const baseResult = await queryRoute(baseStartId, baseEndId, basePrepared, { graphCategory, costField });
       if (baseResult.found) {
@@ -1178,7 +1270,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       }
     }
 
-    return { ...result, coordinates: [], costField, reason: 'no_path' };
+    return { ...result, coordinates: [], costField, reason: RouteFailureReason.NO_PATH };
   }
 
   // Never silently drop missing nodes. If an engine returns an incomplete path,
@@ -1196,7 +1288,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
         cost: Infinity,
         costField,
         found: false,
-        reason: 'incomplete_path',
+        reason: RouteFailureReason.INCOMPLETE_PATH,
         startSnapDistanceM,
         endSnapDistanceM,
       };
@@ -1212,7 +1304,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       cost: Infinity,
       costField,
       found: false,
-      reason: 'incomplete_path',
+      reason: RouteFailureReason.INCOMPLETE_PATH,
       startSnapDistanceM,
       endSnapDistanceM,
     };

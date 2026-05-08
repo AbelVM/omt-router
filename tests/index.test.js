@@ -15,7 +15,7 @@ import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance, isWithinDistanceMeters } from '../src/utils/misc.js';
 import { MapLibreRoutingControl, parseCoords } from '../src/ui/MapLibreRoutingControl.js';
 import { findTopTwoIndices, hasParallelRoutingRuntime, resolveMlFeatureValues } from '../src/tuning/tuning.js';
-import { buildTileURL } from '../src/index.js';
+import { buildTileURL, dispose, shutdown } from '../src/index.js';
 
 describe('interpolate', () => {
   it('replaces {z}, {x}, {y} placeholders', () => {
@@ -51,6 +51,20 @@ describe('isWithinDistanceMeters', () => {
 
   it('returns false for points beyond the threshold', () => {
     expect(isWithinDistanceMeters([0, 0], [0.001, 0], 15)).toBe(false);
+  });
+});
+
+describe('public dispose/shutdown lifecycle', () => {
+  it('exports dispose and shutdown aliases', () => {
+    expect(dispose).toBeTypeOf('function');
+    expect(shutdown).toBe(dispose);
+  });
+
+  it('can be called repeatedly without throwing', () => {
+    expect(() => {
+      dispose();
+      shutdown();
+    }).not.toThrow();
   });
 });
 

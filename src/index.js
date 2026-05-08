@@ -21,8 +21,41 @@ import {
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
+  shutdownEngineWorker,
 } from './engines/router.js';
 import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
+
+/**
+ * @typedef {[number, number]} LatLng
+ * @typedef {'distance'|'travelTime'|'optimal'} CostField
+ *
+ * @typedef {Object} RouteResult
+ * @property {boolean} found
+ * @property {number} cost
+ * @property {CostField} costField
+ * @property {number[]} path
+ * @property {Array<LatLng>} coordinates
+ * @property {string} [engine]
+ * @property {string} [reason]
+ * @property {string} [message]
+ * @property {string} [code]
+ * @property {Object} [fallback]
+ * @property {Object} [graph]
+ * @property {number} [startSnapDistanceM]
+ * @property {number} [endSnapDistanceM]
+ *
+ * @typedef {Object} RouteOptions
+ * @property {number} [zoom]
+ * @property {'zxy'|'xyz'} [schema]
+ * @property {number} [radius]
+ * @property {number} [maxAutoRadius]
+ * @property {CostField} [costField]
+ * @property {Object} [penalties]
+ * @property {number} [maxAcceptableSnapDistanceM]
+ * @property {(rawURL: string, tile: object) => string} [tileUrlTransform]
+ * @property {string} [tileProxyTemplate]
+ * @property {boolean} [includeGraph]
+ */
 
 export {
   buildCH,
@@ -84,7 +117,7 @@ const _tileCache = new PowerCache({ maxEntries: 5000, defaultTTL: 300_000 });
 // (e.g. repeated route queries in the same area or after transportation-mode
 // toggle back to a previously used mode). 50 entries is enough for typical use.
 const _graphCache = new PowerCache({ maxEntries: 50, defaultTTL: 300_000 });
-const VALID_COST_FIELDS = new Set(['distance', 'travelTime']);
+const VALID_COST_FIELDS = new Set(['distance', 'travelTime', 'optimal']);
 const DEG_TO_RAD = Math.PI / 180;
 
 function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate } = {}) {
@@ -116,6 +149,28 @@ function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate }
 function getMissingTileError(graph, code) {
   return graph?.missingTileErrors?.find((err) => err?.code === code) ?? null;
 }
+
+export function dispose() {
+  try {
+    shutdownEngineWorker();
+  } catch {
+    // Best-effort cleanup.
+  }
+
+  _tileCache.clear();
+  _graphCache.clear();
+
+  if (_pool) {
+    try {
+      _pool.shutdown();
+    } catch {
+      // Best-effort cleanup.
+    }
+    _pool = null;
+  }
+}
+
+export const shutdown = dispose;
 
 function normalizePenalties(penalties = {}) {
   const {
@@ -170,6 +225,16 @@ function computeRadius(start, end, zoom) {
   return Math.min(3, Math.max(1, Math.ceil(bufferM / tileWidthM)));
 }
 
+/**
+ * Compute a route between two coordinate pairs using tiled graph data.
+ * @param {LatLng} start
+ * @param {LatLng} end
+ * @param {string} mode
+ * @param {string} urlTemplate
+ * @param {RouteOptions} [options]
+ * @returns {Promise<RouteResult>}
+ * @throws {Error} When required route options are invalid.
+ */
 export const route = async (
   start,
   end,

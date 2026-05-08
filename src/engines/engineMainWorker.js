@@ -65,9 +65,19 @@ async function runEngine(engineId, startId, endId, prepared, {
 }
 
 self.onmessage = async (event) => {
+
   const message = event.data ?? {};
   if (message.type === 'prepare') {
     const prepared = restorePreparedGraph(message.prepared);
+    // Defensive: prepared.N must be a positive integer
+    if (!prepared || typeof prepared.N !== 'number' || !Number.isFinite(prepared.N) || prepared.N <= 0) {
+      self.postMessage({
+        type: 'status',
+        state: 'error',
+        error: 'Invalid prepared graph: missing or invalid N',
+      });
+      return;
+    }
     if (prepared?.preparedId) {
       _workerPrepared = prepared;
       _workerPreparedId = prepared.preparedId;
@@ -88,6 +98,16 @@ self.onmessage = async (event) => {
     parallelPolicy = null,
   } = message;
 
+  // Defensive: requestId must be present
+  if (typeof requestId !== 'string' && typeof requestId !== 'number') {
+    self.postMessage({
+      type: 'status',
+      state: 'error',
+      error: 'Missing or invalid requestId',
+    });
+    return;
+  }
+
   let prepared = null;
   if (messagePrepared) {
     prepared = restorePreparedGraph(messagePrepared);
@@ -99,14 +119,15 @@ self.onmessage = async (event) => {
     prepared = _workerPrepared;
   }
 
-  if (!prepared) {
+  // Defensive: prepared must exist and have valid N
+  if (!prepared || typeof prepared.N !== 'number' || !Number.isFinite(prepared.N) || prepared.N <= 0) {
     self.postMessage({
       type: 'result',
       requestId,
       ok: false,
       error: {
         name: 'Error',
-        message: 'engine worker missing prepared graph',
+        message: 'engine worker missing or invalid prepared graph',
       },
     });
     self.postMessage({
@@ -114,7 +135,30 @@ self.onmessage = async (event) => {
       requestId,
       state: 'error',
       engineId: null,
-      error: 'engine worker missing prepared graph',
+      error: 'engine worker missing or invalid prepared graph',
+    });
+    return;
+  }
+
+  // Defensive: startId and endId must be valid node indices
+  if (!Number.isFinite(startId) || !Number.isFinite(endId) ||
+      startId < 0 || endId < 0 ||
+      startId >= prepared.N || endId >= prepared.N) {
+    self.postMessage({
+      type: 'result',
+      requestId,
+      ok: false,
+      error: {
+        name: 'Error',
+        message: 'Invalid startId or endId',
+      },
+    });
+    self.postMessage({
+      type: 'status',
+      requestId,
+      state: 'error',
+      engineId: null,
+      error: 'Invalid startId or endId',
     });
     return;
   }

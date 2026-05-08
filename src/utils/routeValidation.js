@@ -76,3 +76,25 @@ export function validateRadius(radius) {
 
   return Math.floor(radius);
 }
+
+export function normalizePenalties(penalties = {}) {
+  const {
+    intersectionPenaltySec = 0,
+    turnPenaltySec = 0,
+    turnAngleThresholdDeg = 25,
+  } = penalties;
+
+  const values = [
+    ['intersectionPenaltySec', intersectionPenaltySec],
+    ['turnPenaltySec', turnPenaltySec],
+    ['turnAngleThresholdDeg', turnAngleThresholdDeg],
+  ];
+
+  for (const [name, value] of values) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid penalties.${name}: expected a non-negative finite number`);
+    }
+  }
+
+  return { intersectionPenaltySec, turnPenaltySec, turnAngleThresholdDeg };
+}

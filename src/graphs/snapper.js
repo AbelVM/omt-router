@@ -79,12 +79,25 @@ export function getNearbyNodeIds(graph, coords, maxDistM) {
 
 /**
  * Find the nearest node to coordinates within a search radius.
+ * Returns -1 when no node exists within the provided distance.
  * @param {[number, number]} coords
- * @param {object} graph
- * @param {number} maxDistM
+ * @param {object} graph - Graph object with node coordinates and an optional spatial index.
+ * @param {number} [maxDistM=500]
  * @returns {number}
+ * @throws {Error} When graph is not a valid routable graph.
  */
 export function nearestNode(coords, graph, maxDistM = 500) {
+  if (
+    !graph
+    || typeof graph !== 'object'
+    || !graph.nodes
+    || typeof graph.nodes !== 'object'
+    || typeof graph.nodes.get !== 'function'
+    || typeof graph.nodes.has !== 'function'
+    || typeof graph.nodes.size !== 'number'
+  ) {
+    throw new Error('Invalid graph: expected object with nodes Map.');
+  }
   if (!isValidCoords(coords)) return -1;
   if (!graph._spatialIndex) {
     graph._spatialIndex = buildSpatialIndex(graph);

@@ -3,8 +3,10 @@ import {
   getEngineWorkerStatus as defaultGetEngineWorkerStatus,
   onEngineWorkerStatusChange as defaultOnEngineWorkerStatusChange,
   cancelRunningEngine as defaultCancelRunningEngine,
+  dispose as defaultDispose,
 } from '../index.js';
 import { DEFAULT_LOCALE, LOCALES, resolveLocale } from './l10n_defaults.js';
+import { RouteFailureReason } from '../engines/router.js';
 import './MapLibreRoutingControl.css';
 
 const DEFAULT_OPTIONS = {
@@ -297,6 +299,7 @@ export class MapLibreRoutingControl {
 
     this._panel?.remove();
     this._map = null;
+    defaultDispose();
   }
 
   setOrigin(lngLat) {
@@ -538,7 +541,7 @@ export class MapLibreRoutingControl {
         paint: {
           'line-color': this._options.startColor,
           'line-gradient': [
-            'interpolate',
+            'interpolate-hcl',
             ['linear'],
             ['line-progress'],
             0,
@@ -809,18 +812,25 @@ export class MapLibreRoutingControl {
   _handleRouteFailure(result) {
     console.warn('[omt-router] route failed:', result);
     const reason = result?.reason;
-    if (reason === 'tile_cors') {
-      this._setStatus(this._text.status.tileCors, 'error');
-    } else if (reason === 'poor_snap') {
-      this._setStatus(this._text.status.poorSnap, 'error');
-    } else if (reason === 'no_node') {
-      this._setStatus(this._text.status.noNode, 'error');
-    } else if (reason === 'no_path') {
-      this._setStatus(this._text.status.noPath, 'error');
-    } else if (reason === 'incomplete_path') {
-      this._setStatus(this._text.status.incompletePath, 'error');
-    } else {
-      this._setStatus(this._text.status.noRoute, 'error');
+    switch (reason) {
+      case RouteFailureReason.TILE_CORS:
+        this._setStatus(this._text.status.tileCors, 'error');
+        break;
+      case RouteFailureReason.POOR_SNAP:
+        this._setStatus(this._text.status.poorSnap, 'error');
+        break;
+      case RouteFailureReason.NO_NODE:
+        this._setStatus(this._text.status.noNode, 'error');
+        break;
+      case RouteFailureReason.NO_PATH:
+        this._setStatus(this._text.status.noPath, 'error');
+        break;
+      case RouteFailureReason.INCOMPLETE_PATH:
+        this._setStatus(this._text.status.incompletePath, 'error');
+        break;
+      default:
+        this._setStatus(this._text.status.noRoute, 'error');
+        break;
     }
     this._clearRoute();
     this._clearGraph();
