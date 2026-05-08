@@ -64,6 +64,12 @@ function normalizeOneway(value) {
   return 0;
 }
 
+function effectiveOneway(mode, originalOneway) {
+  // Pedestrian graphs ignore OSM one-way restrictions so walking routes are
+  // treated as undirected edges in the routing graph.
+  return mode === 'pedestrian' ? 0 : originalOneway;
+}
+
 export function isAccessible(props, mode) {
   // Respect explicit access restrictions regardless of mode
   const access = normalizeTagValue(props.access);
@@ -157,9 +163,7 @@ export function parseTile(buffer, x, y, z, mode) {
       bicycle: normalizeTagValue(rawProps.bicycle),
     };
     if (!featureAccessible(props)) continue;
-    const oneway = mode === 'pedestrian'
-      ? 0
-      : normalizeOneway(rawProps.oneway ?? 0);
+    const oneway = effectiveOneway(mode, normalizeOneway(rawProps.oneway ?? 0));
     const speed = getDefaultSpeedKmh(mode, normalizedClass);
     const roadId = feature.id == null ? undefined : Math.floor(feature.id / 10);
     for (const line of feature.loadGeometry()) {
@@ -372,7 +376,7 @@ function appendSegments(acc, segments) {
       const c1boundary = !!segment.c1boundary;
       const c2boundary = !!segment.c2boundary;
       const clipped = !!segment.clipped;
-      const oneway = mode === 'pedestrian' ? 0 : originalOneway;
+      const oneway = effectiveOneway(mode, originalOneway);
       const src = acc.getOrCreateNode(c1lng, c1lat, roadId, c1boundary, clipped, c1Key);
       const tgt = acc.getOrCreateNode(c2lng, c2lat, roadId, c2boundary, clipped, c2Key);
       let targets = edgeSet.get(src);
@@ -426,7 +430,7 @@ function appendSegments(acc, segments) {
     const c1boundary = !!segments[i + 10];
     const c2boundary = !!segments[i + 11];
     const clipped = !!segments[i + 12];
-    const oneway = mode === 'pedestrian' ? 0 : originalOneway;
+    const oneway = effectiveOneway(mode, originalOneway);
     const src = acc.getOrCreateNode(c1lng, c1lat, roadId, c1boundary, clipped, c1Key);
     const tgt = acc.getOrCreateNode(c2lng, c2lat, roadId, c2boundary, clipped, c2Key);
     let targets = edgeSet.get(src);

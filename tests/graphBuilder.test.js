@@ -64,6 +64,30 @@ describe('graphBuilder mergeSegments', () => {
     expect(graph.edges[0].cost).toBe(graph.edges[0].reverseCost);
   });
 
+  it('ignores one-way restrictions for pedestrian graphs with flat segment arrays', () => {
+    const graph = mergeSegments([
+      [
+        0,
+        0,
+        0.001,
+        0,
+        '0,0',
+        '1000,0',
+        1,
+        5,
+        { class: 'path' },
+        1,
+        0,
+        0,
+        0,
+      ],
+    ], 'pedestrian');
+
+    expect(graph.edges).toHaveLength(1);
+    expect(graph.edges[0].cost).toBeGreaterThan(0);
+    expect(graph.edges[0].cost).toBe(graph.edges[0].reverseCost);
+  });
+
   it('does not merge non-clipped boundary endpoints when roadId differs', () => {
     const firstBatch = [
       {

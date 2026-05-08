@@ -1,12 +1,14 @@
 /**
  * Classification of ways for different transportation modes
  * from https://openmaptiles.org/schema/#transportation
+ * using mapconfig filters from https://github.com/pgrouting/osm2pgrouting
  */
 export const ways = {
   car: {
     class: new Set([
       'motorway',
       'motorway_link',
+      'motorway_junction',
       'trunk',
       'trunk_link',
       'primary',
@@ -15,51 +17,159 @@ export const ways = {
       'secondary_link',
       'tertiary',
       'tertiary_link',
-      'minor',
-      'service',
-      'track',
       'residential',
-      'unclassified',
       'living_street',
+      'service',
+      'unclassified',
+      'road',
+      'minor',
     ]),
     exclude_subclass: new Set(['pedestrian', 'footway', 'steps', 'cycleway', 'bridleway', 'corridor']),
   },
   pedestrian: {
-    class: new Set(['path', 'minor', 'service', 'track']),
+    class: new Set([
+      'road',
+      'primary',
+      'primary_link',
+      'secondary',
+      'secondary_link',
+      'tertiary',
+      'tertiary_link',
+      'residential',
+      'living_street',
+      'service',
+      'track',
+      'pedestrian',
+      'path',
+      'cycleway',
+      'footway',
+      'bridleway',
+      'byway',
+      'steps',
+      'unclassified',
+    ]),
     subclass: new Set(['pedestrian', 'footway', 'steps', 'path', 'corridor', 'platform']),
     foot: new Set(['yes', 'designated', 'permissive', 'use_sidepath']),
   },
   bicycle: {
-    class: new Set(['path', 'minor', 'service', 'tertiary', 'secondary', 'track']),
-    subclass: new Set(['cycleway', 'path',]),
-    exclude_classes: new Set(['motorway', 'motorway_link']),
+    class: new Set([
+      'road',
+      'primary',
+      'primary_link',
+      'secondary',
+      'secondary_link',
+      'tertiary',
+      'tertiary_link',
+      'residential',
+      'living_street',
+      'service',
+      'track',
+      'unclassified',
+      'path',
+      'cycleway',
+      'footway',
+      'pedestrian',
+      'bridleway',
+    ]),
+    subclass: new Set(['cycleway', 'path']),
+    exclude_classes: new Set([
+      'motorway',
+      'motorway_link',
+      'motorway_junction',
+      'trunk',
+      'trunk_link',
+    ]),
     bicycle: new Set(['yes', 'designated', 'permissive', 'use_sidepath', 'optional_sidepath']),
+  },
+};
+
+export const WAY_PRIORITIES = {
+  car: {
+    motorway: 1.0,
+    motorway_link: 1.0,
+    motorway_junction: 1.0,
+    trunk: 1.05,
+    trunk_link: 1.05,
+    primary: 1.15,
+    primary_link: 1.15,
+    secondary: 1.5,
+    secondary_link: 1.5,
+    tertiary: 1.75,
+    tertiary_link: 1.75,
+    residential: 2.5,
+    service: 2.5,
+    unclassified: 3,
+    living_street: 3,
+    road: 5,
+    minor: 5,
+  },
+  bicycle: {
+    cycleway: 1.0,
+    path: 1.1,
+    pedestrian: 1.1,
+    footway: 1.1,
+    bridleway: 1.3,
+    track: 2.0,
+    living_street: 2.0,
+    service: 2.0,
+    residential: 2.2,
+    unclassified: 2.3,
+    tertiary_link: 2.5,
+    tertiary: 2.5,
+    secondary_link: 3.0,
+    secondary: 3.0,
+    primary_link: 3.5,
+    primary: 3.5,
+    road: 4.0,
+  },
+  pedestrian: {
+    road: 1.0,
+    primary: 1.0,
+    primary_link: 1.0,
+    secondary: 1.0,
+    secondary_link: 1.0,
+    tertiary: 1.0,
+    tertiary_link: 1.0,
+    residential: 1.0,
+    living_street: 1.0,
+    service: 1.0,
+    track: 1.0,
+    pedestrian: 1.0,
+    path: 1.0,
+    cycleway: 1.0,
+    footway: 1.0,
+    bridleway: 1.0,
+    byway: 1.0,
+    steps: 1.0,
+    unclassified: 1.0,
   },
 };
 
 /**
  * Default road speeds (km/h) by OpenMapTiles transportation class.
  * Used to compute travel-time cost in addition to distance cost.
- * These defaults represent max-legal style assumptions when explicit speed
- * metadata is not available in vector tiles.
+ * These defaults are aligned with pgRouting's car maxspeed defaults when
+ * explicit speed metadata is unavailable.
  */
 export const CLASS_SPEEDS_KMH = {
-  motorway: 120,
-  motorway_link: 60,
-  trunk: 90,
-  trunk_link: 50,
-  primary: 80,
-  primary_link: 50,
-  secondary: 70,
-  secondary_link: 45,
-  tertiary: 50,
-  tertiary_link: 35,
-  minor: 35,
-  service: 30,
+  motorway: 130,
+  motorway_link: 130,
+  motorway_junction: 130,
+  trunk: 110,
+  trunk_link: 110,
+  primary: 90,
+  primary_link: 90,
+  secondary: 90,
+  secondary_link: 90,
+  tertiary: 90,
+  tertiary_link: 90,
+  residential: 50,
+  living_street: 20,
+  service: 50,
+  unclassified: 50,
+  road: 50,
+  minor: 50,
   track: 20,
-  living_street: 10,
-  residential: 30,
-  unclassified: 35,
   path: 5,
   pedestrian: 5,
 };
@@ -71,8 +181,8 @@ export const MODE_BASE_SPEEDS_KMH = {
 
 /**
  * Default speed profile by transport mode.
- * Car uses per-class urban averages, while bicycle and pedestrian keep a
- * conservative mode-wide default unless a more detailed profile is added.
+ * Car uses per-class legal-driving defaults while bicycle and pedestrian
+ * use conservative mode-wide averages when explicit road speeds are absent.
  *
  * @param {'car'|'pedestrian'|'bicycle'} mode
  * @param {string} roadClass

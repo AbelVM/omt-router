@@ -9,6 +9,7 @@ vi.mock('../src/graphs/graphBuilder.js', async () => {
 });
 
 import { buildGraph, isAccessible, parseTile } from '../src/graphs/graphBuilder.js';
+import { getDefaultSpeedKmh, ways } from '../src/utils/ways_defaults.js';
 import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
 import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, buildCH, selectBestEngine } from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
@@ -112,6 +113,42 @@ describe('isAccessible', () => {
 
   it('rejects car roads with an excluded subclass', () => {
     expect(isAccessible({ class: 'residential', subclass: 'footway' }, 'car')).toBe(false);
+  });
+
+  it('allows pedestrian access to primary roads when walking', () => {
+    expect(isAccessible({ class: 'primary', subclass: undefined }, 'pedestrian')).toBe(true);
+  });
+
+  it('allows bicycle access to primary roads when cycling', () => {
+    expect(isAccessible({ class: 'primary', subclass: undefined }, 'bicycle')).toBe(true);
+  });
+
+  it('rejects bicycle access to motorway class', () => {
+    expect(isAccessible({ class: 'motorway', subclass: undefined }, 'bicycle')).toBe(false);
+  });
+});
+
+describe('getDefaultSpeedKmh', () => {
+  it('uses pgRouting car maxspeed defaults for highway classes', () => {
+    expect(getDefaultSpeedKmh('car', 'motorway')).toBe(130);
+    expect(getDefaultSpeedKmh('car', 'living_street')).toBe(20);
+    expect(getDefaultSpeedKmh('car', 'road')).toBe(50);
+  });
+});
+
+describe('OpenMapTiles transportation class alignment', () => {
+  it('uses the OpenMapTiles service class and not the legacy services alias', () => {
+    expect(ways.bicycle.class.has('service')).toBe(true);
+    expect(ways.bicycle.class.has('services')).toBe(false);
+    expect(ways.pedestrian.class.has('service')).toBe(true);
+    expect(ways.pedestrian.class.has('services')).toBe(false);
+  });
+
+  it('does not accept OpenMapTiles construction classes for bicycle or car routing', () => {
+    expect(ways.bicycle.class.has('primary_construction')).toBe(false);
+    expect(ways.car.class.has('primary_construction')).toBe(false);
+    expect(isAccessible({ class: 'primary_construction', subclass: undefined }, 'car')).toBe(false);
+    expect(isAccessible({ class: 'track_construction', subclass: undefined }, 'bicycle')).toBe(false);
   });
 });
 
