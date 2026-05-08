@@ -23,8 +23,8 @@
 
 .routing-panel {
     position: relative;
+    inline-size: min(100%, 340px);
     max-inline-size: min(100%, 340px);
-    width: min(100%, 340px);
     background: var(--rp-bg);
     border: 1px solid var(--rp-border);
     border-radius: 18px;
@@ -443,7 +443,7 @@
     outline-offset: 2px;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 520px) {
     .routing-panel {
         width: min(100%, calc(100vw - 20px));
         margin: 10px;
@@ -452,12 +452,13 @@
 
     .rp-modes,
     .rp-costs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
     }
 
-    .rp-input-row {
-        gap: 8px;
-        padding: 10px 12px;
+    .rp-mode-btn,
+    .rp-cost-btn {
+        min-height: 42px;
     }
 
     .rp-title,
@@ -465,5 +466,37 @@
     .rp-stat-label,
     .rp-hint {
         font-size: 10px;
+    }
+}
+
+@media (max-width: 380px) {
+    .rp-modes,
+    .rp-costs {
+        grid-template-columns: 1fr;
+    }
+
+    .rp-mode-btn {
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        padding: 10px 12px;
+        text-align: left;
+    }
+
+    .rp-mode-icon {
+        font-size: 16px;
+    }
+
+    .rp-cost-btn {
+        width: 100%;
+    }
+
+    .rp-stats {
+        flex-direction: column;
+    }
+
+    .rp-stat-divider {
+        display: none;
     }
 }

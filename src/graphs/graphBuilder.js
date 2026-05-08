@@ -13,6 +13,8 @@ const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router
 const COORD_KEY_SCALE = 1e6;
 const BOUNDARY_MATCH_DISTANCE_M = 15;
 const CLIPPED_BOUNDARY_BUCKET_RADIUS = 4;
+const T_JUNCTION_SNAP_DISTANCE_M = 2;
+const T_JUNCTION_BUCKET_SIZE_DEG = 0.001;
 const CAR_CLASS_FIB_SCORE = buildCarClassFibonacciScore();
 
 function buildCarClassFibonacciScore() {
@@ -203,7 +205,7 @@ export function parseTile(buffer, x, y, z, mode) {
       }
     }
   }
-  return segments;
+  return splitSegmentsAtEndpoints(segments);
 }
 
 /**
@@ -260,6 +262,197 @@ function clipSegmentToTile(x1, y1, x2, y2, extent) {
     y1 + t1 * dy,
     t0 !== 0 || t1 !== 1,
   ];
+}
+
+function projectPointToSegment(lng, lat, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return null;
+
+  const t = ((lng - x1) * dx + (lat - y1) * dy) / lengthSquared;
+  if (t <= 0 || t >= 1) return null;
+
+  const px = x1 + t * dx;
+  const py = y1 + t * dy;
+  if (haversineDistanceCoords(lng, lat, px, py) > T_JUNCTION_SNAP_DISTANCE_M) return null;
+
+  return { t, x: px, y: py };
+}
+
+function splitSegmentsAtEndpoints(segments) {
+  if (segments.length === 0) return segments;
+
+  const segmentCount = segments.length / SEGMENT_STRIDE;
+  const segmentBuckets = new Map();
+  const splitCandidates = Array.from({ length: segmentCount }, () => new Map());
+
+  for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
+    const segmentIndex = i / SEGMENT_STRIDE;
+    const c1lng = segments[i];
+    const c1lat = segments[i + 1];
+    const c2lng = segments[i + 2];
+    const c2lat = segments[i + 3];
+    const minLng = Math.min(c1lng, c2lng) - T_JUNCTION_BUCKET_SIZE_DEG;
+    const maxLng = Math.max(c1lng, c2lng) + T_JUNCTION_BUCKET_SIZE_DEG;
+    const minLat = Math.min(c1lat, c2lat) - T_JUNCTION_BUCKET_SIZE_DEG;
+    const maxLat = Math.max(c1lat, c2lat) + T_JUNCTION_BUCKET_SIZE_DEG;
+
+    const minBucketX = Math.floor(minLng / T_JUNCTION_BUCKET_SIZE_DEG);
+    const maxBucketX = Math.floor(maxLng / T_JUNCTION_BUCKET_SIZE_DEG);
+    const minBucketY = Math.floor(minLat / T_JUNCTION_BUCKET_SIZE_DEG);
+    const maxBucketY = Math.floor(maxLat / T_JUNCTION_BUCKET_SIZE_DEG);
+
+    for (let bx = minBucketX; bx <= maxBucketX; bx++) {
+      for (let by = minBucketY; by <= maxBucketY; by++) {
+        const key = `${bx},${by}`;
+        const bucket = segmentBuckets.get(key) ?? [];
+        bucket.push(segmentIndex);
+        if (!segmentBuckets.has(key)) {
+          segmentBuckets.set(key, bucket);
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
+    const currentSegmentIndex = i / SEGMENT_STRIDE;
+    for (let endpointOffset = 0; endpointOffset <= 2; endpointOffset += 2) {
+      const endpointLng = segments[i + endpointOffset];
+      const endpointLat = segments[i + endpointOffset + 1];
+      const endpointKey = coordKey(endpointLng, endpointLat);
+      const endpointBucketX = Math.floor(endpointLng / T_JUNCTION_BUCKET_SIZE_DEG);
+      const endpointBucketY = Math.floor(endpointLat / T_JUNCTION_BUCKET_SIZE_DEG);
+
+      const candidateSegmentIndices = new Set();
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const bucketKey = `${endpointBucketX + dx},${endpointBucketY + dy}`;
+          const candidates = segmentBuckets.get(bucketKey);
+          if (!candidates) continue;
+          for (const candidateIndex of candidates) {
+            if (candidateIndex === currentSegmentIndex) continue;
+            candidateSegmentIndices.add(candidateIndex);
+          }
+        }
+      }
+
+      for (const candidateIndex of candidateSegmentIndices) {
+        const base = candidateIndex * SEGMENT_STRIDE;
+        const candidateC1Key = segments[base + 4];
+        const candidateC2Key = segments[base + 5];
+        if (endpointKey === candidateC1Key || endpointKey === candidateC2Key) continue;
+
+        const candidateC1lng = segments[base];
+        const candidateC1lat = segments[base + 1];
+        const candidateC2lng = segments[base + 2];
+        const candidateC2lat = segments[base + 3];
+        const projection = projectPointToSegment(
+          endpointLng,
+          endpointLat,
+          candidateC1lng,
+          candidateC1lat,
+          candidateC2lng,
+          candidateC2lat
+        );
+        if (!projection) continue;
+
+        const splitKey = coordKey(endpointLng, endpointLat);
+        if (splitCandidates[candidateIndex].has(splitKey)) continue;
+        splitCandidates[candidateIndex].set(splitKey, projection.t);
+      }
+    }
+  }
+
+  const result = [];
+  for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
+    const segmentIndex = i / SEGMENT_STRIDE;
+    const c1lng = segments[i];
+    const c1lat = segments[i + 1];
+    const c2lng = segments[i + 2];
+    const c2lat = segments[i + 3];
+    const c1Key = segments[i + 4];
+    const c2Key = segments[i + 5];
+    const originalOneway = segments[i + 6];
+    const speed = segments[i + 7];
+    const props = segments[i + 8];
+    const roadId = segments[i + 9];
+    const c1boundary = segments[i + 10];
+    const c2boundary = segments[i + 11];
+    const clipped = segments[i + 12];
+    const splitMap = splitCandidates[segmentIndex];
+
+    if (splitMap.size === 0) {
+      result.push(
+        c1lng,
+        c1lat,
+        c2lng,
+        c2lat,
+        c1Key,
+        c2Key,
+        originalOneway,
+        speed,
+        props,
+        roadId,
+        c1boundary,
+        c2boundary,
+        clipped
+      );
+      continue;
+    }
+
+    const splits = [...splitMap.entries()]
+      .map(([key, t]) => ({ key, t }))
+      .sort((a, b) => a.t - b.t);
+
+    let previousLng = c1lng;
+    let previousLat = c1lat;
+    let previousKey = c1Key;
+    let previousBoundary = c1boundary;
+
+    for (const { key: splitKey, t } of splits) {
+      const splitLng = c1lng + (c2lng - c1lng) * t;
+      const splitLat = c1lat + (c2lat - c1lat) * t;
+      const splitCoordsKey = splitKey;
+      result.push(
+        previousLng,
+        previousLat,
+        splitLng,
+        splitLat,
+        previousKey,
+        splitCoordsKey,
+        originalOneway,
+        speed,
+        props,
+        roadId,
+        previousBoundary,
+        0,
+        clipped
+      );
+      previousLng = splitLng;
+      previousLat = splitLat;
+      previousKey = splitCoordsKey;
+      previousBoundary = 0;
+    }
+
+    result.push(
+      previousLng,
+      previousLat,
+      c2lng,
+      c2lat,
+      previousKey,
+      c2Key,
+      originalOneway,
+      speed,
+      props,
+      roadId,
+      0,
+      c2boundary,
+      clipped
+    );
+  }
+
+  return result;
 }
 
 /**
@@ -492,7 +685,12 @@ function finalizeGraph(acc) {
 export function mergeSegments(batches, mode) {
   const accumulator = createGraphAccumulator(mode);
   for (const segments of batches) {
-    appendSegments(accumulator, segments);
+    const firstSegment = segments[0];
+    const normalizedSegments =
+      typeof firstSegment === 'object' && firstSegment !== null && 'c1' in firstSegment
+        ? segments
+        : splitSegmentsAtEndpoints(segments);
+    appendSegments(accumulator, normalizedSegments);
   }
 
   return finalizeGraph(accumulator);

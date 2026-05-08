@@ -42,6 +42,43 @@ describe('graphBuilder mergeSegments', () => {
     expect(graph.nodeIndex.get('1000,0')).toBe(graph.nodeIndex.get('1002,0'));
   });
 
+  it('splits a segment at a T-junction endpoint on another segment', () => {
+    const tJunctionSegments = [
+      0,
+      0,
+      1,
+      0,
+      '0,0',
+      '1000000,0',
+      0,
+      50,
+      { class: 'residential' },
+      1,
+      0,
+      0,
+      0,
+      0.5,
+      -0.5,
+      0.5,
+      0,
+      '500000,-500000',
+      '500000,0',
+      0,
+      50,
+      { class: 'residential' },
+      2,
+      0,
+      0,
+      0,
+    ];
+
+    const graph = mergeSegments([tJunctionSegments], 'car');
+
+    expect(graph.nodeIndex.get('500000,0')).toBeDefined();
+    expect(graph.nodes.size).toBe(4);
+    expect(graph.edges.length).toBe(3);
+  });
+
   it('ignores one-way restrictions for pedestrian graphs', () => {
     const graph = mergeSegments([
       [
