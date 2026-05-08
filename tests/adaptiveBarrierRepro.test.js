@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { adaptiveBarrierSSPRouter } from '../src/engines/AdaptiveBarrierSSSP/index.js';
 import { bidirectionalAStar } from '../src/engines/BidirectionalAStar/index.js';
 import { buildCH } from '../src/engines/router.js';
-import { buildGraph } from '../src/graphs/graphBuilder.js';
 
 function makeRandomGraph(N, E, maxWeight = 15) {
   const nodes = new Map();

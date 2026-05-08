@@ -105,7 +105,7 @@ describe('buildGraphAsync partial graphs', () => {
     missingTileError.tile = { z: 0, x: 0, y: 1, url: 'https://example.com/0/0/1.pbf' };
 
     const cache = {
-      async getOrSetAsync(key, factory) {
+      async getOrSetAsync(key, _factory) {
         if (key.includes('0/0/0')) {
           return successSegments;
         }
@@ -135,7 +135,7 @@ describe('buildGraphAsync partial graphs', () => {
     fatalError.tile = { z: 0, x: 0, y: 0, url: 'https://example.com/0/0/0.pbf' };
 
     const cache = {
-      async getOrSetAsync(key, factory) {
+      async getOrSetAsync(_key, _factory) {
         started += 1;
         if (started === 1) {
           return Promise.reject(fatalError);
@@ -364,7 +364,7 @@ describe('buildGraphAsync partial graphs', () => {
     missingTileError.tile = { z: 0, x: 0, y: 1, url: 'https://example.com/0/0/1.pbf' };
 
     const cache = {
-      async getOrSetAsync(key, factory) {
+      async getOrSetAsync(key, _factory) {
         if (key.includes('0/0/0')) {
           return successSegments;
         }

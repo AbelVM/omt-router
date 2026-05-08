@@ -62,9 +62,11 @@
   },
   "homepage": "https://github.com/AbelVM/omt-router#readme",
   "devDependencies": {
+    "@eslint/js": "^9.30.0",
     "chart.js": "^4.5.1",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.4.0",
     "prettier": "^3.8.3",
     "terser": "^5.47.1",
     "vite": "^8.0.11",

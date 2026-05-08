@@ -263,7 +263,9 @@ export const route = async (
   if (radius !== undefined) radius = validateRadius(radius);
 
   if (!VALID_COST_FIELDS.has(costField)) {
-    throw new Error(`Unknown costField: ${costField}. Expected "distance" or "travelTime".`);
+    throw new Error(
+      `Unknown costField: ${costField}. Expected "distance", "travelTime", or "optimal".`,
+    );
   }
 
   const normalizedPenalties = normalizePenalties(penalties);
@@ -292,6 +294,7 @@ export const route = async (
 
   const pool = getSharedPool();
   let lastResult;
+  let lastGraph = null;
   for (let r = initialRadius; r <= maxRadius; r++) {
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
     const tiles = candidateTiles.map((tile) => ({
@@ -303,18 +306,22 @@ export const route = async (
     // getTilesAlongLine does not affect cache hits.
     const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
     tileIds.sort();
-    const graphKey = `v2:${mode}:${tileIds.join(',')}`;
-    let graph = _graphCache.get(graphKey);
+    const canUseGraphCache = typeof tileUrlTransform !== 'function';
+    const graphKey = canUseGraphCache
+      ? `v3:${mode}:${zoom}:${schema}:${urlTemplate}:${tileProxyTemplate ?? ''}:${tileIds.join(',')}`
+      : null;
+    let graph = graphKey ? _graphCache.get(graphKey) : null;
     if (!graph) {
       graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });
       // Only cache complete graphs; partial graphs from failed tile fetches
       // would otherwise poison future route attempts in the same area.
       // Partial graphs may still be useful for the current route attempt,
       // but they must not be reused later as if they were complete.
-      if (!graph?.hasMissingTiles) {
+      if (graphKey && !graph?.hasMissingTiles) {
         _graphCache.set(graphKey, graph);
       }
     }
+    lastGraph = graph;
 
     lastResult = await computeRoute(start, end, graph, {
       costField,
@@ -348,5 +355,5 @@ export const route = async (
     }
   }
 
-  return includeGraph ? { ...lastResult, graph } : lastResult;
+  return includeGraph ? { ...lastResult, graph: lastGraph } : lastResult;
 };

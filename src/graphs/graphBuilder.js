@@ -4,7 +4,6 @@ import { u82o } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { ways, getDefaultSpeedKmh } from '../utils/ways_defaults.js';
 import {
-  haversineDistance,
   haversineDistanceCoords,
   isWithinDistanceMetersCoords,
 } from '../utils/misc.js';
@@ -12,7 +11,6 @@ import {
 const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router/graph' });
 const COORD_KEY_SCALE = 1e6;
 const BOUNDARY_MATCH_DISTANCE_M = 15;
-const CLIPPED_BOUNDARY_BUCKET_RADIUS = 4;
 const T_JUNCTION_SNAP_DISTANCE_M = 2;
 const T_JUNCTION_BUCKET_SIZE_DEG = 0.001;
 const CAR_CLASS_FIB_SCORE = buildCarClassFibonacciScore();
@@ -481,7 +479,6 @@ function createGraphAccumulator(mode) {
   const outDegree = [];
   /** @type {number[]|null} */
   const outCarCentrality = mode === 'car' ? [] : null;
-  const graphMode = mode;
   let nodeCounter = 0;
   let edgeCounter = 0;
   const classToFibonacciScore = mode === 'car' ? CAR_CLASS_FIB_SCORE : null;
@@ -665,7 +662,7 @@ function appendSegments(acc, segments) {
 
 function finalizeGraph(acc) {
   return {
-    mode: acc.graphMode,
+    mode: acc.mode,
     nodes: acc.nodes,
     edges: acc.edges,
     nodeIndex: acc.nodeIndex,
@@ -791,7 +788,9 @@ export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000,
 
   const buildTileSegment = ({ url, x, y, z }) =>
     cache.getOrSetAsync(
-      `graph:${cacheVersion}:${mode}:${z}/${x}/${y}`,
+      // Include URL in cache key to avoid cross-provider collisions for the same z/x/y.
+      // (Different providers can serve different tiles for identical coordinates.)
+      `graph:${cacheVersion}:${mode}:${z}/${x}/${y}:${url}`,
       async () => {
         const response = await pool.postMessage(
           { op: 'parse-tile', url, x, y, z, mode },

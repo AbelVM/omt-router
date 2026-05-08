@@ -46,8 +46,6 @@ const ENGINE_BADGE_ICONS = Object.freeze({
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
 });
 
-const COST_LABELS = Object.freeze({ distance: 'shortest', travelTime: 'fastest', optimal: 'optimal' });
-
 const RAD = Math.PI / 180;
 const EARTH_RADIUS_METERS = 6_371_000;
 

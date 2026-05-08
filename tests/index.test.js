@@ -8,9 +8,9 @@ vi.mock('../src/graphs/graphBuilder.js', async () => {
   };
 });
 
-import { buildGraph, isAccessible, parseTile } from '../src/graphs/graphBuilder.js';
+import { buildGraph, isAccessible } from '../src/graphs/graphBuilder.js';
 import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
-import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, buildCH, selectBestEngine } from '../src/engines/router.js';
+import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, selectBestEngine } from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance, isWithinDistanceMeters } from '../src/utils/misc.js';
 import { MapLibreRoutingControl, parseCoords } from '../src/ui/MapLibreRoutingControl.js';

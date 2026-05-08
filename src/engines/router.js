@@ -18,7 +18,6 @@ import { PowerCache } from 'performance-helpers/powerCache';
 import { haversineDistance as haversine } from '../utils/misc.js';
 import {
   DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
-  buildSpatialIndex,
   chooseEndpointCandidate,
   createAugmentedGraph,
   findEndpointCandidate,
@@ -786,8 +785,8 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
 export async function queryRoute(startId, endId, prepared, {
   forceEngine = null,
   engineId = 'auto',
-  graphCategory = '',
-  costField = prepared.costField ?? 'distance',
+  graphCategory: _graphCategory = '',
+  costField: _costField = prepared.costField ?? 'distance',
   useCache = true,
   allowFallback = true,
   forceSerialRouting = false,
@@ -838,7 +837,7 @@ export async function queryRoute(startId, endId, prepared, {
     if (cached) {
       if (cached._routeValidated) {
         logger.log(() => `route cache hit (${cacheKey})`);
-        const { _routeValidated, ...cachedResult } = cached;
+        const { _routeValidated: _ignored, ...cachedResult } = cached;
         return {
           ...cachedResult,
           engine: normalizeEngineId(cachedResult.engine, normalizedSelectedEngine),
@@ -850,7 +849,7 @@ export async function queryRoute(startId, endId, prepared, {
       if (cachedValidation.valid) {
         cached._routeValidated = true;
         logger.log(() => `route cache hit (${cacheKey})`);
-        const { _routeValidated, ...cachedResult } = cached;
+        const { _routeValidated: _ignored, ...cachedResult } = cached;
         return {
           ...cachedResult,
           engine: normalizeEngineId(cachedResult.engine, normalizedSelectedEngine),
@@ -1006,7 +1005,7 @@ export function prepareRoutableGraph(
   let startSnapDistanceM = startCandidate.snapDistanceM ?? Infinity;
   let endSnapDistanceM = endCandidate.snapDistanceM ?? Infinity;
   let startSnapApplied = false;
-  let endSnapApplied = false;
+  let _endSnapApplied = false;
 
   if (startCandidate.type === 'none' || endCandidate.type === 'none') {
     return {
@@ -1039,7 +1038,7 @@ export function prepareRoutableGraph(
     workingGraph = snapResult;
     endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
     endSnapDistanceM = endCandidate.snapDistanceM;
-    endSnapApplied = true;
+    _endSnapApplied = true;
   } else if (endCandidate.type === 'node') {
     endId = endCandidate.nodeId;
   }
@@ -1095,7 +1094,6 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   if (isTravelTimeCostField(costField) && normalizedPenalties.turnPenaltySec > 0) {
     logger.warn('turn penalties are currently ignored; using standard engine routing');
   }
-  const penaltyKey = getPenaltyKey(costField, normalizedPenalties);
 
   logger.log(() => `computeRoute: graph has ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
 
