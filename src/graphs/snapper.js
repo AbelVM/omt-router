@@ -128,6 +128,64 @@ export function buildIncidentEdgeIndex(graph) {
   return incident;
 }
 
+export function buildEdgeSpatialIndex(graph) {
+  if (graph._edgeSpatialIndex) return graph._edgeSpatialIndex;
+  const index = new KDBush(graph.edges.length);
+  const edgeCenters = [];
+  const edgeRadiusDegs = [];
+  const edgeIndexByPointIndex = [];
+  let maxEdgeRadiusDeg = 0;
+
+  for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex += 1) {
+    const edge = graph.edges[edgeIndex];
+    const source = graph.nodes.get(edge.source);
+    const target = graph.nodes.get(edge.target);
+    if (!source || !target) continue;
+
+    const [sourceLng, sourceLat] = source.coords;
+    const [targetLng, targetLat] = target.coords;
+    const centerLng = (sourceLng + targetLng) / 2;
+    const centerLat = (sourceLat + targetLat) / 2;
+    const cosCenterLat = safeCosLat(centerLat);
+    const halfDx = ((targetLng - sourceLng) * cosCenterLat) / 2;
+    const halfDy = (targetLat - sourceLat) / 2;
+    const halfRadiusDeg = Math.hypot(halfDx, halfDy);
+
+    edgeCenters.push([centerLng, centerLat]);
+    edgeRadiusDegs.push(halfRadiusDeg);
+    edgeIndexByPointIndex.push(edgeIndex);
+    index.add(centerLng, centerLat);
+    if (halfRadiusDeg > maxEdgeRadiusDeg) maxEdgeRadiusDeg = halfRadiusDeg;
+  }
+
+  index.finish();
+  graph._edgeSpatialIndex = {
+    index,
+    edgeCenters,
+    edgeRadiusDegs,
+    edgeIndexByPointIndex,
+    maxEdgeRadiusDeg,
+  };
+  return graph._edgeSpatialIndex;
+}
+
+export function getNearbyEdgeIds(graph, coords, maxDistM) {
+  const { index, edgeCenters, edgeRadiusDegs, edgeIndexByPointIndex, maxEdgeRadiusDeg } = buildEdgeSpatialIndex(graph);
+  const [lng, lat] = coords;
+  const cosLat = safeCosLat(lat);
+  const radiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
+  const searchRadius = radiusDeg + maxEdgeRadiusDeg;
+
+  return index.within(lng, lat, searchRadius).filter((pointIndex) => {
+    const center = edgeCenters[pointIndex];
+    if (!center) return false;
+    const dx = (center[0] - lng) * cosLat;
+    const dy = center[1] - lat;
+    const centerDistDeg = Math.hypot(dx, dy);
+    return centerDistDeg <= radiusDeg + edgeRadiusDegs[pointIndex];
+  }).map((pointIndex) => edgeIndexByPointIndex[pointIndex]);
+}
+
 /**
  * Project a point onto a line segment in projected coordinates.
  * @param {[number, number]} coords
@@ -166,17 +224,18 @@ export function findClosestSegmentProjection(coords, graph, maxDistM, snapDistan
   const nodeIds = getNearbyNodeIds(graph, coords, maxDistM + SEGMENT_SNAP_EXTRA_M);
   const incident = buildIncidentEdgeIndex(graph);
   const candidateEdges = new Set();
+
   for (const nodeId of nodeIds) {
     const edges = incident[nodeId];
     if (!edges) continue;
     for (const edgeIndex of edges) candidateEdges.add(edgeIndex);
   }
 
-  if (candidateEdges.size === 0) {
-    for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex++) {
-      candidateEdges.add(edgeIndex);
-    }
+  for (const edgeIndex of getNearbyEdgeIds(graph, coords, maxDistM + SEGMENT_SNAP_EXTRA_M)) {
+    candidateEdges.add(edgeIndex);
   }
+
+  if (candidateEdges.size === 0) return null;
 
   const cosLat = safeCosLat(coords[1]);
   let best = null;

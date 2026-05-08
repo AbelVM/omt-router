@@ -751,7 +751,8 @@ export function buildGraph(tiles, mode) {
  *   1. For each tile, check PowerCache for key `graph:<mode>:<z>/<x>/<y>`.
  *   2. On a cache miss, dispatch `{ op: 'parse-tile', url, x, y, z, mode }`
  *      to a worker. The worker fetches the tile and calls parseTile itself.
- *   3. All tile parses are fanned out concurrently with Promise.all.
+ *   3. Tile parses are dispatched in limited concurrent batches so large tile
+ *      sets are backpressured and fatal fetch failures can stop remaining work.
  *   4. Once every batch is resolved, run the sequential mergeSegments step on
  *      the calling thread (node/edge deduplication cannot be parallelised).
  *
@@ -761,49 +762,75 @@ export function buildGraph(tiles, mode) {
  * @param {{
  *   pool:  import('@powerpool/powerpool').PowerPool,
  *   cache: import('@powerpool/powercache').PowerCache,
- *   ttl?:  number
+ *   ttl?:  number,
+ *   maxConcurrentTiles?: number
  * }} options
- * @returns {Promise<{ nodes: Map<number, object>, edges: Array<object>, nodeIndex: Map<string, number> }>}
+ * @returns {Promise<{ nodes: Map<number, object>, edges: Array<object>, nodeIndex: Map<string, number>, hasMissingTiles: boolean, missingTileErrors: Array<object> }>}
  */
-export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000 } = {}) {
+function isFatalTileError(error) {
+  if (!error || typeof error.code !== 'string') return false;
+  return (
+    error.code === 'MissingAllowOriginHeader' ||
+    error.code === 'NetworkError' ||
+    error.code.startsWith('HTTP_')
+  );
+}
+
+export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000, maxConcurrentTiles } = {}) {
   if (!ways[mode]) {
     throw new Error(`Unknown transport mode "${mode}". Valid values: car, pedestrian, bicycle.`);
   }
 
   const cacheVersion = 'v2';
-  const results = await Promise.allSettled(
-    tiles.map(({ url, x, y, z }) =>
-      cache.getOrSetAsync(
-        `graph:${cacheVersion}:${mode}:${z}/${x}/${y}`,
-        async () => {
-          const response = await pool.postMessage(
-            { op: 'parse-tile', url, x, y, z, mode },
-            undefined,
-            { awaitResponse: true, timeout: 10_000 }
-          );
-
-          if (response?.fetchFailed) {
-            const reasonCode = response?.fetchError?.code;
-            const reasonMessage = response?.fetchError?.message;
-            const err = new Error(
-              reasonMessage
-                ? `tile fetch failed for ${z}/${x}/${y}: ${reasonMessage}`
-                : `tile fetch failed for ${z}/${x}/${y}`
-            );
-            err.code = reasonCode ?? 'TileFetchFailed';
-            err.tile = { z, x, y, url };
-            throw err;
-          }
-
-          const payload = response?.output ?? response;
-          return payload instanceof ArrayBuffer || ArrayBuffer.isView(payload)
-            ? u82o(payload)
-            : payload;
-        },
-        { ttl }
-      )
-    )
+  const tileBatchSize = Math.max(
+    1,
+    typeof maxConcurrentTiles === 'number' && maxConcurrentTiles > 0
+      ? Math.min(maxConcurrentTiles, tiles.length)
+      : Math.min(8, tiles.length, typeof pool?.maxSize === 'number' ? pool.maxSize : 4)
   );
+
+  const buildTileSegment = ({ url, x, y, z }) =>
+    cache.getOrSetAsync(
+      `graph:${cacheVersion}:${mode}:${z}/${x}/${y}`,
+      async () => {
+        const response = await pool.postMessage(
+          { op: 'parse-tile', url, x, y, z, mode },
+          undefined,
+          { awaitResponse: true, timeout: 10_000 }
+        );
+
+        if (response?.fetchFailed) {
+          const reasonCode = response?.fetchError?.code;
+          const reasonMessage = response?.fetchError?.message;
+          const err = new Error(
+            reasonMessage
+              ? `tile fetch failed for ${z}/${x}/${y}: ${reasonMessage}`
+              : `tile fetch failed for ${z}/${x}/${y}`
+          );
+          err.code = reasonCode ?? 'TileFetchFailed';
+          err.tile = { z, x, y, url };
+          throw err;
+        }
+
+        const payload = response?.output ?? response;
+        return payload instanceof ArrayBuffer || ArrayBuffer.isView(payload)
+          ? u82o(payload)
+          : payload;
+      },
+      { ttl }
+    );
+
+  const results = [];
+
+  for (let i = 0; i < tiles.length; i += tileBatchSize) {
+    const batch = tiles.slice(i, i + tileBatchSize).map((tile) => buildTileSegment(tile));
+    const settled = await Promise.allSettled(batch);
+    results.push(...settled);
+
+    if (settled.some((result) => result.status === 'rejected' && isFatalTileError(result.reason))) {
+      break;
+    }
+  }
 
   const accumulator = createGraphAccumulator(mode);
   let hasMissingTiles = false;
@@ -826,6 +853,9 @@ export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000 
   const graph = finalizeGraph(accumulator);
   graph.hasMissingTiles = hasMissingTiles;
   graph.missingTileErrors = missingTileErrors;
+  // `hasMissingTiles` flags that some tile fetch/parses failed. Callers can still
+  // evaluate a route against the partial graph, but should avoid caching it as
+  // a complete graph that may later produce false negatives.
   return graph;
 }
 

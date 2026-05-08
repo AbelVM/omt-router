@@ -229,10 +229,10 @@ export const route = async (
   let lastResult;
   for (let r = initialRadius; r <= maxRadius; r++) {
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
-    const tiles = candidateTiles.map((tile) => {
-      tile.url = buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate });
-      return tile;
-    });
+    const tiles = candidateTiles.map((tile) => ({
+      ...tile,
+      url: buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate }),
+    }));
 
     // Stable graph cache key: sorted tile ids + mode so the order of
     // getTilesAlongLine does not affect cache hits.
@@ -244,6 +244,8 @@ export const route = async (
       graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });
       // Only cache complete graphs; partial graphs from failed tile fetches
       // would otherwise poison future route attempts in the same area.
+      // Partial graphs may still be useful for the current route attempt,
+      // but they must not be reused later as if they were complete.
       if (!graph?.hasMissingTiles) {
         _graphCache.set(graphKey, graph);
       }

@@ -30,10 +30,13 @@ export function haversineDistanceCoords(lng1, lat1, lng2, lat2) {
   const dLng = (lng2 - lng1) * DEG_TO_RAD;
   const lat1Rad = lat1 * DEG_TO_RAD;
   const lat2Rad = lat2 * DEG_TO_RAD;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
+  const sinHalfLat = Math.sin(dLat / 2);
+  const sinHalfLng = Math.sin(dLng / 2);
+  const sinHalfDistance = Math.hypot(
+    sinHalfLat,
+    Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinHalfLng,
+  );
+  return 2 * EARTH_RADIUS_M * Math.asin(sinHalfDistance);
 }
 
 export function isWithinDistanceMetersCoords(lng1, lat1, lng2, lat2, maxDistanceM) {

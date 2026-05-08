@@ -102,7 +102,7 @@ function getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targe
 
 let _engineWorker = null;
 let _engineWorkerRequestId = 0;
-let _activeEngineJob = null;
+const _engineWorkerJobs = new Map();
 let _engineWorkerPreparedIdInWorker = null;
 let _engineWorkerPreparedIdCounter = 0;
 let _engineWorkerStatus = {
@@ -110,6 +110,7 @@ let _engineWorkerStatus = {
   running: false,
   engineId: null,
   requestId: null,
+  requestCount: 0,
   startedAt: null,
   lastError: null,
 };
@@ -130,10 +131,11 @@ function emitEngineWorkerStatus(nextState) {
   }
 }
 
-function rejectActiveEngineJob(error) {
-  const job = _activeEngineJob;
-  _activeEngineJob = null;
-  if (job) job.reject(error);
+function rejectAllEngineJobs(error) {
+  for (const job of _engineWorkerJobs.values()) {
+    job.reject(error);
+  }
+  _engineWorkerJobs.clear();
 }
 
 function terminateEngineWorker() {
@@ -163,51 +165,58 @@ function ensureEngineWorker() {
     const message = event.data ?? {};
 
     if (message.type === 'status') {
-      if (_activeEngineJob && message.requestId !== _activeEngineJob.requestId) return;
+      const job = message.requestId != null ? _engineWorkerJobs.get(message.requestId) : null;
+      const activeCount = _engineWorkerJobs.size;
 
       if (message.state === ENGINE_WORKER_STATES.RUNNING) {
         emitEngineWorkerStatus({
           state: ENGINE_WORKER_STATES.RUNNING,
           running: true,
-          engineId: normalizeEngineId(message.engineId, _activeEngineJob?.engineId ?? null),
-          requestId: message.requestId ?? _activeEngineJob?.requestId ?? null,
-          startedAt: _activeEngineJob?.startedAt ?? Date.now(),
+          engineId: normalizeEngineId(message.engineId, job?.engineId ?? null),
+          requestId: job?.requestId ?? null,
+          requestCount: activeCount,
+          startedAt: job?.startedAt ?? Date.now(),
           lastError: null,
         });
       } else if (message.state === ENGINE_WORKER_STATES.ERROR) {
         emitEngineWorkerStatus({
           state: ENGINE_WORKER_STATES.ERROR,
-          running: false,
+          running: activeCount > 0,
           engineId: null,
           requestId: null,
+          requestCount: activeCount,
           startedAt: null,
           lastError: message.error ?? 'engine worker error',
         });
-      } else if (message.state === ENGINE_WORKER_STATES.IDLE && !_activeEngineJob) {
+      } else if (message.state === ENGINE_WORKER_STATES.IDLE) {
         emitEngineWorkerStatus({
-          state: ENGINE_WORKER_STATES.IDLE,
-          running: false,
-          engineId: null,
-          requestId: null,
-          startedAt: null,
+          state: activeCount > 0 ? ENGINE_WORKER_STATES.RUNNING : ENGINE_WORKER_STATES.IDLE,
+          running: activeCount > 0,
+          engineId: activeCount > 0 ? _engineWorkerStatus.engineId : null,
+          requestId: activeCount > 0 ? _engineWorkerStatus.requestId : null,
+          requestCount: activeCount,
+          startedAt: activeCount > 0 ? _engineWorkerStatus.startedAt : null,
+          lastError: null,
         });
       }
       return;
     }
 
     if (message.type !== 'result') return;
-    if (!_activeEngineJob || message.requestId !== _activeEngineJob.requestId) return;
+    const job = _engineWorkerJobs.get(message.requestId);
+    if (!job) return;
 
-    const { resolve, reject } = _activeEngineJob;
-    _activeEngineJob = null;
+    _engineWorkerJobs.delete(message.requestId);
+    const { resolve, reject } = job;
 
     if (message.ok) {
       emitEngineWorkerStatus({
-        state: ENGINE_WORKER_STATES.IDLE,
-        running: false,
-        engineId: null,
-        requestId: null,
-        startedAt: null,
+        state: _engineWorkerJobs.size > 0 ? ENGINE_WORKER_STATES.RUNNING : ENGINE_WORKER_STATES.IDLE,
+        running: _engineWorkerJobs.size > 0,
+        engineId: _engineWorkerJobs.size > 0 ? _engineWorkerStatus.engineId : null,
+        requestId: _engineWorkerJobs.size > 0 ? _engineWorkerStatus.requestId : null,
+        requestCount: _engineWorkerJobs.size,
+        startedAt: _engineWorkerJobs.size > 0 ? _engineWorkerStatus.startedAt : null,
         lastError: null,
       });
       resolve(message.result);
@@ -234,12 +243,13 @@ function ensureEngineWorker() {
       running: false,
       engineId: null,
       requestId: null,
+      requestCount: 0,
       startedAt: null,
       lastError: message,
     });
 
     terminateEngineWorker();
-    rejectActiveEngineJob(error);
+    rejectAllEngineJobs(error);
   };
 
   return _engineWorker;
@@ -252,6 +262,32 @@ function getEngineWorkerPreparedId(prepared) {
   return prepared._engineWorkerPreparedId;
 }
 
+function ensureWorkerPreparedBackup(prepared) {
+  if (!prepared._engineWorkerBackup) {
+    prepared._engineWorkerBackup = {
+      adjPtr: prepared.adjPtr.slice(),
+      adjTo: prepared.adjTo.slice(),
+      adjCost: prepared.adjCost.slice(),
+      revAdjPtr: prepared.revAdjPtr.slice(),
+      revAdjFrom: prepared.revAdjFrom.slice(),
+      revAdjCost: prepared.revAdjCost.slice(),
+    };
+  }
+  return prepared._engineWorkerBackup;
+}
+
+function restorePreparedFromWorkerBackup(prepared) {
+  const backup = prepared._engineWorkerBackup;
+  if (!backup) return;
+
+  prepared.adjPtr = backup.adjPtr;
+  prepared.adjTo = backup.adjTo;
+  prepared.adjCost = backup.adjCost;
+  prepared.revAdjPtr = backup.revAdjPtr;
+  prepared.revAdjFrom = backup.revAdjFrom;
+  prepared.revAdjCost = backup.revAdjCost;
+}
+
 function serializePreparedForEngineWorker(prepared) {
   const coordsX = new Float32Array(prepared.N);
   const coordsY = new Float32Array(prepared.N);
@@ -261,14 +297,16 @@ function serializePreparedForEngineWorker(prepared) {
     coordsY[i] = coords?.[1] ?? 0;
   }
 
+  ensureWorkerPreparedBackup(prepared);
+
   return {
     preparedId: getEngineWorkerPreparedId(prepared),
-    adjPtr: prepared.adjPtr.slice(),
-    adjTo: prepared.adjTo.slice(),
-    adjCost: prepared.adjCost.slice(),
-    revAdjPtr: prepared.revAdjPtr.slice(),
-    revAdjFrom: prepared.revAdjFrom.slice(),
-    revAdjCost: prepared.revAdjCost.slice(),
+    adjPtr: prepared.adjPtr,
+    adjTo: prepared.adjTo,
+    adjCost: prepared.adjCost,
+    revAdjPtr: prepared.revAdjPtr,
+    revAdjFrom: prepared.revAdjFrom,
+    revAdjCost: prepared.revAdjCost,
     N: prepared.N,
     E: prepared.E,
     coordsX,
@@ -330,25 +368,25 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
 } = {}) {
   const worker = ensureEngineWorker();
   if (!worker) throw makeEngineError('engine worker is unavailable', 'engine_worker_unavailable');
-  if (_activeEngineJob) throw makeEngineError('engine worker is busy', 'engine_worker_busy');
 
   const requestId = ++_engineWorkerRequestId;
   const startedAt = Date.now();
 
   return await new Promise((resolve, reject) => {
-    _activeEngineJob = {
+    _engineWorkerJobs.set(requestId, {
       requestId,
       resolve,
       reject,
       engineId: selectedEngine,
       startedAt,
-    };
+    });
 
     emitEngineWorkerStatus({
       state: ENGINE_WORKER_STATES.RUNNING,
       running: true,
       engineId: selectedEngine,
       requestId,
+      requestCount: _engineWorkerJobs.size,
       startedAt,
       lastError: null,
     });
@@ -356,10 +394,14 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
     const preparedId = getEngineWorkerPreparedId(prepared);
     if (_engineWorkerPreparedIdInWorker !== preparedId) {
       const serializedPrepared = serializePreparedForEngineWorker(prepared);
-      worker.postMessage(
-        { type: 'prepare', prepared: serializedPrepared },
-        getPreparedWorkerTransferables(serializedPrepared),
-      );
+      try {
+        worker.postMessage(
+          { type: 'prepare', prepared: serializedPrepared },
+          getPreparedWorkerTransferables(serializedPrepared),
+        );
+      } finally {
+        restorePreparedFromWorkerBackup(prepared);
+      }
       _engineWorkerPreparedIdInWorker = preparedId;
     }
 
@@ -390,22 +432,24 @@ export function onEngineWorkerStatusChange(listener) {
 }
 
 export function cancelRunningEngine(reason = 'cancelled') {
-  if (!_activeEngineJob) return false;
+  if (_engineWorkerJobs.size === 0) return false;
 
   emitEngineWorkerStatus({
     state: ENGINE_WORKER_STATES.CANCELLING,
     running: true,
     lastError: reason,
+    requestCount: _engineWorkerJobs.size,
   });
 
   terminateEngineWorker();
-  rejectActiveEngineJob(makeEngineError(`routing cancelled: ${reason}`, 'engine_cancelled'));
+  rejectAllEngineJobs(makeEngineError(`routing cancelled: ${reason}`, 'engine_cancelled'));
 
   emitEngineWorkerStatus({
     state: ENGINE_WORKER_STATES.IDLE,
     running: false,
     engineId: null,
     requestId: null,
+    requestCount: 0,
     startedAt: null,
     lastError: reason,
   });

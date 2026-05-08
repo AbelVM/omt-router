@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mergeSegments, buildGraph, parseTile } from '../src/graphs/graphBuilder.js';
+import { buildGraphAsync, mergeSegments, buildGraph, parseTile } from '../src/graphs/graphBuilder.js';
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
@@ -78,6 +78,84 @@ describe('graphBuilder mergeSegments', () => {
     expect(graph.nodes.size).toBe(4);
     expect(graph.edges.length).toBe(3);
   });
+});
+
+describe('buildGraphAsync partial graphs', () => {
+  it('flags missing tiles and preserves parsed segments from successful tiles', async () => {
+    const tiles = [
+      { url: 'https://example.com/0/0/0.pbf', x: 0, y: 0, z: 0 },
+      { url: 'https://example.com/0/0/1.pbf', x: 0, y: 1, z: 0 },
+    ];
+
+    const successSegments = [
+      {
+        c1: [0, 0],
+        c2: [0.001, 0],
+        oneway: 0,
+        speed: 50,
+        props: { class: 'residential' },
+        roadId: 1,
+        c1boundary: false,
+        c2boundary: false,
+        clipped: false,
+      },
+    ];
+    const missingTileError = new Error('tile fetch failed for 0/0/1');
+    missingTileError.code = 'TileFetchFailed';
+    missingTileError.tile = { z: 0, x: 0, y: 1, url: 'https://example.com/0/0/1.pbf' };
+
+    const cache = {
+      async getOrSetAsync(key, factory) {
+        if (key.includes('0/0/0')) {
+          return successSegments;
+        }
+        return Promise.reject(missingTileError);
+      },
+    };
+
+    const graph = await buildGraphAsync(tiles, 'car', { pool: null, cache, ttl: 0 });
+
+    expect(graph.hasMissingTiles).toBe(true);
+    expect(graph.missingTileErrors).toHaveLength(1);
+    expect(graph.missingTileErrors[0]).toMatchObject({ code: 'TileFetchFailed' });
+    expect(graph.edges.length).toBe(1);
+    expect(graph.nodes.size).toBeGreaterThan(0);
+  });
+
+  it('stops dispatching additional tiles after a fatal fetch error', async () => {
+    const tiles = [
+      { url: 'https://example.com/0/0/0.pbf', x: 0, y: 0, z: 0 },
+      { url: 'https://example.com/0/0/1.pbf', x: 0, y: 1, z: 0 },
+      { url: 'https://example.com/0/0/2.pbf', x: 0, y: 2, z: 0 },
+    ];
+
+    let started = 0;
+    const fatalError = new Error('Cross-origin tile request failed');
+    fatalError.code = 'MissingAllowOriginHeader';
+    fatalError.tile = { z: 0, x: 0, y: 0, url: 'https://example.com/0/0/0.pbf' };
+
+    const cache = {
+      async getOrSetAsync(key, factory) {
+        started += 1;
+        if (started === 1) {
+          return Promise.reject(fatalError);
+        }
+        return [];
+      },
+    };
+
+    const graph = await buildGraphAsync(tiles, 'car', {
+      pool: null,
+      cache,
+      ttl: 0,
+      maxConcurrentTiles: 1,
+    });
+
+    expect(started).toBe(1);
+    expect(graph.hasMissingTiles).toBe(true);
+    expect(graph.missingTileErrors[0]).toMatchObject({ code: 'MissingAllowOriginHeader' });
+  });
+});
 
   it('ignores one-way restrictions for pedestrian graphs', () => {
     const graph = mergeSegments([
@@ -259,5 +337,47 @@ describe('graphBuilder mergeSegments', () => {
     neighbourBoundaryNodeIds.delete(undefined);
 
     expect([...targetClippedNodeIds].every((id) => neighbourBoundaryNodeIds.has(id))).toBe(true);
+  });
+
+describe('buildGraphAsync partial graphs', () => {
+  it('flags missing tiles and preserves parsed segments from successful tiles', async () => {
+    const tiles = [
+      { url: 'https://example.com/0/0/0.pbf', x: 0, y: 0, z: 0 },
+      { url: 'https://example.com/0/0/1.pbf', x: 0, y: 1, z: 0 },
+    ];
+
+    const successSegments = [
+      {
+        c1: [0, 0],
+        c2: [0.001, 0],
+        oneway: 0,
+        speed: 50,
+        props: { class: 'residential' },
+        roadId: 1,
+        c1boundary: false,
+        c2boundary: false,
+        clipped: false,
+      },
+    ];
+    const missingTileError = new Error('tile fetch failed for 0/0/1');
+    missingTileError.code = 'TileFetchFailed';
+    missingTileError.tile = { z: 0, x: 0, y: 1, url: 'https://example.com/0/0/1.pbf' };
+
+    const cache = {
+      async getOrSetAsync(key, factory) {
+        if (key.includes('0/0/0')) {
+          return successSegments;
+        }
+        return Promise.reject(missingTileError);
+      },
+    };
+
+    const graph = await buildGraphAsync(tiles, 'car', { pool: null, cache, ttl: 0 });
+
+    expect(graph.hasMissingTiles).toBe(true);
+    expect(graph.missingTileErrors).toHaveLength(1);
+    expect(graph.missingTileErrors[0]).toMatchObject({ code: 'TileFetchFailed' });
+    expect(graph.edges.length).toBe(1);
+    expect(graph.nodes.size).toBeGreaterThan(0);
   });
 });

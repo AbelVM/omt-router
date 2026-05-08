@@ -197,7 +197,6 @@ export class MapLibreRoutingControl {
     this._engineBadgeEl = null;
     this._markers = { origin: null, dest: null };
     this._calcId = 0;
-    this._pendingRecalc = false;
     this._suppressNextMapPointerSet = false;
     this._engineBusy = false;
     this._unsubscribeEngineStatus = null;
@@ -251,10 +250,6 @@ export class MapLibreRoutingControl {
     if (this._onEngineWorkerStatusChange) {
       this._unsubscribeEngineStatus = this._onEngineWorkerStatusChange((status) => {
         this._engineBusy = Boolean(status.running);
-        if (!status.running && this._pendingRecalc) {
-          this._pendingRecalc = false;
-          this._tryRoute();
-        }
       });
       this._engineBusy = Boolean(this._getEngineWorkerStatus?.().running);
     }
@@ -728,11 +723,6 @@ export class MapLibreRoutingControl {
       }
     }
 
-    if (this._engineBusy) {
-      this._pendingRecalc = true;
-      this._setStatus(this._text.status.engineBusy, 'loading');
-      return;
-    }
 
     const id = ++this._calcId;
     this._hideStats();
