@@ -288,6 +288,7 @@ function createGraphAccumulator(mode) {
   const outDegree = [];
   /** @type {number[]|null} */
   const outCarCentrality = mode === 'car' ? [] : null;
+  const graphMode = mode;
   let nodeCounter = 0;
   let edgeCounter = 0;
   const classToFibonacciScore = mode === 'car' ? CAR_CLASS_FIB_SCORE : null;
@@ -471,6 +472,7 @@ function appendSegments(acc, segments) {
 
 function finalizeGraph(acc) {
   return {
+    mode: acc.graphMode,
     nodes: acc.nodes,
     edges: acc.edges,
     nodeIndex: acc.nodeIndex,

@@ -113,7 +113,7 @@ const control = new MapLibreRoutingControl({
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
-  tileMetadataUrl: 'https://tiles.openfreemap.org/planet',
+  tileJsonUrl: 'https://tiles.openfreemap.org/planet',
   maplibre: maplibregl,
 });
 map.addControl(control, 'top-left');
@@ -124,6 +124,116 @@ map.on('contextmenu', (e) => {
   control.setDestFromMap(e.lngLat);
 });
 ```
+
+### `MapLibreRoutingControl` constructor options
+
+The routing control supports theme selection and custom panel styling via `theme` and `panelClassName`.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `maplibre` | `object` | — | Required MapLibre GL JS library object (`maplibregl`) used to create markers and bounds. |
+| `tileJsonUrl` | `string` | — | Optional metadata endpoint returning `{ tiles: [urlTemplate] }`. Used when `urlTemplate` is not provided. |
+| `urlTemplate` | `string` | — | Optional tile URL template (`{z}/{x}/{y}.pbf`) for vector tiles. If provided, no metadata fetch is needed. |
+| `routeFunction` | `function` | `route` | Optional custom route implementation returning the routing result. |
+| `getEngineWorkerStatus` | `function` | — | Optional callback that returns the current engine worker status. |
+| `onEngineWorkerStatusChange` | `function` | — | Optional subscription hook for engine status changes. |
+| `cancelRunningEngine` | `function` | — | Optional cancel callback used when a route request times out or the control is removed. |
+| `defaultMode` | `string` | `car` | Initial transport mode: `car`, `pedestrian`, or `bicycle`. |
+| `defaultCostField` | `string` | `distance` | Initial cost optimization: `distance`, `travelTime`, or `optimal`. |
+| `theme` | `string` | `light` | UI theme for the control panel. Use `auto`, `light`, or `dark`. |
+| `panelClassName` | `string` | `` | Additional CSS class(es) added to the control panel root. |
+| `routeTimeoutMs` | `number` | `20000` | Route request timeout in milliseconds. |
+| `routeOptions` | `object` | `{ maxAutoRadius: 8, maxAcceptableSnapDistanceM: 60 }` | Passed through to the route engine. |
+| `showGraph` | `boolean` | `false` | Whether to render the internal graph overlay. |
+| `routeSourceId` | `string` | `omtr-route-source` | Map source ID for the route GeoJSON. |
+| `routeCasingLayerId` | `string` | `omtr-route-casing` | Map layer ID for the route casing line. |
+| `routeLayerId` | `string` | `omtr-route-line` | Map layer ID for the route line. |
+| `graphSourceId` | `string` | `omtr-graph-source` | Map source ID for the graph overlay GeoJSON. |
+| `graphLayerId` | `string` | `omtr-graph-line` | Map layer ID for the graph overlay line. |
+| `mapPosition` | `string` | `top-left` | Suggested MapLibre control position. |
+| `startColor` | `string` | `#2563eb` | Start route color. |
+| `endColor` | `string` | `#dc2626` | End route color. |
+| `locale` | `string` | `auto` | Base locale code to use, or `auto` to detect the browser language. |
+| `locale_override` | `object` | — | Partial locale text overrides merged into the selected locale. |
+| `localeOverride` | `object` | — | Legacy alias for `locale_override`. |
+| `tileUrlTransform` | `function` | — | Optional transformer applied to tile URLs on each request. |
+| `tileProxyTemplate` | `string` | — | Optional proxy template for route tile requests. |
+
+All unspecified text fields in `locale_override` are filled from the selected built-in locale, and unsupported override keys are ignored.
+
+### `MapLibreRoutingControl` instance API
+
+The control exposes these helper methods:
+
+- `setOrigin(lngLat)` — set the origin point and trigger a route update.
+- `setDest(lngLat)` — set the destination point and trigger a route update.
+- `setOriginFromMap(lngLat)` — helper for map click events to set origin from a `maplibregl.LngLat` object.
+- `setDestFromMap(lngLat)` — helper for map context-menu events to set destination from a `maplibregl.LngLat` object.
+- `setUrlTemplate(urlTemplate)` — update the tile URL template and refresh the route.
+- `setTileJsonUrl(url)` — update the tile metadata URL, fetch the new template, and refresh the route.
+
+The control implements the MapLibre control interface via `onAdd(map)` and `onRemove()`, so it can be added with `map.addControl(control, position)`.
+
+### Localization
+
+Localization is configurable via the `locale` option.
+
+- `locale: 'auto'` (default) detects the browser language and selects a built-in locale.
+- `locale: 'en'`, `locale: 'es'`, `locale: 'ca'`, `locale: 'gl'`, etc. forces a built-in locale.
+- `locale_override: { ... }` merges custom text overrides into the selected base locale.
+
+You can override the entire UI text set or only a few specific labels. Any missing fields are filled in from the selected base locale, and unsupported values are ignored.
+
+```js
+const control = new MapLibreRoutingControl({
+  maplibre: maplibregl,
+  tileJsonUrl: 'https://tiles.openfreemap.org/planet',
+  locale: 'es',
+  locale_override: {
+    title: 'Mi planificador de rutas',
+    modes: { pedestrian: 'Andar', car: 'Auto', bicycle: 'Bici' },
+    modeTitles: { pedestrian: 'Caminando', car: 'Conducción', bicycle: 'Ciclismo' },
+    optimizeFor: 'Optimizar para',
+    costLabels: { distance: 'Más corta', travelTime: 'Más rápida', optimal: 'Óptima' },
+    costTitles: {
+      distance: 'Ruta más corta',
+      travelTime: 'Ruta más rápida',
+      optimal: 'Ruta óptima',
+    },
+    originPlaceholder: 'Origen (lat, lng)',
+    destinationPlaceholder: 'Destino (lat, lng)',
+    reverseRoute: 'Invertir dirección',
+    leftClick: 'Clic izq.',
+    rightClick: 'Clic der.',
+    setOrigin: 'establecer origen',
+    setDestination: 'establecer destino',
+    stats: {
+      distance: 'Distancia',
+      estTime: 'Tiempo estimado',
+      travelTime: 'Duración',
+    },
+    status: {
+      tileMetadata: 'Error al cargar metadatos de mosaicos. Revisa la URL y la red.',
+      waitingStyle: 'Esperando que el estilo termine de cargar antes de mostrar la ruta.',
+      tileUrl: 'URL de mosaico no disponible. Proporciona urlTemplate o tileJsonUrl válido.',
+      engineBusy: 'Motor ocupado. Esperando a que termine la ruta actual…',
+      calculating: 'Calculando ruta…',
+      timedOut: 'El enrutamiento agotó el tiempo y fue cancelado. Prueba otra ruta.',
+      cancelled: 'Enrutamiento cancelado.',
+      tileCors: 'Solicitud de mosaico bloqueada. Comprueba permisos CORS.',
+      poorSnap: 'No se encontró ruta porque los puntos se ajustaron mal. Usa puntos más cercanos a la vía.',
+      noNode: 'No se encontró ruta porque un punto no pudo enlazar con la red cargada.',
+      noPath: 'No se encontró ruta porque la red está desconectada o el corredor es muy estrecho.',
+      incompletePath: 'El motor devolvió una ruta incompleta. Revisa los datos de la red.',
+      noRoute: 'No hay ruta entre estos puntos. Puede deberse a una red desconectada o un fallo de enrutamiento.',
+      routeErrorPrefix: 'Error de enrutamiento —',
+    },
+  },
+});
+```
+
+
+When a custom locale object is provided, the control resolves the base locale from `locale` (or legacy `language` when present), then merges only supported text keys while preserving the built-in locale shape.
 
 You can customize route settings using `routeOptions` and pass a different tile metadata URL if your provider differs from OpenFreeMap.
 
@@ -162,7 +272,7 @@ const result = await route(
   [-3.6937, 40.4101],   // destination
   'car',                // 'car' | 'pedestrian' | 'bicycle'
   urlTemplate,
-  { costField: 'travelTime' } // 'distance' | 'travelTime'
+  { costField: 'travelTime' } // 'distance' | 'travelTime' | 'optimal'
 );
 
 console.log(result.found);        // true
@@ -185,7 +295,7 @@ The returned object:
 | `path` | `number[]` | Sequence of internal node IDs |
 | `coordinates` | `[number, number][]` | `[lng, lat]` pairs ready for GeoJSON |
 | `cost` | `number` | Total route cost (`distance` in metres or `travelTime` in seconds) |
-| `costField` | `string` | Cost field used to optimize the route |
+| `costField` | `string` | Cost field used to optimize the route (`optimal` uses priority-weighted travel time) |
 
 ---
 
@@ -205,7 +315,7 @@ High-level convenience function. Fetches the necessary tiles, builds the graph, 
 | `options.schema` | `string` | `'zxy'` | Tile schema: `'zxy'` or `'tms'` |
 | `options.radius` | `number` | auto-computed | Optional fixed tile radius around the route corridor |
 | `options.maxAutoRadius` | `number` | `8` | Maximum radius used by adaptive retry loop |
-| `options.costField` | `string` | `'distance'` | Route optimization target: `'distance'` or `'travelTime'` |
+| `options.costField` | `string` | `'distance'` | Route optimization target: `'distance'`, `'travelTime'`, or `'optimal'` |
 | `options.penalties` | `object` | `{ intersectionPenaltySec: 0, turnPenaltySec: 0, turnAngleThresholdDeg: 25 }` | Travel-time penalty controls (`turnPenaltySec` is currently accepted but not applied) |
 | `options.maxAcceptableSnapDistanceM` | `number` | `60` | Maximum allowed snap distance from endpoint to graph node |
 | `options.tileProxyTemplate` | `string` | — | Optional same-origin proxy template. Supports `{url}` (encoded), `{z}`, `{x}`, `{y}` |
@@ -242,10 +352,15 @@ const result = await route(start, end, 'car', urlTemplate, {
 ### `computeRoute(startCoords, endCoords, graph, options?)`
 
 Runs the routing algorithm on a pre-built graph. Useful when you manage tile loading yourself.
+Route optimization modes:
+
+- `distance`: shortest path by route length in metres.
+- `travelTime`: fastest path by travel time in seconds.
+- `optimal`: priority-weighted travel-time path that prefers higher-priority road classes using OpenMapTiles class weights and an alpha factor.
 
 Key options:
 
-- `costField`: `'distance'` or `'travelTime'`
+- `costField`: `'distance'`, `'travelTime'`, or `'optimal'`
 - `penalties`: same structure as `route()`
 - `snapDistancesM`: snap search ladder (default `[250, 500, 800]`)
 - `maxAcceptableSnapDistanceM`: snap-quality guard (default `60`)
@@ -253,7 +368,7 @@ Key options:
 
 ### `buildCH(graph, costField?)`
 
-Flattens a graph into typed arrays and forward/reverse CSR adjacency ready for engine execution. `costField` can be `'distance'` (metres, default) or `'travelTime'` (seconds).
+Flattens a graph into typed arrays and forward/reverse CSR adjacency ready for engine execution. `costField` can be `'distance'` (metres, default), `'travelTime'` (seconds), or `'optimal'` (priority-weighted travel time using `WAY_PRIORITIES`).
 
 ### `queryRoute(startId, endId, prepared, options?)`
 

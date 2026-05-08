@@ -4,11 +4,14 @@ import {
   onEngineWorkerStatusChange as defaultOnEngineWorkerStatusChange,
   cancelRunningEngine as defaultCancelRunningEngine,
 } from '../index.js';
+import { DEFAULT_LOCALE, LOCALES, resolveLocale } from './l10n_defaults.js';
 import './MapLibreRoutingControl.css';
 
 const DEFAULT_OPTIONS = {
   defaultMode: 'car',
   defaultCostField: 'distance',
+  theme: 'light',
+  panelClassName: '',
   routeTimeoutMs: 20_000,
   routeSourceId: 'omtr-route-source',
   routeCasingLayerId: 'omtr-route-casing',
@@ -19,6 +22,7 @@ const DEFAULT_OPTIONS = {
   mapPosition: 'top-left',
   startColor: '#2563eb',
   endColor: '#dc2626',
+  locale: 'auto',
   routeOptions: {
     maxAutoRadius: 8,
     maxAcceptableSnapDistanceM: 60,
@@ -40,7 +44,7 @@ const ENGINE_BADGE_ICONS = Object.freeze({
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
 });
 
-const COST_LABELS = Object.freeze({ distance: 'shortest', travelTime: 'fastest' });
+const COST_LABELS = Object.freeze({ distance: 'shortest', travelTime: 'fastest', optimal: 'optimal' });
 
 const RAD = Math.PI / 180;
 const EARTH_RADIUS_METERS = 6_371_000;
@@ -119,6 +123,34 @@ function mergeOptions(base, override) {
   return result;
 }
 
+function mergeLocaleText(base, override) {
+  if (!override || typeof override !== 'object' || Array.isArray(override)) {
+    return base;
+  }
+
+  const result = { ...base };
+  for (const key in base) {
+    if (!Object.prototype.hasOwnProperty.call(base, key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(override, key)) continue;
+
+    const baseValue = base[key];
+    const overrideValue = override[key];
+
+    if (baseValue && typeof baseValue === 'object' && !Array.isArray(baseValue)) {
+      if (overrideValue && typeof overrideValue === 'object' && !Array.isArray(overrideValue)) {
+        result[key] = mergeLocaleText(baseValue, overrideValue);
+      } else {
+        result[key] = baseValue;
+      }
+    } else if (typeof overrideValue === typeof baseValue) {
+      result[key] = overrideValue;
+    } else {
+      result[key] = baseValue;
+    }
+  }
+  return result;
+}
+
 export class MapLibreRoutingControl {
   constructor(options = {}) {
     this._options = mergeOptions(DEFAULT_OPTIONS, options);
@@ -132,6 +164,18 @@ export class MapLibreRoutingControl {
     this._tileProxyTemplate = this._options.tileProxyTemplate;
     this._routeOptions = { ...this._options.routeOptions };
     this._routeTimeoutMs = Number(this._options.routeTimeoutMs);
+    this._theme = String(this._options.theme ?? 'auto').toLowerCase();
+    this._panelClassName = typeof this._options.panelClassName === 'string'
+      ? this._options.panelClassName.trim()
+      : '';
+    const locale = this._options.locale ?? this._options.language;
+    const localeOverride = this._options.locale_override ?? this._options.localeOverride ??
+      (locale && typeof locale === 'object' && !Array.isArray(locale) ? locale : undefined);
+    const baseLocale = typeof locale === 'string' ? resolveLocale(locale) : resolveLocale(this._options.language ?? 'auto');
+    this._locale = baseLocale;
+    this._text = localeOverride
+      ? mergeLocaleText(LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE], localeOverride)
+      : LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE];
     this._maplibre = this._options.maplibre ?? (typeof window !== 'undefined' ? window.maplibregl : null);
 
     if (!this._maplibre || typeof this._maplibre.Marker !== 'function') {
@@ -164,11 +208,23 @@ export class MapLibreRoutingControl {
     this._mounted = false;
   }
 
+  _resolveThemeClass() {
+    const theme = String(this._theme ?? 'auto').toLowerCase();
+    if (theme === 'dark') return 'routing-panel--theme-dark';
+    if (theme === 'light') return 'routing-panel--theme-light';
+    return 'routing-panel--theme-auto';
+  }
+
   onAdd(map) {
     this._mounted = true;
     this._map = map;
     this._panel = document.createElement('div');
     this._panel.className = 'routing-panel';
+    this._panel.classList.add(this._resolveThemeClass());
+    if (this._panelClassName) {
+      this._panel.classList.add(...this._panelClassName.split(/\s+/).filter(Boolean));
+    }
+    this._panel.dataset.theme = this._theme;
     this._panel.innerHTML = this._buildPanelMarkup();
 
     this._originInput = this._panel.querySelector('#rp-origin');
@@ -206,7 +262,7 @@ export class MapLibreRoutingControl {
     if (this._tileJsonUrl && !this._urlTemplate) {
       this._loadTileTemplate().catch((err) => {
         console.error('[omt-router] tile metadata load failed:', err);
-        this._setStatus('Failed to load tile metadata. Check the configured url and network.', 'error');
+        this._setStatus(this._text.status.tileMetadata, 'error');
       });
     }
 
@@ -283,12 +339,8 @@ export class MapLibreRoutingControl {
     this._tileTemplatePromise = null;
     this._loadTileTemplate().catch((err) => {
       console.error('[omt-router] tile metadata load failed:', err);
-      this._setStatus('Failed to load tile metadata. Check the configured url and network.', 'error');
+      this._setStatus(this._text.status.tileMetadata, 'error');
     });
-  }
-
-  settileJsonUrl(url) {
-    return this.setTileJsonUrl(url);
   }
 
   async _loadTileTemplate() {
@@ -318,73 +370,75 @@ export class MapLibreRoutingControl {
 
   _buildPanelMarkup() {
     return `
-      <span class="rp-title">Route Planner</span>
+      <span class="rp-title">${this._text.title}</span>
 
       <div class="rp-modes">
-        <button class="rp-mode-btn" data-mode="pedestrian" title="Walking">
+        <button type="button" class="rp-mode-btn" data-mode="pedestrian" aria-pressed="false" title="${this._text.modeTitles.pedestrian}">
           <span class="rp-mode-icon">🚶</span>
-          <span class="rp-mode-label">Walk</span>
+          <span class="rp-mode-label">${this._text.modes.pedestrian}</span>
         </button>
-        <button class="rp-mode-btn active" data-mode="car" title="Driving">
+        <button type="button" class="rp-mode-btn active" data-mode="car" aria-pressed="true" title="${this._text.modeTitles.car}">
           <span class="rp-mode-icon">🚗</span>
-          <span class="rp-mode-label">Car</span>
+          <span class="rp-mode-label">${this._text.modes.car}</span>
         </button>
-        <button class="rp-mode-btn" data-mode="bicycle" title="Cycling">
+        <button type="button" class="rp-mode-btn" data-mode="bicycle" aria-pressed="false" title="${this._text.modeTitles.bicycle}">
           <span class="rp-mode-icon">🚲</span>
-          <span class="rp-mode-label">Bike</span>
+          <span class="rp-mode-label">${this._text.modes.bicycle}</span>
         </button>
       </div>
 
       <div class="rp-section">
-        <span class="rp-section-label">Optimize for</span>
+        <span class="rp-section-label">${this._text.optimizeFor}</span>
         <div class="rp-costs">
-          <button class="rp-cost-btn active" data-cost-field="distance" title="Shortest route">
-            Shortest
+          <button type="button" class="rp-cost-btn active" data-cost-field="distance" aria-pressed="true" title="${this._text.costTitles.distance}">
+            ${this._text.costLabels.distance}
           </button>
-          <button class="rp-cost-btn" data-cost-field="travelTime" title="Fastest route">
-            Fastest
+          <button type="button" class="rp-cost-btn" data-cost-field="travelTime" aria-pressed="false" title="${this._text.costTitles.travelTime}">
+            ${this._text.costLabels.travelTime}
+          </button>
+          <button type="button" class="rp-cost-btn" data-cost-field="optimal" aria-pressed="false" title="${this._text.costTitles.optimal}">
+            ${this._text.costLabels.optimal}
           </button>
         </div>
-      </div>
-
-      <div class="rp-inputs">
-        <div class="rp-input-row">
-          <svg class="rp-point-icon rp-point-icon--origin" viewBox="0 0 10 10">
-            <circle cx="5" cy="5" r="4.5"/>
-          </svg>
-          <input id="rp-origin" type="text" placeholder="Origin (lat, lng)" autocomplete="off" spellcheck="false" />
-        </div>
-        <div class="rp-swap-wrap">
-          <button type="button" class="rp-swap-btn" id="rp-swap-btn" title="Reverse route direction" aria-label="Reverse route direction">⇅</button>
-        </div>
-        <div class="rp-input-row">
-          <svg class="rp-point-icon rp-point-icon--dest" viewBox="0 0 10 10">
-            <circle cx="5" cy="5" r="4.5"/>
-          </svg>
-          <input id="rp-dest" type="text" placeholder="Destination (lat, lng)" autocomplete="off" spellcheck="false" />
+        <div class="rp-inputs">
+          <div class="rp-input-row">
+            <svg class="rp-point-icon rp-point-icon--origin" viewBox="0 0 10 10">
+              <circle cx="5" cy="5" r="4.5"/>
+            </svg>
+            <input id="rp-origin" type="text" placeholder="${this._text.originPlaceholder}" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="rp-swap-wrap">
+            <button type="button" class="rp-swap-btn" id="rp-swap-btn" title="${this._text.reverseRoute}" aria-label="${this._text.reverseRoute}">⇅</button>
+          </div>
+          <div class="rp-input-row">
+            <svg class="rp-point-icon rp-point-icon--dest" viewBox="0 0 10 10">
+              <circle cx="5" cy="5" r="4.5"/>
+            </svg>
+            <input id="rp-dest" type="text" placeholder="${this._text.destinationPlaceholder}" autocomplete="off" spellcheck="false" />
+          </div>
         </div>
       </div>
 
       <div class="rp-hint">
-        <span class="rp-hint-item"><span class="rp-hint-key">Left-click</span> set origin</span>
+        <span class="rp-hint-item"><span class="rp-hint-key">${this._text.leftClick}</span> ${this._text.setOrigin}</span>
         <span class="rp-hint-sep">·</span>
-        <span class="rp-hint-item"><span class="rp-hint-key">Right-click</span> set destination</span>
+        <span class="rp-hint-item"><span class="rp-hint-key">${this._text.rightClick}</span> ${this._text.setDestination}</span>
       </div>
 
       <div class="rp-stats" id="rp-stats" hidden>
         <div class="rp-stat">
           <span class="rp-stat-value" id="rp-stat-dist">—</span>
-          <span class="rp-stat-label" id="rp-stat-dist-label">Distance</span>
+          <span class="rp-stat-label" id="rp-stat-dist-label">${this._text.stats.distance}</span>
         </div>
         <div class="rp-stat-divider"></div>
         <div class="rp-stat">
           <span class="rp-stat-value" id="rp-stat-time">—</span>
-          <span class="rp-stat-label" id="rp-stat-time-label">Est. time</span>
+          <span class="rp-stat-label" id="rp-stat-time-label">${this._text.stats.estTime}</span>
         </div>
       </div>
 
       <div class="rp-engine" id="rp-engine" hidden></div>
-      <div class="rp-status" id="rp-status" hidden></div>
+      <div class="rp-status" id="rp-status" role="status" aria-live="polite" hidden></div>
     `;
   }
 
@@ -393,7 +447,11 @@ export class MapLibreRoutingControl {
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         this._mode = btn.dataset.mode;
-        modeButtons.forEach((b) => b.classList.toggle('active', b === btn));
+        modeButtons.forEach((b) => {
+          const isActive = b === btn;
+          b.classList.toggle('active', isActive);
+          b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
         this._tryRoute();
       });
     });
@@ -402,7 +460,11 @@ export class MapLibreRoutingControl {
     costButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         this._costField = btn.dataset.costField;
-        costButtons.forEach((b) => b.classList.toggle('active', b === btn));
+        costButtons.forEach((b) => {
+          const isActive = b === btn;
+          b.classList.toggle('active', isActive);
+          b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
         this._tryRoute();
       });
     });
@@ -611,17 +673,17 @@ export class MapLibreRoutingControl {
     }
 
     const distanceM = result.costField === 'distance' ? result.cost : getRouteDistance(result.coordinates);
-    const timeText = result.costField === 'travelTime' ? this._formatDurationSeconds(result.cost) : fmtTime(distanceM, this._mode);
+    const timeText = result.costField !== 'distance' ? this._formatDurationSeconds(result.cost) : fmtTime(distanceM, this._mode);
     const engine = result.engine ?? 'cpu';
     const parallelUsed = Boolean(result.parallelUsed);
 
     this._statDistEl.textContent = fmtDistance(distanceM);
     this._statTimeEl.textContent = timeText;
-    this._statDistLabelEl.textContent = 'Distance';
-    this._statTimeLabelEl.textContent = this._costField === 'travelTime' ? 'Travel time' : 'Est. time';
+    this._statDistLabelEl.textContent = this._text.stats.distance;
+    this._statTimeLabelEl.textContent = this._costField === 'distance' ? this._text.stats.estTime : this._text.stats.travelTime;
     this._statsEl.hidden = false;
     this._engineBadgeEl.className = `rp-engine ${parallelUsed ? 'rp-engine--parallel' : 'rp-engine--cpu'}`;
-    const costLabel = COST_LABELS[this._costField] ?? 'shortest';
+    const costLabel = this._text.costLabels[this._costField] ?? this._text.costLabels.distance;
     const engineLabel = formatEngineBadgeName(engine);
     this._engineBadgeEl.innerHTML = `${getEngineBadgeIcon(parallelUsed)}${engineLabel} · ${costLabel}`;
     this._engineBadgeEl.hidden = false;
@@ -651,7 +713,7 @@ export class MapLibreRoutingControl {
     if (!this._origin || !this._dest) return;
     this._setupRouteSource();
     if (!this._map?.getSource(this._options.routeSourceId)) {
-      this._setStatus('Waiting for map style to finish loading before displaying the route.', 'loading');
+      this._setStatus(this._text.status.waitingStyle, 'loading');
       return;
     }
     if (!this._urlTemplate) {
@@ -660,7 +722,7 @@ export class MapLibreRoutingControl {
         if (!this._mounted) return;
       }
       if (!this._urlTemplate) {
-        this._setStatus('Tile URL not yet available. Provide urlTemplate or valid tileJsonUrl.', 'error');
+        this._setStatus(this._text.status.tileUrl, 'error');
         this._clearRoute();
         return;
       }
@@ -668,7 +730,7 @@ export class MapLibreRoutingControl {
 
     if (this._engineBusy) {
       this._pendingRecalc = true;
-      this._setStatus('Routing engine is busy. Waiting for the current route to finish…', 'loading');
+      this._setStatus(this._text.status.engineBusy, 'loading');
       return;
     }
 
@@ -676,7 +738,7 @@ export class MapLibreRoutingControl {
     this._hideStats();
     this._clearRoute();
     this._clearGraph();
-    this._setStatus('<span class="rp-spinner"></span>Calculating route…', 'loading');
+    this._setStatus(`<span class="rp-spinner"></span>${this._text.status.calculating}`, 'loading');
 
     let timedOut = false;
     const timeoutHandle = setTimeout(() => {
@@ -740,14 +802,12 @@ export class MapLibreRoutingControl {
       console.error('[omt-router] routing error:', err);
       if (err?.code === 'engine_cancelled') {
         this._setStatus(
-          timedOut
-            ? 'Routing timed out and was cancelled. Try a shorter route or retry.'
-            : 'Routing was cancelled.',
+          timedOut ? this._text.status.timedOut : this._text.status.cancelled,
           'error'
         );
       } else {
-        const errorMessage = err?.message || (typeof err === 'string' ? err : 'Unknown routing error');
-        this._setStatus(`Routing error — ${errorMessage}`, 'error');
+        const errorMessage = err?.message || (typeof err === 'string' ? err : this._text.status.unknownError ?? 'Unknown routing error');
+        this._setStatus(`${this._text.status.routeErrorPrefix} ${errorMessage}`, 'error');
       }
       this._clearRoute();
       this._clearGraph();
@@ -760,17 +820,17 @@ export class MapLibreRoutingControl {
     console.warn('[omt-router] route failed:', result);
     const reason = result?.reason;
     if (reason === 'tile_cors') {
-      this._setStatus('Tile request blocked. Check that your tile server allows requests from this origin.', 'error');
+      this._setStatus(this._text.status.tileCors, 'error');
     } else if (reason === 'poor_snap') {
-      this._setStatus('No route found because one or both points snapped poorly. Try placing points closer to roads.', 'error');
+      this._setStatus(this._text.status.poorSnap, 'error');
     } else if (reason === 'no_node') {
-      this._setStatus('No route found because one endpoint could not snap to the loaded graph. Try moving the points closer to roads or a different area.', 'error');
+      this._setStatus(this._text.status.noNode, 'error');
     } else if (reason === 'no_path') {
-      this._setStatus('No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.', 'error');
+      this._setStatus(this._text.status.noPath, 'error');
     } else if (reason === 'incomplete_path') {
-      this._setStatus('Routing engine returned an incomplete path. This can happen when the graph data is inconsistent or a path is missing.', 'error');
+      this._setStatus(this._text.status.incompletePath, 'error');
     } else {
-      this._setStatus('No route found between these points. This can be caused by a disconnected graph, snapping issue, or another routing failure.', 'error');
+      this._setStatus(this._text.status.noRoute, 'error');
     }
     this._clearRoute();
     this._clearGraph();

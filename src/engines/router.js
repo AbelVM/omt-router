@@ -34,6 +34,7 @@ import { bidirectionalAStar } from './BidirectionalAStar/index.js';
 import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
 import { deltaSteppingRouter } from './DeltaStepping/index.js';
 import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
+import { WAY_PRIORITIES } from '../utils/ways_defaults.js';
 import EngineMainWorker from './engineMainWorker?worker&inline';
 import { getAllGraphMetrics } from '../graphs/graphMetrics.js'; 
 
@@ -67,6 +68,24 @@ const ENGINE_ID_ALIASES = Object.freeze({
 function normalizeEngineId(engineId, fallback = 'bidirectional-astar') {
   if (typeof engineId !== 'string' || !engineId) return fallback;
   return ENGINE_ID_ALIASES[engineId] ?? engineId;
+}
+
+const OPTIMAL_PRIORITY_ALPHA = 0.7;
+
+function isTravelTimeCostField(costField) {
+  return costField === 'travelTime' || costField === 'optimal';
+}
+
+function getEdgePriority(edge, mode) {
+  const roadClass = edge.properties?.class ?? '';
+  const priorities = WAY_PRIORITIES[mode];
+  if (!priorities) return 1.0;
+  return Number(priorities[roadClass] ?? 1.0);
+}
+
+function getOptimalTravelTimeCost(edge, mode) {
+  const priority = getEdgePriority(edge, mode);
+  return edge.travelTime * (1 + OPTIMAL_PRIORITY_ALPHA * (priority - 1));
 }
 
 function getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targetId, opts = {}) {
@@ -420,7 +439,7 @@ function normalizePenalties(penalties = {}) {
 }
 
 function getPenaltyKey(costField, penalties = {}) {
-  if (costField !== 'travelTime') return 'none';
+  if (!isTravelTimeCostField(costField)) return 'none';
   const { intersectionPenaltySec } = normalizePenalties(penalties);
   return `i${intersectionPenaltySec}`;
 }
@@ -517,7 +536,7 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   const N = nodes.size;
   const normalizedPenalties = normalizePenalties(penalties);
   const useIntersectionPenalty =
-    costField === 'travelTime' && normalizedPenalties.intersectionPenaltySec > 0;
+    isTravelTimeCostField(costField) && normalizedPenalties.intersectionPenaltySec > 0;
 
   let isIntersection = null;
   if (useIntersectionPenalty) {
@@ -570,10 +589,21 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   };
 
   for (const edge of edges) {
-    const fwdFloat =
-      edge.cost !== -1 ? (costField === 'travelTime' ? edge.travelTime : edge.length) : -1;
-    const bwdFloat =
-      edge.reverseCost !== -1 ? (costField === 'travelTime' ? edge.travelTime : edge.length) : -1;
+    const useTravelTime = isTravelTimeCostField(costField);
+    const fwdFloat = edge.cost !== -1
+      ? useTravelTime
+        ? costField === 'optimal'
+          ? getOptimalTravelTimeCost(edge, graph.mode)
+          : edge.travelTime
+        : edge.length
+      : -1;
+    const bwdFloat = edge.reverseCost !== -1
+      ? useTravelTime
+        ? costField === 'optimal'
+          ? getOptimalTravelTimeCost(edge, graph.mode)
+          : edge.travelTime
+        : edge.length
+      : -1;
     if (fwdFloat !== -1) addEdge(edge.source, edge.target, fwdFloat);
     if (bwdFloat !== -1) addEdge(edge.target, edge.source, bwdFloat);
   }
@@ -926,7 +956,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
   } = options;
   const normalizedPenalties = normalizePenalties(penalties);
-  if (costField === 'travelTime' && normalizedPenalties.turnPenaltySec > 0) {
+  if (isTravelTimeCostField(costField) && normalizedPenalties.turnPenaltySec > 0) {
     logger.warn('turn penalties are currently ignored; using standard engine routing');
   }
   const penaltyKey = getPenaltyKey(costField, normalizedPenalties);

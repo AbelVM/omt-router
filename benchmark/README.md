@@ -36,7 +36,7 @@ What it does:
 - Loads exactly two benchmark JSON files from `benchmark/results` (one serial and one parallel).
 - Parses route rows, features, and fastest-engine labels for each profile.
 - Scores runs by quality, agreement, coverage, and recency.
-- Trains a small 2-layer MLP classifier using sklearn and XGBoost.
+- Trains the runtime-linear selector using sklearn Ridge regression.
 - Writes a generated JS model artifact and a JSON analysis report.
 
 Output:
@@ -83,21 +83,18 @@ From repo root:
 
 ```bash
   python3 -m venv .venv
-  .venv/bin/pip install numpy pandas scikit-learn xgboost m2cgen
+  .venv/bin/pip install numpy pandas scikit-learn
   .venv/bin/python benchmark/train_engine_selector_ml.py --root .
 ```
 
-Alternatively, if your Python environment is active, you can use the package scripts:
+Alternatively, if your Python environment is active, you can use the package script:
 
 ```bash
-  npm run train:MLP
   npm run train:LR
-  npm run train:XGBoost
 ```
 
 The script reads paired benchmark JSON files in `benchmark/results` and generates a runtime-compatible JS model artifact at `src/tuning/model.js`.
 
-Due to model size and inference performance concerns, only LR is supported for inference.
 
 ### 3) Apply the selector artifact in the library
 
@@ -175,17 +172,15 @@ The analyzer script `benchmark/analyze_benchmark_errors.py` now reports:
 
 - Node.js 18+
 - Project dependencies installed (`npm install`)
-- Python environment with analyzer dependencies:
+- Python environment with training dependencies:
   - `numpy`
   - `pandas`
   - `scikit-learn`
-  - `xgboost`
-  - `m2cgen`
 
 Example environment setup from repo root:
 
   python3 -m venv .venv
-  .venv/bin/pip install numpy pandas scikit-learn xgboost m2cgen
+  .venv/bin/pip install numpy pandas scikit-learn
 
 ## Notes
 

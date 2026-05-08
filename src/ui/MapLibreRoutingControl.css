@@ -1,37 +1,114 @@
 :root {
     --origin: #2563eb;
     --destination: #dc2626;
+    --rp-bg: #ffffff;
+    --rp-surface: rgba(255, 255, 255, 0.96);
+    --rp-border: rgba(148, 163, 184, 0.28);
+    --rp-border-strong: rgba(148, 163, 184, 0.42);
+    --rp-text: #0f172a;
+    --rp-muted: #64748b;
+    --rp-secondary: #475569;
+    --rp-input-bg: #f8fafc;
+    --rp-card: #f8fafc;
+    --rp-primary: #2563eb;
+    --rp-primary-strong: #1d4ed8;
+    --rp-primary-soft: rgba(37, 99, 235, 0.12);
+    --rp-success: #15803d;
+    --rp-success-soft: #dcfce7;
+    --rp-danger: #dc2626;
+    --rp-danger-soft: #fee2e2;
+    --rp-focus: #93c5fd;
+    --rp-shadow: 0 18px 45px rgba(15, 23, 42, 0.12), 0 1px 1px rgba(15, 23, 42, 0.06);
 }
 
 .routing-panel {
-    width: 272px;
-    background: #fff;
-    border-radius: 14px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 8px 32px rgba(0, 0, 0, 0.10);
+    position: relative;
+    max-inline-size: min(100%, 340px);
+    width: min(100%, 340px);
+    background: var(--rp-bg);
+    border: 1px solid var(--rp-border);
+    border-radius: 18px;
+    box-shadow: var(--rp-shadow);
     padding: 16px;
-    margin: 10px 0 0 10px;
+    margin: 10px;
     font-family: 'DM Sans', system-ui, sans-serif;
+    color: var(--rp-text);
     pointer-events: all;
+    color-scheme: light;
+}
+
+.routing-panel--theme-auto {
+    color-scheme: light dark;
+}
+
+.routing-panel--theme-dark {
+    --rp-bg: #020617;
+    --rp-surface: rgba(10, 18, 35, 0.94);
+    --rp-border: rgba(148, 163, 184, 0.16);
+    --rp-border-strong: rgba(148, 163, 184, 0.22);
+    --rp-text: #e2e8f0;
+    --rp-muted: #94a3b8;
+    --rp-secondary: #cbd5e1;
+    --rp-input-bg: rgba(15, 23, 42, 0.82);
+    --rp-card: rgba(15, 23, 42, 0.82);
+    --rp-primary-soft: rgba(59, 130, 246, 0.18);
+    --rp-success-soft: rgba(16, 185, 129, 0.14);
+    --rp-danger-soft: rgba(248, 113, 113, 0.16);
+    --rp-focus: #60a5fa;
+    --rp-shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+    color-scheme: dark;
+}
+
+.routing-panel--theme-light {
+    --rp-bg: #ffffff;
+    --rp-surface: rgba(255, 255, 255, 0.96);
+    --rp-border: rgba(148, 163, 184, 0.28);
+    --rp-border-strong: rgba(148, 163, 184, 0.42);
+    --rp-text: #0f172a;
+    --rp-muted: #64748b;
+    --rp-secondary: #475569;
+    --rp-input-bg: #f8fafc;
+    --rp-card: #f8fafc;
+    --rp-focus: #93c5fd;
+    --rp-shadow: var(--rp-shadow);
+}
+
+@media (prefers-color-scheme: dark) {
+    .routing-panel--theme-auto {
+        --rp-bg: #020617;
+        --rp-surface: rgba(10, 18, 35, 0.94);
+        --rp-border: rgba(148, 163, 184, 0.16);
+        --rp-border-strong: rgba(148, 163, 184, 0.22);
+        --rp-text: #e2e8f0;
+        --rp-muted: #94a3b8;
+        --rp-secondary: #cbd5e1;
+        --rp-input-bg: rgba(15, 23, 42, 0.82);
+        --rp-card: rgba(15, 23, 42, 0.82);
+        --rp-primary-soft: rgba(59, 130, 246, 0.18);
+        --rp-focus: #60a5fa;
+        --rp-shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+    }
 }
 
 .rp-title {
     display: block;
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--rp-muted);
     margin-bottom: 12px;
 }
 
 .rp-modes {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    background: #f1f5f9;
-    border-radius: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    background: var(--rp-card);
+    border-radius: 12px;
     padding: 4px;
-    gap: 3px;
+    gap: 4px;
     margin-bottom: 14px;
+    border: 1px solid var(--rp-border);
 }
 
 .rp-section {
@@ -40,65 +117,67 @@
 
 .rp-section-label {
     display: block;
-    margin-bottom: 7px;
+    margin-bottom: 8px;
     font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--rp-muted);
 }
 
 .rp-costs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
+    margin-bottom: 10px;
 }
 
 .rp-cost-btn {
-    border: 1px solid #dbe4ef;
-    background: #f8fafc;
-    color: #64748b;
+    border: 1px solid var(--rp-border);
+    background: transparent;
+    color: var(--rp-secondary);
     cursor: pointer;
-    border-radius: 9px;
-    padding: 9px 10px;
+    border-radius: 10px;
+    padding: 10px 12px;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     font-family: inherit;
-    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 
 .rp-cost-btn:hover {
-    border-color: #cbd5e1;
-    background: #fff;
+    border-color: var(--rp-border-strong);
+    background: var(--rp-surface);
 }
 
 .rp-cost-btn.active {
-    border-color: #2563eb;
-    background: rgba(37, 99, 235, 0.08);
-    color: #1d4ed8;
+    border-color: var(--rp-primary);
+    background: var(--rp-primary-soft);
+    color: var(--rp-primary-strong);
 }
 
 .rp-mode-btn {
     border: none;
     background: none;
     cursor: pointer;
-    border-radius: 7px;
-    padding: 7px 6px 6px;
+    border-radius: 12px;
+    padding: 10px 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
-    transition: background 0.15s ease;
+    gap: 4px;
+    transition: background 0.18s ease, transform 0.18s ease;
     font-family: inherit;
 }
 
 .rp-mode-btn:hover {
-    background: rgba(255, 255, 255, 0.7);
+    background: var(--rp-surface);
 }
 
 .rp-mode-btn.active {
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.06);
+    background: var(--rp-card);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.09);
+    transform: translateY(-1px);
 }
 
 .rp-mode-icon {
@@ -107,39 +186,45 @@
 }
 
 .rp-mode-label {
-    font-size: 10.5px;
-    font-weight: 500;
-    color: #94a3b8;
-    font-family: inherit;
-    letter-spacing: 0.02em;
-    line-height: 1;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--rp-muted);
+    letter-spacing: 0.01em;
+    line-height: 1.2;
 }
 
 .rp-mode-btn.active .rp-mode-label {
-    color: #334155;
+    color: var(--rp-text);
 }
 
 .rp-inputs {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
     margin-bottom: 10px;
+}
+
+.rp-swap-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 0;
 }
 
 .rp-input-row {
     display: flex;
     align-items: center;
-    gap: 9px;
-    background: #f8fafc;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 9px;
-    padding: 0 11px;
-    transition: border-color 0.15s, background 0.15s;
+    gap: 10px;
+    background: var(--rp-input-bg);
+    border: 1.5px solid var(--rp-border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    transition: border-color 0.18s ease, background 0.18s ease;
+    min-height: 46px;
 }
 
 .rp-input-row:focus-within {
-    border-color: #2563eb;
-    background: #fff;
+    border-color: var(--rp-primary);
+    background: var(--rp-surface);
 }
 
 .rp-point-icon {
@@ -162,57 +247,52 @@
     background: none;
     font-family: inherit;
     font-size: 13px;
-    color: #1e293b;
-    padding: 9px 0;
+    color: var(--rp-text);
+    padding: 8px 0;
     outline: none;
     min-width: 0;
 }
 
 .rp-input-row input::placeholder {
-    color: #c1cbd9;
-}
-
-.rp-swap-wrap {
-    display: flex;
-    justify-content: center;
+    color: var(--rp-muted);
 }
 
 .rp-swap-btn {
-    border: 1px solid #dbe4ef;
-    background: #f8fafc;
-    color: #64748b;
+    border: 1px solid var(--rp-border);
+    background: var(--rp-input-bg);
+    color: var(--rp-secondary);
     cursor: pointer;
     border-radius: 999px;
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     padding: 0;
     font-size: 18px;
     font-weight: 700;
-    line-height: 1;
     font-family: inherit;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 
 .rp-swap-btn:hover {
-    border-color: #cbd5e1;
-    background: #fff;
+    border-color: var(--rp-border-strong);
+    background: var(--rp-surface);
 }
 
 .rp-swap-btn:active {
-    border-color: #2563eb;
-    color: #1d4ed8;
+    transform: translateY(1px);
+    border-color: var(--rp-primary);
+    color: var(--rp-primary-strong);
 }
 
 .rp-hint {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
+    gap: 6px;
     font-size: 11px;
-    color: #94a3b8;
+    color: var(--rp-muted);
     margin-bottom: 12px;
     flex-wrap: wrap;
     line-height: 1.6;
@@ -220,20 +300,20 @@
 }
 
 .rp-hint-key {
-    font-weight: 600;
-    color: #64748b;
+    font-weight: 700;
+    color: var(--rp-secondary);
 }
 
 .rp-hint-sep {
-    color: #cbd5e1;
+    color: var(--rp-border-strong);
 }
 
 .rp-stats {
     display: flex;
     align-items: stretch;
-    background: #f8fafc;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 10px;
+    background: var(--rp-card);
+    border: 1.5px solid var(--rp-border);
+    border-radius: 12px;
     overflow: hidden;
 }
 
@@ -242,44 +322,45 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 10px 12px;
-    gap: 3px;
+    padding: 12px 14px;
+    gap: 4px;
 }
 
 .rp-stat-divider {
     width: 1.5px;
-    background: #e2e8f0;
+    background: var(--rp-border);
     margin: 8px 0;
     flex-shrink: 0;
 }
 
 .rp-stat-value {
     font-size: 15px;
-    font-weight: 600;
-    color: #1e293b;
+    font-weight: 700;
+    color: var(--rp-text);
     line-height: 1.2;
 }
 
 .rp-stat-label {
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #94a3b8;
+    letter-spacing: 0.08em;
+    color: var(--rp-muted);
 }
 
 .rp-status {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
+    gap: 8px;
     font-size: 12px;
-    color: #64748b;
+    color: var(--rp-muted);
     padding-top: 10px;
+    min-height: 22px;
 }
 
 .rp-status.error {
-    color: #dc2626;
+    color: var(--rp-danger);
 }
 
 @keyframes rp-spin {
@@ -291,40 +372,40 @@
 .rp-spinner {
     width: 13px;
     height: 13px;
-    border: 2px solid #e2e8f0;
-    border-top-color: #2563eb;
+    border: 2px solid var(--rp-border);
+    border-top-color: var(--rp-primary);
     border-radius: 50%;
     animation: rp-spin 0.65s linear infinite;
     flex-shrink: 0;
 }
 
 .rp-status.loading {
-    color: #64748b;
+    color: var(--rp-muted);
 }
 
 .rp-engine {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
+    gap: 6px;
     margin-top: 14px;
-    padding: 4px 10px;
-    border-radius: 20px;
+    padding: 6px 12px;
+    border-radius: 999px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.04em;
     width: fit-content;
     margin-inline: auto;
 }
 
 .rp-engine--cpu {
-    background: #f1f5f9;
-    color: #64748b;
+    background: #eef2ff;
+    color: var(--rp-primary);
 }
 
 .rp-engine--parallel {
     background: #dcfce7;
-    color: #15803d;
+    color: var(--rp-success);
 }
 
 .rp-map-dot {
@@ -332,7 +413,7 @@
     height: 14px;
     border-radius: 50%;
     border: 2.5px solid #fff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
     cursor: grab;
 }
 
@@ -346,4 +427,43 @@
 
 .rp-map-dot--dest {
     background: var(--destination);
+}
+
+.rp-mode-btn,
+.rp-cost-btn,
+.rp-swap-btn {
+    min-height: 44px;
+}
+
+.rp-mode-btn:focus-visible,
+.rp-cost-btn:focus-visible,
+.rp-swap-btn:focus-visible,
+.rp-input-row input:focus-visible {
+    outline: 2px solid rgba(37, 99, 235, 0.35);
+    outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+    .routing-panel {
+        width: min(100%, calc(100vw - 20px));
+        margin: 10px;
+        padding: 14px;
+    }
+
+    .rp-modes,
+    .rp-costs {
+        gap: 6px;
+    }
+
+    .rp-input-row {
+        gap: 8px;
+        padding: 10px 12px;
+    }
+
+    .rp-title,
+    .rp-section-label,
+    .rp-stat-label,
+    .rp-hint {
+        font-size: 10px;
+    }
 }

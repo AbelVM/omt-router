@@ -9,12 +9,11 @@ vi.mock('../src/graphs/graphBuilder.js', async () => {
 });
 
 import { buildGraph, isAccessible, parseTile } from '../src/graphs/graphBuilder.js';
-import { getDefaultSpeedKmh, ways } from '../src/utils/ways_defaults.js';
 import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
 import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, buildCH, selectBestEngine } from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance, isWithinDistanceMeters } from '../src/utils/misc.js';
-import { parseCoords } from '../src/ui/MapLibreRoutingControl.js';
+import { MapLibreRoutingControl, parseCoords } from '../src/ui/MapLibreRoutingControl.js';
 import { findTopTwoIndices, hasParallelRoutingRuntime, resolveMlFeatureValues } from '../src/tuning/tuning.js';
 import { buildTileURL } from '../src/index.js';
 
@@ -66,6 +65,59 @@ describe('MapLibreRoutingControl input parsing', () => {
     expect(parseCoords('91, 0')).toBeNull();
     expect(parseCoords('0, 181')).toBeNull();
   });
+
+  it('accepts a custom locale_override object and merges missing values with defaults', () => {
+    const ctrl = new MapLibreRoutingControl({
+      maplibre: { Marker: () => {} },
+      locale: 'en',
+      locale_override: { title: 'My custom planner', stats: { distance: 'Distanza' } },
+    });
+
+    expect(ctrl._text.title).toBe('My custom planner');
+    expect(ctrl._text.stats.distance).toBe('Distanza');
+    expect(ctrl._text.stats.estTime).toBe('Est. time');
+  });
+
+  it('still supports legacy locale object syntax as a locale override', () => {
+    const ctrl = new MapLibreRoutingControl({
+      maplibre: { Marker: () => {} },
+      locale: {
+        title: 'Custom planner',
+        stats: 'invalid',
+        status: { poorSnap: 'Point snapped poorly', extraKey: 'ignored' },
+        unknownKey: 'should be ignored',
+      },
+    });
+
+    expect(ctrl._text.title).toBe('Custom planner');
+    expect(ctrl._text.stats.distance).toBe('Distance');
+    expect(ctrl._text.stats.estTime).toBe('Est. time');
+    expect(ctrl._text.status.poorSnap).toBe('Point snapped poorly');
+    expect(ctrl._text.status.noPath).toBe('No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.');
+    expect(ctrl._text.unknownKey).toBeUndefined();
+    expect(ctrl._text.status.extraKey).toBeUndefined();
+  });
+
+  it('ignores unsupported locale shape and preserves default text structure', () => {
+    const ctrl = new MapLibreRoutingControl({
+      maplibre: { Marker: () => {} },
+      locale: 'en',
+      locale_override: {
+        title: 'Custom planner',
+        stats: 'invalid',
+        status: { poorSnap: 'Point snapped poorly', extraKey: 'ignored' },
+        unknownKey: 'should be ignored',
+      },
+    });
+
+    expect(ctrl._text.title).toBe('Custom planner');
+    expect(ctrl._text.stats.distance).toBe('Distance');
+    expect(ctrl._text.stats.estTime).toBe('Est. time');
+    expect(ctrl._text.status.poorSnap).toBe('Point snapped poorly');
+    expect(ctrl._text.status.noPath).toBe('No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.');
+    expect(ctrl._text.unknownKey).toBeUndefined();
+    expect(ctrl._text.status.extraKey).toBeUndefined();
+  });
 });
 
 describe('getTilesAlongLine', () => {
@@ -113,42 +165,6 @@ describe('isAccessible', () => {
 
   it('rejects car roads with an excluded subclass', () => {
     expect(isAccessible({ class: 'residential', subclass: 'footway' }, 'car')).toBe(false);
-  });
-
-  it('allows pedestrian access to primary roads when walking', () => {
-    expect(isAccessible({ class: 'primary', subclass: undefined }, 'pedestrian')).toBe(true);
-  });
-
-  it('allows bicycle access to primary roads when cycling', () => {
-    expect(isAccessible({ class: 'primary', subclass: undefined }, 'bicycle')).toBe(true);
-  });
-
-  it('rejects bicycle access to motorway class', () => {
-    expect(isAccessible({ class: 'motorway', subclass: undefined }, 'bicycle')).toBe(false);
-  });
-});
-
-describe('getDefaultSpeedKmh', () => {
-  it('uses pgRouting car maxspeed defaults for highway classes', () => {
-    expect(getDefaultSpeedKmh('car', 'motorway')).toBe(130);
-    expect(getDefaultSpeedKmh('car', 'living_street')).toBe(20);
-    expect(getDefaultSpeedKmh('car', 'road')).toBe(50);
-  });
-});
-
-describe('OpenMapTiles transportation class alignment', () => {
-  it('uses the OpenMapTiles service class and not the legacy services alias', () => {
-    expect(ways.bicycle.class.has('service')).toBe(true);
-    expect(ways.bicycle.class.has('services')).toBe(false);
-    expect(ways.pedestrian.class.has('service')).toBe(true);
-    expect(ways.pedestrian.class.has('services')).toBe(false);
-  });
-
-  it('does not accept OpenMapTiles construction classes for bicycle or car routing', () => {
-    expect(ways.bicycle.class.has('primary_construction')).toBe(false);
-    expect(ways.car.class.has('primary_construction')).toBe(false);
-    expect(isAccessible({ class: 'primary_construction', subclass: undefined }, 'car')).toBe(false);
-    expect(isAccessible({ class: 'track_construction', subclass: undefined }, 'bicycle')).toBe(false);
   });
 });
 

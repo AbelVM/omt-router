@@ -31,9 +31,7 @@
     "lint": "eslint 'src/**/*.js' 'tests/**/*.js'",
     "lint:fix": "eslint --fix 'src/**/*.js' 'tests/**/*.js'",
     "format": "prettier --write .",
-    "train:LR": ".venv/bin/python benchmark/train_engine_selector_ml.py --root . --model runtime-linear",
-    "train:MLP": ".venv/bin/python benchmark/train_engine_selector_ml.py --root . --model mlp",
-    "train:XGBoost": ".venv/bin/python benchmark/train_engine_selector_ml.py --root . --model xgboost",
+    "train:LR": ".venv/bin/python benchmark/train_engine_selector_ml.py --root .",
     "analyze:errors": "python3 benchmark/analyze_benchmark_errors.py --out-json benchmark/results/analysis/benchmark_error_analysis.json",
     "analyze:features": ".venv/bin/python benchmark/analyze_feature_importance.py --out-json benchmark/results/analysis/engine_selector_feature_importance.json",
     "compare-models": ".venv/bin/python benchmark/compare_engine_selector_results.py"
