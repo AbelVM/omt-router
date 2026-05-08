@@ -10,7 +10,7 @@ vi.mock('../src/graphs/graphBuilder.js', async () => {
 
 import { buildGraph, isAccessible } from '../src/graphs/graphBuilder.js';
 import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
-import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, selectBestEngine } from '../src/engines/router.js';
+import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, selectBestEngine, validateRouteResult, buildCH } from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance, isWithinDistanceMeters } from '../src/utils/misc.js';
 import { MapLibreRoutingControl, parseCoords } from '../src/ui/MapLibreRoutingControl.js';
@@ -223,6 +223,50 @@ describe('prepareGraph', () => {
     expect(preparedA).toBe(preparedB);
     expect(firstDistance).not.toBe(secondDistance);
     expect(secondDistance).toBeGreaterThan(firstDistance);
+  });
+
+  it('buildCH creates a direct edge lookup for route validation', () => {
+    const nodes = new Map([
+      [0, { id: 0, coords: [0, 0] }],
+      [1, { id: 1, coords: [0, 0] }],
+      [2, { id: 2, coords: [0, 0] }],
+    ]);
+    const edges = [
+      {
+        source: 0,
+        target: 1,
+        cost: 100,
+        reverseCost: -1,
+        length: 100,
+        speed: 1,
+        travelTime: 100,
+        properties: {},
+        fibonacciScore: 1,
+      },
+      {
+        source: 1,
+        target: 2,
+        cost: 200,
+        reverseCost: -1,
+        length: 200,
+        speed: 1,
+        travelTime: 200,
+        properties: {},
+        fibonacciScore: 1,
+      },
+    ];
+    const prepared = buildCH({ nodes, edges }, 'distance');
+
+    expect(prepared.adjCostMap).toBeInstanceOf(Array);
+    expect(prepared.adjCostMap[0]).toBeInstanceOf(Array);
+    expect(prepared.adjCostMap[0][0]).toBe(1);
+    expect(prepared.adjCostMap[0][1]).toBe(100 * 10);
+    expect(prepared.adjCostMap[1]).toBeInstanceOf(Array);
+    expect(prepared.adjCostMap[1][0]).toBe(2);
+    expect(prepared.adjCostMap[1][1]).toBe(200 * 10);
+
+    const validation = validateRouteResult({ found: true, path: [0, 1, 2], cost: 300 }, prepared);
+    expect(validation).toEqual({ valid: true, actualCost: 300, reason: null });
   });
 });
 

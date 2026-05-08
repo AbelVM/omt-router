@@ -12,6 +12,7 @@ import {
   validateUrlTemplate,
   validateMaxAcceptableSnapDistance,
   validateRadius,
+  normalizePenalties
 } from './utils/routeValidation.js';
 import {
   buildCH,
@@ -46,7 +47,7 @@ import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
  *
  * @typedef {Object} RouteOptions
  * @property {number} [zoom]
- * @property {'zxy'|'xyz'} [schema]
+ * @property {'zxy'|'tms'} [schema]
  * @property {number} [radius]
  * @property {number} [maxAutoRadius]
  * @property {CostField} [costField]
@@ -172,27 +173,7 @@ export function dispose() {
 
 export const shutdown = dispose;
 
-function normalizePenalties(penalties = {}) {
-  const {
-    intersectionPenaltySec = 0,
-    turnPenaltySec = 0,
-    turnAngleThresholdDeg = 25,
-  } = penalties;
 
-  const values = [
-    ['intersectionPenaltySec', intersectionPenaltySec],
-    ['turnPenaltySec', turnPenaltySec],
-    ['turnAngleThresholdDeg', turnAngleThresholdDeg],
-  ];
-
-  for (const [name, value] of values) {
-    if (!Number.isFinite(value) || value < 0) {
-      throw new Error(`Invalid penalties.${name}: expected a non-negative finite number`);
-    }
-  }
-
-  return { intersectionPenaltySec, turnPenaltySec, turnAngleThresholdDeg };
-}
 
 /**
  * Compute the tile fetch radius needed to reliably contain the real path.
@@ -268,6 +249,7 @@ export const route = async (
     );
   }
 
+
   const normalizedPenalties = normalizePenalties(penalties);
 
   const initialRadius = radius ?? computeRadius(start, end, zoom);
@@ -295,6 +277,23 @@ export const route = async (
   const pool = getSharedPool();
   let lastResult;
   let lastGraph = null;
+  // Cache sorted tileIds per radius to avoid repeated sorting in the retry loop
+
+  // FNV-1a 32-bit hash for fast, stable cache keys
+  function fnv1aHash(arr) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < arr.length; i++) {
+      const str = arr[i];
+      for (let j = 0; j < str.length; j++) {
+        hash ^= str.charCodeAt(j);
+        hash = (hash * 0x01000193) >>> 0;
+      }
+    }
+    return hash.toString(16);
+  }
+
+  const sortedTileIdsByRadius = new Map();
+
   for (let r = initialRadius; r <= maxRadius; r++) {
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
     const tiles = candidateTiles.map((tile) => ({
@@ -302,13 +301,19 @@ export const route = async (
       url: buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate }),
     }));
 
-    // Stable graph cache key: sorted tile ids + mode so the order of
-    // getTilesAlongLine does not affect cache hits.
-    const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
-    tileIds.sort();
+    // Compute and cache sorted tileIds for this radius
+    let tileIds = sortedTileIdsByRadius.get(r);
+    if (!tileIds) {
+      tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
+      tileIds.sort();
+      sortedTileIdsByRadius.set(r, tileIds);
+    }
+
+    // Use a fast rolling hash of tileIds for the cache key
+    const tileIdsHash = fnv1aHash(tileIds);
     const canUseGraphCache = typeof tileUrlTransform !== 'function';
     const graphKey = canUseGraphCache
-      ? `v3:${mode}:${zoom}:${schema}:${urlTemplate}:${tileProxyTemplate ?? ''}:${tileIds.join(',')}`
+      ? `v3:${mode}:${zoom}:${schema}:${urlTemplate}:${tileProxyTemplate ?? ''}:${tileIdsHash}`
       : null;
     let graph = graphKey ? _graphCache.get(graphKey) : null;
     if (!graph) {
@@ -329,23 +334,36 @@ export const route = async (
       maxAcceptableSnapDistanceM,
     });
 
+    // Always surface partial graph status in the result
+    const partialGraphStatus = {
+      hasMissingTiles: graph?.hasMissingTiles ?? false,
+      missingTileErrors: graph?.missingTileErrors ?? [],
+    };
+
     const corsError = getMissingTileError(graph, 'MissingAllowOriginHeader');
     if (!lastResult.found && corsError) {
       return {
         ...lastResult,
+        ...partialGraphStatus,
         reason: 'tile_cors',
         code: 'MissingAllowOriginHeader',
         message: corsError.message,
       };
     }
 
-    if (lastResult.found) return includeGraph ? { ...lastResult, graph } : lastResult;
+    if (lastResult.found) {
+      const result = includeGraph ? { ...lastResult, graph } : lastResult;
+      return { ...result, ...partialGraphStatus };
+    }
     if (
       lastResult.reason !== 'no_path'
       && lastResult.reason !== 'no_node'
       && lastResult.reason !== 'poor_snap'
       && lastResult.reason !== 'incomplete_path'
-    ) return includeGraph ? { ...lastResult, graph } : lastResult;
+    ) {
+      const result = includeGraph ? { ...lastResult, graph } : lastResult;
+      return { ...result, ...partialGraphStatus };
+    }
 
     if (r < maxRadius) {
       // Log so the caller can see the retry in dev tools.
@@ -355,5 +373,11 @@ export const route = async (
     }
   }
 
-  return includeGraph ? { ...lastResult, graph: lastGraph } : lastResult;
+  // Always surface partial graph status in the result
+  const partialGraphStatus = {
+    hasMissingTiles: lastGraph?.hasMissingTiles ?? false,
+    missingTileErrors: lastGraph?.missingTileErrors ?? [],
+  };
+  const result = includeGraph ? { ...lastResult, graph: lastGraph } : lastResult;
+  return { ...result, ...partialGraphStatus };
 };

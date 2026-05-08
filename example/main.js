@@ -1,6 +1,7 @@
 import { MapLibreRoutingControl } from '../dist/omt-router.js';
 
 const TILE_JSON_URL = 'https://tiles.openfreemap.org/planet';
+const ENABLE_DEBUG = false;
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -10,12 +11,14 @@ const map = new maplibregl.Map({
   minZoom: 10,
 });
 
-window._map = map;
-map.showTileBoundaries = true;
+if (ENABLE_DEBUG) {
+  window._map = map;
+  map.showTileBoundaries = true;
+}
 
 const ctrl = new MapLibreRoutingControl({
   tileJsonUrl: TILE_JSON_URL,
-  showGraph: true,
+  showGraph: ENABLE_DEBUG,
   routeOptions: {
     maxAutoRadius: 8,
     maxAcceptableSnapDistanceM: 60,
@@ -23,4 +26,5 @@ const ctrl = new MapLibreRoutingControl({
   maplibre: maplibregl,
 });
 map.addControl(ctrl, 'top-left');
+
 map.addControl(new maplibregl.NavigationControl(), 'bottom-right');

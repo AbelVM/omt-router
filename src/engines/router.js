@@ -339,12 +339,17 @@ function restorePreparedFromWorkerBackup(prepared) {
 }
 
 function serializePreparedForEngineWorker(prepared) {
-  const coordsX = new Float32Array(prepared.N);
-  const coordsY = new Float32Array(prepared.N);
-  for (let i = 0; i < prepared.N; i += 1) {
-    const coords = prepared.coordsArr[i];
-    coordsX[i] = coords?.[0] ?? 0;
-    coordsY[i] = coords?.[1] ?? 0;
+  // Cache coordsX/coordsY on prepared to avoid recomputation
+  if (!prepared._coordsX || !prepared._coordsY) {
+    const coordsX = new Float32Array(prepared.N);
+    const coordsY = new Float32Array(prepared.N);
+    for (let i = 0; i < prepared.N; i += 1) {
+      const coords = prepared.coordsArr[i];
+      coordsX[i] = coords?.[0] ?? 0;
+      coordsY[i] = coords?.[1] ?? 0;
+    }
+    prepared._coordsX = coordsX;
+    prepared._coordsY = coordsY;
   }
 
   ensureWorkerPreparedBackup(prepared);
@@ -359,8 +364,8 @@ function serializePreparedForEngineWorker(prepared) {
     revAdjCost: prepared.revAdjCost,
     N: prepared.N,
     E: prepared.E,
-    coordsX,
-    coordsY,
+    coordsX: prepared._coordsX,
+    coordsY: prepared._coordsY,
     costField: prepared.costField,
   };
 }
@@ -565,7 +570,7 @@ function hasMeaningfulCostMismatch(left, right) {
 
 function calculatePathCost(path, prepared) {
   if (!Array.isArray(path) || path.length === 0) return null;
-  const { adjPtr, adjTo, adjCost } = prepared;
+  const { adjPtr, adjTo, adjCost, adjCostMap } = prepared;
   let totalCostInt = 0;
   const pathLen = path.length;
 
@@ -573,13 +578,29 @@ function calculatePathCost(path, prepared) {
     const from = path[i - 1];
     const to = path[i];
     let edgeCostInt = -1;
-    const start = adjPtr[from];
-    const end = adjPtr[from + 1];
 
-    for (let k = start; k < end; k++) {
-      if (adjTo[k] === to) {
-        edgeCostInt = adjCost[k];
-        break;
+    if (adjCostMap) {
+      const lookup = adjCostMap[from];
+      if (Array.isArray(lookup)) {
+        if (lookup[0] === to) {
+          edgeCostInt = lookup[1];
+        }
+      } else if (lookup instanceof Map) {
+        const cost = lookup.get(to);
+        if (cost !== undefined) {
+          edgeCostInt = cost;
+        }
+      }
+    }
+
+    if (edgeCostInt < 0) {
+      const start = adjPtr[from];
+      const end = adjPtr[from + 1];
+      for (let k = start; k < end; k++) {
+        if (adjTo[k] === to) {
+          edgeCostInt = adjCost[k];
+          break;
+        }
       }
     }
 
@@ -679,16 +700,21 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   const fwdRaw = new Int32Array(maxDE * 3);
   const revRaw = new Int32Array(maxDE * 3);
   let eCount = 0, fwdLen = 0, revLen = 0;
-  const seen = new Set();
+  // Use Map<src, Set<tgt>> for deduplication
+  const seen = new Map();
 
   const addEdge = (src, tgt, floatCost) => {
     const intersectionPenalty =
       useIntersectionPenalty && isIntersection && isIntersection[tgt]
         ? normalizedPenalties.intersectionPenaltySec
         : 0;
-    const key = (BigInt(src) << 32n) | BigInt(tgt);
-    if (seen.has(key)) return;
-    seen.add(key);
+    let tgtSet = seen.get(src);
+    if (!tgtSet) {
+      tgtSet = new Set();
+      seen.set(src, tgtSet);
+    }
+    if (tgtSet.has(tgt)) return;
+    tgtSet.add(tgt);
     const costInt = Math.round((floatCost + intersectionPenalty) * DIST_SCALE);
     edgeSrc[eCount] = src;
     edgeTgt[eCount] = tgt;
@@ -763,9 +789,30 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   const coordsArr = new Array(N);
   for (let id = 0; id < N; id++) coordsArr[id] = nodes.get(id).coords;
 
+  // Fast lookup for route validation: avoids scanning outgoing edge lists repeatedly.
+  const adjCostMap = new Array(N);
+  for (let u = 0; u < N; u++) {
+    const start = adjPtr[u];
+    const end = adjPtr[u + 1];
+    const degree = end - start;
+    if (degree === 0) continue;
+
+    if (degree === 1) {
+      adjCostMap[u] = [adjTo[start], adjCost[start]];
+      continue;
+    }
+
+    const lookup = new Map();
+    for (let k = start; k < end; k++) {
+      lookup.set(adjTo[k], adjCost[k]);
+    }
+    adjCostMap[u] = lookup;
+  }
+
   return {
     edgeSrc: edgeSrcView, edgeTgt: edgeTgtView, edgeCostInt: edgeCostIntView,
     adjPtr, adjTo, adjCost,
+    adjCostMap,
     revAdjPtr, revAdjFrom, revAdjCost,
     N, E, nodes, coordsArr, costField,
     penalties: normalizedPenalties,
