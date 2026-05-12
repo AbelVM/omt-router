@@ -1,3 +1,4 @@
+//# sourceURL=tilesWorker
 import { u82o, o2u8 } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerRetry } from 'performance-helpers/powerRetry';

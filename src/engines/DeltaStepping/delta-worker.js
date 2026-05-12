@@ -1,3 +1,4 @@
+//# sourceURL=deltaWorker
 const STATE_NEXT_SIZE = 0;
 const INF_DISTANCE = 0x3fffffff;
 

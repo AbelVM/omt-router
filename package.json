@@ -28,8 +28,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint 'src/**/*.js' 'tests/**/*.js'",
-    "lint:fix": "eslint --fix 'src/**/*.js' 'tests/**/*.js'",
+    "lint": "eslint 'src/**/*.js' 'tests/**/*.js' 'benchmark/**/*.js'",
+    "lint:fix": "eslint --fix 'src/**/*.js' 'tests/**/*.js' 'benchmark/**/*.js'",
     "format": "prettier --write .",
     "train:LR": ".venv/bin/python benchmark/train_engine_selector_ml.py --root .",
     "analyze:errors": "python3 benchmark/analyze_benchmark_errors.py --out-json benchmark/results/analysis/benchmark_error_analysis.json",
@@ -63,23 +63,26 @@
   "homepage": "https://github.com/AbelVM/omt-router#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@fullhuman/postcss-purgecss": "^8.0.0",
+    "@vitest/coverage-v8": "^4.1.6",
     "chart.js": "^4.5.1",
+    "cssnano": "^8.0.1",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.6.0",
+    "postcss": "^8.5.14",
     "prettier": "^3.8.3",
     "terser": "^5.47.1",
-    "vite": "^8.0.11",
+    "vite": "^8.0.12",
     "vite-plugin-cross-origin-isolation": "^0.1.6",
-    "vitest": "^4.1.5",
-    "@fullhuman/postcss-purgecss": "^8.0.0",
-    "cssnano": "^8.0.0",
-    "postcss": "^8.5.14"
+    "vitest": "^4.1.6"
   },
   "dependencies": {
+    "@mapbox/vector-tile": "^2.0.4",
+    "contraction-hierarchy-js": "^2.0.0",
+    "d3-tricontour": "^1.1.0",
     "kdbush": "^4.0.2",
     "pbf": "^4.0.1",
-    "performance-helpers": "^1.0.1",
-    "@mapbox/vector-tile": "^2.0.4"
+    "performance-helpers": "^1.0.1"
   }
 }

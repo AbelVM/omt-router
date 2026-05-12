@@ -1,8 +1,7 @@
-import { PowerPool } from 'performance-helpers/powerPool';
 import { PowerCache } from 'performance-helpers/powerCache';
-import tilesWorker from './tiles/tilesWorker?worker&inline.js';
 import { getTilesAlongLine } from './tiles/tilesManager.js';
 import { buildGraphAsync } from './graphs/graphBuilder.js';
+import { getSharedTilePool, disposeSharedTilePool } from './tiles/tilePool.js';
 import { interpolate, haversineDistance } from './utils/misc.js';
 import {
   validateRouteCoordinates,
@@ -53,6 +52,7 @@ import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
  * @property {CostField} [costField]
  * @property {Object} [penalties]
  * @property {number} [maxAcceptableSnapDistanceM]
+ * @property {string} [engineId]
  * @property {(rawURL: string, tile: object) => string} [tileUrlTransform]
  * @property {string} [tileProxyTemplate]
  * @property {boolean} [includeGraph]
@@ -73,41 +73,6 @@ export {
 // Module-level singletons — created once at import time, shared across all
 // route() calls. Avoids ~50–200 ms of worker-spawn latency per call and lets
 // the tile cache persist between calls so revisited tiles are never re-fetched.
-const _hwConcurrency =
-  typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
-const TILE_POOL_MAX_SIZE = Math.min(8, Math.max(1, _hwConcurrency - 1));
-const TILE_POOL_BASE_SIZE = Math.min(2, TILE_POOL_MAX_SIZE);
-let _pool = null;
-const IS_WORKER_AVAILABLE = typeof Worker !== 'undefined';
-
-function getSharedPool() {
-  if (_pool) return _pool;
-  if (!IS_WORKER_AVAILABLE) {
-    throw new Error('Web Worker is not available in this environment.');
-  }
-
-  _pool = new PowerPool(tilesWorker, {
-    size: TILE_POOL_BASE_SIZE,
-    maxSize: TILE_POOL_MAX_SIZE,
-    lazy: true,
-    autoScale: {
-      // Tile parsing is short and bursty during pan/zoom. React fast, shrink gently.
-      intervalMs: 350,
-      targetMs: 55,
-      alpha: 0.32,
-      cooldownMs: 1_200,
-      hysteresis: 0.2,
-      stepUp: 2,
-      stepDown: 1,
-      backoffFactor: 1.5,
-      backoffMaxMultiplier: 4,
-      backoffResetMs: 6_000,
-    },
-    idleTimeout: 30_000,
-  });
-
-  return _pool;
-}
 
 // Tile-segment cache: individual parsed tile results.
 // 5000 entries × ~5 KB avg = ~25 MB max; tiles expire after 5 min.
@@ -160,15 +125,7 @@ export function dispose() {
 
   _tileCache.clear();
   _graphCache.clear();
-
-  if (_pool) {
-    try {
-      _pool.shutdown();
-    } catch {
-      // Best-effort cleanup.
-    }
-    _pool = null;
-  }
+  disposeSharedTilePool();
 }
 
 export const shutdown = dispose;
@@ -226,6 +183,7 @@ export const route = async (
     schema = 'zxy',
     radius,
     maxAutoRadius = 8,
+    engineId = 'auto',
     costField = 'distance',
     penalties = {},
     maxAcceptableSnapDistanceM,
@@ -274,7 +232,7 @@ export const route = async (
   // exceed the old radius=4 ceiling, while still preventing unbounded growth.
   const maxRadius = normalizedMaxAutoRadius;
 
-  const pool = getSharedPool();
+  const pool = getSharedTilePool();
   let lastResult;
   let lastGraph = null;
   // Cache sorted tileIds per radius to avoid repeated sorting in the retry loop
@@ -331,6 +289,7 @@ export const route = async (
     lastResult = await computeRoute(start, end, graph, {
       costField,
       penalties: normalizedPenalties,
+      engineId,
       maxAcceptableSnapDistanceM,
     });
 
@@ -381,3 +340,59 @@ export const route = async (
   const result = includeGraph ? { ...lastResult, graph: lastGraph } : lastResult;
   return { ...result, ...partialGraphStatus };
 };
+
+/**
+ * Build a merged graph for an arbitrary tile list using the shared
+ * worker pool and tile cache. This is a thin wrapper around
+ * `buildGraphAsync` that also reuses the module-level `_graphCache`.
+ *
+ * @param {Array<{z:number,x:number,y:number,url?:string}>} tiles
+ * @param {string} mode
+ * @param {Object} [opts]
+ * @param {number} [opts.zoom]
+ * @param {'zxy'|'tms'} [opts.schema]
+ * @param {string} [opts.urlTemplate]
+ * @param {string} [opts.tileProxyTemplate]
+ * @param {(rawURL:string, tile:object)=>string} [opts.tileUrlTransform]
+ * @param {import('./tiles/tilePool.js').TilePool} [opts.pool]
+ * @returns {Promise<Object>} merged graph
+ */
+export async function buildGraphForTiles(tiles, mode, {
+  zoom = 14,
+  schema = 'zxy',
+  urlTemplate = '',
+  tileProxyTemplate = '',
+  tileUrlTransform,
+  pool = getSharedTilePool(),
+} = {}) {
+  if (!Array.isArray(tiles)) throw new Error('tiles must be an array');
+
+  const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
+  tileIds.sort();
+
+  // FNV-1a 32-bit hash (same as route())
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < tileIds.length; i++) {
+    const s = tileIds[i];
+    for (let j = 0; j < s.length; j++) {
+      hash ^= s.charCodeAt(j);
+      hash = (hash * 0x01000193) >>> 0;
+    }
+  }
+  const tileIdsHash = hash.toString(16);
+
+  const canUseGraphCache = typeof tileUrlTransform !== 'function';
+  const graphKey = canUseGraphCache
+    ? `v3:${mode}:${zoom}:${schema}:${urlTemplate}:${tileProxyTemplate ?? ''}:${tileIdsHash}`
+    : null;
+
+  let graph = graphKey ? _graphCache.get(graphKey) : null;
+  if (!graph) {
+    graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });
+    if (graphKey && !graph?.hasMissingTiles) {
+      _graphCache.set(graphKey, graph);
+    }
+  }
+
+  return graph;
+}

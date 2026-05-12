@@ -1,5 +1,5 @@
 import {
-  ROUTES, GPU_MIN_EDGES, GPU_MIN_BEELINE_M,
+  ROUTES,
   CATEGORIES, LENGTH_CATEGORIES,
   CATEGORY_LABELS, LENGTH_CATEGORY_LABELS,
 } from './routes.js';
@@ -13,7 +13,6 @@ import {
   drawFeatureHistogram,
   drawTimingBubble,
   installTooltip,
-  suggestThresholds,
   generatePerformanceSummary,
   generateCostSummary,
   generateCopilotReport,
@@ -62,7 +61,6 @@ if (pauseStateEl) pauseStateEl.hidden = true;
 const suggestionWrapEl = root.getElementById('suggestion-wrap');
 const resultsTableSortHeaders = root.querySelectorAll('#results-table thead th[data-col]');
 
-const qs = new URLSearchParams(window.location.search);
 fetch('https://tiles.openfreemap.org/planet')
   .then(r => r.json())
   .then(meta => {
@@ -688,7 +686,7 @@ resultsTableSortHeaders.forEach(th => {
 
 // ── Rendering helpers ─────────────────────────────────────────────────────
 
-function fmtMs(v, fallback) {
+function fmtMs(v) {
   if (v == null) return '<span style="color:var(--muted)">—</span>';
   const n = Number(v);
   if (!Number.isFinite(n)) return '<span style="color:var(--muted)">—</span>';
@@ -719,14 +717,6 @@ function winnerBadge(r) {
     ? `${engineShortName(r.winner)} ≈`
     : engineShortName(r.winner);
   return `<span class="badge badge-cpu"${title}>${label}</span>`;
-}
-
-function speedupCell(r) {
-  if (r.speedup == null) return '<span style="color:var(--muted)">—</span>';
-  const cls = r.speedup >= 1 ? 'faster' : 'slower';
-  const sign = r.speedup >= 1 ? '+' : '';
-  const note = r.gpuFallback ? ' title="GPU time includes fallback to CPU A*"' : '';
-  return `<span class="${cls}"${note}>${sign}${r.speedup}×</span>`;
 }
 
 function formatEngineErrors(r) {
@@ -964,7 +954,7 @@ function updateSummary(results) {
     'ultra-dijkstra': 0,
   };
   completed.forEach(r => {
-    if (r.winner && engineWins.hasOwnProperty(r.winner)) {
+    if (r.winner && Object.prototype.hasOwnProperty.call(engineWins, r.winner)) {
       engineWins[r.winner]++;
     }
   });
@@ -974,12 +964,6 @@ function updateSummary(results) {
     'adaptive-barrier': 'Barrier',
     'delta-stepping': 'Delta',
     'ultra-dijkstra': 'Dijkstra',
-  };
-  const colors = {
-    'bidirectional-astar': '#3b82f6',
-    'adaptive-barrier': '#8b5cf6',
-    'delta-stepping': '#ec4899',
-    'ultra-dijkstra': '#f59e0b',
   };
 
   const cards = [];
@@ -1195,20 +1179,6 @@ const ENGINE_WARM_ERROR_KEYS = {
   'ultra-dijkstra': 'ultra_dijkstra_warm_error',
 };
 
-const ENGINE_RESULT_SOURCE_KEYS = {
-  'bidirectional-astar': 'bidirectional_astar_result_source',
-  'adaptive-barrier': 'adaptive_barrier_result_source',
-  'delta-stepping': 'delta_stepping_result_source',
-  'ultra-dijkstra': 'ultra_dijkstra_result_source',
-};
-
-const ENGINE_STATUS_KEYS = {
-  'bidirectional-astar': 'bidirectional_astar_status',
-  'adaptive-barrier': 'adaptive_barrier_status',
-  'delta-stepping': 'delta_stepping_status',
-  'ultra-dijkstra': 'ultra_dijkstra_status',
-};
-
 function round4(value) {
   return Number.isFinite(value) ? Math.round(value * 10000) / 10000 : null;
 }
@@ -1238,20 +1208,6 @@ function normalizeBenchmarkRow(row) {
 
   const engineWarmErrors = Object.fromEntries(
     Object.entries(ENGINE_WARM_ERROR_KEYS).map(([engineId, key]) => [
-      engineId,
-      row[key] ?? null,
-    ]),
-  );
-
-  const engineResultSources = Object.fromEntries(
-    Object.entries(ENGINE_RESULT_SOURCE_KEYS).map(([engineId, key]) => [
-      engineId,
-      row[key] ?? null,
-    ]),
-  );
-
-  const engineStatuses = Object.fromEntries(
-    Object.entries(ENGINE_STATUS_KEYS).map(([engineId, key]) => [
       engineId,
       row[key] ?? null,
     ]),

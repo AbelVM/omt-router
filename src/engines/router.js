@@ -809,14 +809,51 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
     adjCostMap[u] = lookup;
   }
 
+  // Prepare CH edge lists. For pedestrian mode collapse opposite-directed
+  // edges into a single undirected pair using the minimum cost between them.
+  let chEdgeSrc = edgeSrcView;
+  let chEdgeTgt = edgeTgtView;
+  let chEdgeCostInt = edgeCostIntView;
+  if (graph.mode === 'pedestrian') {
+    const pairMap = new Map();
+    for (let i = 0; i < edgeSrcView.length; i++) {
+      const u = edgeSrcView[i];
+      const v = edgeTgtView[i];
+      const a = u < v ? u : v;
+      const b = u < v ? v : u;
+      const key = a + ':' + b;
+      const cost = edgeCostIntView[i];
+      const prev = pairMap.get(key);
+      if (prev === undefined || cost < prev) pairMap.set(key, cost);
+    }
+    const pairs = Array.from(pairMap.entries());
+    const M = pairs.length;
+    const srcArr = new Int32Array(M);
+    const tgtArr = new Int32Array(M);
+    const costArr = new Int32Array(M);
+    let idx = 0;
+    for (const [key, cost] of pairs) {
+      const [a, b] = key.split(':').map(Number);
+      srcArr[idx] = a;
+      tgtArr[idx] = b;
+      costArr[idx] = cost;
+      idx++;
+    }
+    chEdgeSrc = srcArr;
+    chEdgeTgt = tgtArr;
+    chEdgeCostInt = costArr;
+  }
+
   return {
-    edgeSrc: edgeSrcView, edgeTgt: edgeTgtView, edgeCostInt: edgeCostIntView,
+    edgeSrc: chEdgeSrc, edgeTgt: chEdgeTgt, edgeCostInt: chEdgeCostInt,
     adjPtr, adjTo, adjCost,
     adjCostMap,
     revAdjPtr, revAdjFrom, revAdjCost,
     N, E, nodes, coordsArr, costField,
     penalties: normalizedPenalties,
     penaltyKey: getPenaltyKey(costField, normalizedPenalties),
+    distScale: DIST_SCALE,
+    coordsAreGeographic: Boolean(graph.coordsAreGeographic === true),
   };
 }
 
@@ -1122,6 +1159,7 @@ export function prepareRoutableGraph(
  * @param {number[]} [options.snapDistancesM]
  * @param {string} [options.graphCategory]
  * @param {number} [options.maxAcceptableSnapDistanceM]
+ * @param {string} [options.engineId='auto'] - Engine hint or `'auto'` to let the selector choose the engine.
  * @returns {Promise<RouteResult>}
  * @throws {Error} When input coordinates or the graph are invalid.
  */
@@ -1136,6 +1174,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     snapDistancesM,
     graphCategory = '',
     maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
+    engineId = 'auto',
   } = options;
   const normalizedPenalties = normalizePenalties(penalties);
   if (isTravelTimeCostField(costField) && normalizedPenalties.turnPenaltySec > 0) {
@@ -1259,7 +1298,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   const prepared = getPreparedGraph(workingGraph, costField, normalizedPenalties, startId, endId);
 
   logger.log('dispatching route query...');
-  const result = await queryRoute(startId, endId, prepared, { graphCategory, costField });
+  const result = await queryRoute(startId, endId, prepared, { engineId, graphCategory, costField });
 
   if (!result.found) {
     const canFallbackWithStartSnap = startSegmentSnap && !startSnapApplied && startSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;

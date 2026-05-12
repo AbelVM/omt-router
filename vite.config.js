@@ -65,23 +65,23 @@ export default defineConfig({
       fileName: 'omt-router',
       formats: ['es', 'cjs'],
     },
-    minify: 'terser',
-    sourcemap: false,
-    terserOptions: {
-      ecma: 2020,
-      compress: {
-        passes: 3,
-        drop_console: true,
-        drop_debugger: true,
-        pure_funcs: ['console.log', 'assert'],
-      },
-      mangle: true,
-      format: {
-        comments: false,
-      },
-    },
+    // minify: 'terser',
+    // sourcemap: false,
+    // terserOptions: {
+    //   ecma: 2020,
+    //   compress: {
+    //     passes: 3,
+    //     drop_console: true,
+    //     drop_debugger: true,
+    //     pure_funcs: ['console.log', 'assert'],
+    //   },
+    //   mangle: true,
+    //   format: {
+    //     comments: false,
+    //   },
+    // },
     rollupOptions: {
-      external: ['perf_hooks', 'crypto'],
+      external: ['perf_hooks', 'crypto', 'fs'],
     },
   },
 });

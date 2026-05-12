@@ -1422,7 +1422,7 @@ function destPoint(start, bearing, distMeters) {
  * Generates 100 diverse routes around a city anchor.
  * Distributes across environment categories and length categories.
  */
-function generateCityRoutes(cityKey, cityName, anchor, regionType = 'urban') {
+function generateCityRoutes(cityKey, cityName, anchor, _regionType = 'urban') {
   const routes = [];
   const categories = ['city-center', 'city-consolidated', 'suburban', 'countryside'];
   const lengthBounds = {
@@ -1437,7 +1437,6 @@ function generateCityRoutes(cityKey, cityName, anchor, regionType = 'urban') {
   
   // Generate routes per (category, length) combination
   // 4 categories × 6 length categories × ~4 routes each = 96 routes, round to 100 total
-  let routeIdx = 0;
   for (const category of categories) {
     for (const lengthKey of lengthKeys) {
       // Generate 4 routes per combination for 96 total, skip one for 100 total
@@ -1462,7 +1461,6 @@ function generateCityRoutes(cityKey, cityName, anchor, regionType = 'urban') {
           // Comment with approximate distance for verification
           __comment: `≈ ${actualDist} m`,
         });
-        routeIdx++;
       }
     }
   }
@@ -1600,7 +1598,27 @@ const CITY_DEFINITIONS = [
   ['gua', 'Guadalajara', [-103.3496, 20.6597]],
   ['mall', 'Mallorca', [2.6502, 39.5696]],
   ['can', 'Canberra', [149.1300, -35.2809]],
-  ['per', 'Perth', [115.8605, -32.0000]]
+  ['per', 'Perth', [115.8605, -32.0000]],
+  ['asu', 'Asuncion', [-57.5759, -25.2637]],
+  ['zar', 'Zaragoza', [-0.8891, 41.6488]],
+  ['val', 'Valletta', [14.5146, 35.8997]],
+  ['vil', 'Vilnius', [25.2797, 54.6872]],
+  ['opo', 'Oporto', [-8.611, 41.1496]],
+  ['pon', 'Pontevedra', [-8.6446, 42.4304]],
+  ['sld', 'Salvador de Bahia', [-38.5023, -12.9777]],
+  ['cuz', 'Cuzco', [-71.967461, -13.53195]],
+  ['urumchi', 'Urumchi', [87.6168, 43.8256]],
+  ['wuhan', 'Wuhan', [114.3054, 30.5928]],
+  ['kumming', 'Kumming', [102.7123, 25.0406]],
+  ['hangzhou', 'Hangzhou', [120.1551, 30.2741]],
+  ['daca', 'Daca', [90.4125, 23.8103]],
+  ['katmandu', 'Katmandu', [85.3240, 27.7172]],
+  ['samarcanda', 'Samarcanda', [66.9749, 39.6270]],
+  ['alamty', 'Almaty', [76.886, 43.2565]],
+  ['oulu', 'Oulu', [25.4651, 65.0121]],
+  ['konya', 'Konya', [32.4844, 37.8713]],
+  ['rafha', 'Rafha', [43.7000, 28.4000]],
+  ['beirut', 'Beirut', [35.5018, 33.8938]]
 ];
 
 // Generate and merge all city routes

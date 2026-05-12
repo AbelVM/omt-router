@@ -3,6 +3,7 @@ const DEFAULT_LOCALE = 'en';
 const LOCALES = {
   en: {
     title: 'Route Planner',
+    tabs: { routing: 'Routing', isolines: 'Isolines' },
     modes: { pedestrian: 'Walk', car: 'Car', bicycle: 'Bike' },
     modeTitles: { pedestrian: 'Walking', car: 'Driving', bicycle: 'Cycling' },
     optimizeFor: 'Optimize for',
@@ -20,6 +21,14 @@ const LOCALES = {
     setOrigin: 'set origin',
     setDestination: 'set destination',
     stats: { distance: 'Distance', estTime: 'Est. time', travelTime: 'Travel time' },
+    isoline: {
+      heading: 'Isolines',
+      from: 'From',
+      to: 'To',
+      pointPlaceholder: 'Point (lat, lng)',
+      calculate: 'Calculate',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Failed to load tile metadata. Check the configured url and network.',
       waitingStyle: 'Waiting for map style to finish loading before displaying the route.',
@@ -39,6 +48,7 @@ const LOCALES = {
   },
   es: {
     title: 'Planificador',
+    tabs: { routing: 'Rutas', isolines: 'Isolíneas' },
     modes: { pedestrian: 'Caminar', car: 'Coche', bicycle: 'Bici' },
     modeTitles: { pedestrian: 'Caminando', car: 'Conducción', bicycle: 'Ciclismo' },
     optimizeFor: 'Optimizar',
@@ -56,6 +66,14 @@ const LOCALES = {
     setOrigin: 'fijar origen',
     setDestination: 'fijar destino',
     stats: { distance: 'Distancia', estTime: 'Tiempo', travelTime: 'Duración' },
+    isoline: {
+      heading: 'Isolíneas',
+      from: 'Desde',
+      to: 'Hasta',
+      pointPlaceholder: 'Punto (lat, lng)',
+      calculate: 'Calcular',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Error al cargar metadatos de mosaicos. Revisa la URL y la red.',
       waitingStyle: 'Esperando que el estilo del mapa termine de cargar antes de mostrar la ruta.',
@@ -75,6 +93,7 @@ const LOCALES = {
   },
   ca: {
     title: 'Planificador',
+    tabs: { routing: 'Rutes', isolines: 'Isolinies' },
     modes: { pedestrian: 'Caminar', car: 'Cotxe', bicycle: 'Bici' },
     modeTitles: { pedestrian: 'Caminant', car: 'Conducció', bicycle: 'Ciclisme' },
     optimizeFor: 'Optimitza',
@@ -92,6 +111,14 @@ const LOCALES = {
     setOrigin: 'fixa origen',
     setDestination: 'fixa destí',
     stats: { distance: 'Distància', estTime: 'Temps', travelTime: 'Durada' },
+    isoline: {
+      heading: 'Isolinies',
+      from: 'Des de',
+      to: 'Fins a',
+      pointPlaceholder: 'Punt (lat, lng)',
+      calculate: 'Calcula',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Error en carregar metadades de mosaics. Revisa la URL i la xarxa.',
       waitingStyle: 'Esperant que l’estil del mapa acabi de carregar abans de mostrar la ruta.',
@@ -111,6 +138,7 @@ const LOCALES = {
   },
   gl: {
     title: 'Planificador',
+    tabs: { routing: 'Rutas', isolines: 'Isolíneas' },
     modes: { pedestrian: 'Caminar', car: 'Coche', bicycle: 'Bici' },
     modeTitles: { pedestrian: 'Caminando', car: 'Condución', bicycle: 'Ciclismo' },
     optimizeFor: 'Optimizar',
@@ -128,6 +156,14 @@ const LOCALES = {
     setOrigin: 'fijar orixe',
     setDestination: 'fijar destino',
     stats: { distance: 'Distancia', estTime: 'Tempo', travelTime: 'Duración' },
+    isoline: {
+      heading: 'Isolíneas',
+      from: 'Desde',
+      to: 'Hasta',
+      pointPlaceholder: 'Punto (lat, lng)',
+      calculate: 'Calcular',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Erro ao cargar metadatos de mosaicos. Revisa a URL e a rede.',
       waitingStyle: 'Agardando a que o estilo do mapa remate de cargarse antes de mostrar a ruta.',
@@ -147,6 +183,7 @@ const LOCALES = {
   },
   eu: {
     title: 'Ibilbidea',
+    tabs: { routing: 'Ibilbidea', isolines: 'Isolinak' },
     modes: { pedestrian: 'Oinez', car: 'Auto', bicycle: 'Bizikleta' },
     modeTitles: { pedestrian: 'Oinez', car: 'Autoan', bicycle: 'Bizikletan' },
     optimizeFor: 'Optimiza',
@@ -164,6 +201,14 @@ const LOCALES = {
     setOrigin: 'jatorria ezarri',
     setDestination: 'helmuga ezarri',
     stats: { distance: 'Distantzia', estTime: 'Denbora', travelTime: 'Bidai denbora' },
+    isoline: {
+      heading: 'Isolinak',
+      from: 'From',
+      to: 'To',
+      pointPlaceholder: 'Puntu (lat, lng)',
+      calculate: 'Kalkulatu',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Tile metadatuak kargatzea huts egin du. Egiaztatu URLa eta sare konektibitatea.',
       waitingStyle: 'Mapa estiloaren kargatzea amaitu arte itxaroten, ibilbidea erakutsi aurretik.',
@@ -183,6 +228,7 @@ const LOCALES = {
   },
   fr: {
     title: 'Plan de route',
+    tabs: { routing: 'Itinéraire', isolines: 'Isolignes' },
     modes: { pedestrian: 'Marche', car: 'Voiture', bicycle: 'Vélo' },
     modeTitles: { pedestrian: 'À pied', car: 'Conduite', bicycle: 'Cyclisme' },
     optimizeFor: 'Optimiser',
@@ -200,6 +246,14 @@ const LOCALES = {
     setOrigin: 'placer origine',
     setDestination: 'placer destination',
     stats: { distance: 'Distance', estTime: 'Temps', travelTime: 'Durée' },
+    isoline: {
+      heading: 'Isolignes',
+      from: 'Depuis',
+      to: 'Vers',
+      pointPlaceholder: 'Point (lat, lng)',
+      calculate: 'Calculer',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Impossible de charger les métadonnées des tuiles. Vérifiez l’URL et le réseau.',
       waitingStyle: 'En attente de la fin du chargement du style avant d’afficher l’itinéraire.',
@@ -219,6 +273,7 @@ const LOCALES = {
   },
   de: {
     title: 'Routenplaner',
+    tabs: { routing: 'Routen', isolines: 'Isolinien' },
     modes: { pedestrian: 'Zu Fuß', car: 'Auto', bicycle: 'Rad' },
     modeTitles: { pedestrian: 'Zu Fuß', car: 'Fahren', bicycle: 'Radfahren' },
     optimizeFor: 'Optimieren',
@@ -236,6 +291,14 @@ const LOCALES = {
     setOrigin: 'Start setzen',
     setDestination: 'Ziel setzen',
     stats: { distance: 'Distanz', estTime: 'Zeit', travelTime: 'Fahrzeit' },
+    isoline: {
+      heading: 'Isolinien',
+      from: 'Von',
+      to: 'Bis',
+      pointPlaceholder: 'Punkt (lat, lng)',
+      calculate: 'Berechnen',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Kachel-Metadaten konnten nicht geladen werden. Prüfe URL und Netzwerk.',
       waitingStyle: 'Warten auf das Laden des Kartenstils, bevor die Route angezeigt wird.',
@@ -255,6 +318,7 @@ const LOCALES = {
   },
   ru: {
     title: 'Маршрут',
+    tabs: { routing: 'Маршрут', isolines: 'Изолинии' },
     modes: { pedestrian: 'Пешком', car: 'Авто', bicycle: 'Вело' },
     modeTitles: { pedestrian: 'Пешком', car: 'Вождение', bicycle: 'Велосипед' },
     optimizeFor: 'Оптимизировать',
@@ -272,6 +336,14 @@ const LOCALES = {
     setOrigin: 'установить начало',
     setDestination: 'установить финиш',
     stats: { distance: 'Дистанция', estTime: 'Время', travelTime: 'Длительность' },
+    isoline: {
+      heading: 'Изолинии',
+      from: 'От',
+      to: 'До',
+      pointPlaceholder: 'Точка (lat, lng)',
+      calculate: 'Вычислить',
+      hint: '',
+    },
     status: {
       tileMetadata: 'Не удалось загрузить метаданные плиток. Проверьте URL и сеть.',
       waitingStyle: 'Ожидание загрузки стиля карты перед отображением маршрута.',
@@ -291,6 +363,7 @@ const LOCALES = {
   },
   ja: {
     title: 'ルート',
+    tabs: { routing: 'ルート', isolines: '等値線' },
     modes: { pedestrian: '徒歩', car: '車', bicycle: '自転車' },
     modeTitles: { pedestrian: '徒歩', car: '運転', bicycle: 'サイクリング' },
     optimizeFor: '最適化',
@@ -308,6 +381,14 @@ const LOCALES = {
     setOrigin: '出発地設定',
     setDestination: '目的地設定',
     stats: { distance: '距離', estTime: '時間', travelTime: '所要時間' },
+    isoline: {
+      heading: '等値線',
+      from: '始点',
+      to: '終点',
+      pointPlaceholder: '点 (lat, lng)',
+      calculate: '計算',
+      hint: '',
+    },
     status: {
       tileMetadata: 'タイルメタデータの読み込みに失敗しました。URLとネットワークを確認してください。',
       waitingStyle: 'ルートを表示する前に地図スタイルの読み込み完了を待機しています。',
@@ -327,6 +408,7 @@ const LOCALES = {
   },
   zh: {
     title: '路线',
+    tabs: { routing: '路线', isolines: '等值线' },
     modes: { pedestrian: '步行', car: '汽车', bicycle: '自行车' },
     modeTitles: { pedestrian: '步行', car: '驾驶', bicycle: '骑行' },
     optimizeFor: '优化',
@@ -344,6 +426,14 @@ const LOCALES = {
     setOrigin: '设置起点',
     setDestination: '设置终点',
     stats: { distance: '距离', estTime: '时间', travelTime: '行程时长' },
+    isoline: {
+      heading: '等值线',
+      from: '起点',
+      to: '终点',
+      pointPlaceholder: '点 (lat, lng)',
+      calculate: '计算',
+      hint: '',
+    },
     status: {
       tileMetadata: '加载瓦片元数据失败。请检查 URL 和网络。',
       waitingStyle: '正在等待地图样式加载完成，以显示路线。',

@@ -12,7 +12,6 @@
  */
 
 import {
-  buildCH,
   queryRoute,
   prepareGraph,
   prepareRoutableGraph,
@@ -164,7 +163,6 @@ function selectTimingWinner(times) {
 }
 
 function round2(x) { return Math.round(x * 100) / 100; }
-function round3(x) { return Math.round(x * 1000) / 1000; }
 // Speedup can be very small (0.001) for GPU-on-tiny-graphs; preserve 4 sig figs.
 function round4(x) { return Math.round(x * 10000) / 10000; }
 
@@ -247,6 +245,10 @@ function normalizeEngineErrorCode(error) {
   if (error.code) return String(error.code);
   if (error.name === 'AbortError') return 'aborted';
   return null;
+}
+
+function normalizeEngineError(error) {
+  return normalizeEngineErrorMessage(error);
 }
 
 async function runEngineQuery(startId, endId, prepared, {
@@ -484,7 +486,6 @@ async function benchmarkSingleRoute(
 ) {
   const { id, name, category, lengthCategory, start, end, forceRadius } = routeDef;
 
-  const beelineM = Math.round(haversineDistance(start, end));
   const radius = forceRadius ?? computeRadius(start, end, zoom);
 
   // ── Fetch tiles & build graph ───────────────────────────────────────────────
@@ -2031,7 +2032,7 @@ export function installTooltip(_canvas, _results, _tooltipEl) {
  * @param {object[]} results
  * @returns {{ suggestedE: null, suggestedBeelineM: null, stats: object }}
  */
-export function suggestThresholds(results) {
+export function suggestThresholds(_results) {
   // Multi-engine comparison doesn't use threshold-based dispatch
   return { suggestedE: null, suggestedBeelineM: null, stats: {} };
 }

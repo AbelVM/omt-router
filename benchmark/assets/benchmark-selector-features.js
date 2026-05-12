@@ -59,7 +59,6 @@ export function classifySelectorFeatures(metrics = {}) {
   const avgBranchFactor = avgOutDegree;
   const logSourceTargetDegreeRatio = Math.log1p(sourceTargetDegreeRatio);
   const logSourceTargetCentralityRatio = Math.log1p(sourceTargetCentralityRatio);
-  const logAvgOutDegree = Math.log1p(avgOutDegree);
   const logRelativeDensity = Math.log1p(relativeDensity);
   const logGraphDensity = Math.log1p(relativeDensity);
   const logAvgBranchFactor = Math.log1p(avgBranchFactor);

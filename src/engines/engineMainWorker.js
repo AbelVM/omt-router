@@ -1,3 +1,4 @@
+//# sourceURL=engineMainWorker
 import { bidirectionalAStar } from './BidirectionalAStar/index.js';
 import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
 import { deltaSteppingRouter } from './DeltaStepping/index.js';
@@ -85,6 +86,63 @@ self.onmessage = async (event) => {
     return;
   }
 
+  if (message.type === 'prepareAndRun') {
+    const {
+      requestId,
+      engineId,
+      startId,
+      endId,
+      prepared: messagePrepared,
+      forceSerialRouting = false,
+      parallelPolicy = null,
+    } = message;
+    const responseCorrelationId = message.correlationId ?? null;
+
+    const prepared = restorePreparedGraph(messagePrepared);
+    if (!prepared || typeof prepared.N !== 'number' || !Number.isFinite(prepared.N) || prepared.N <= 0) {
+      const response = {
+        type: 'result',
+        requestId,
+        ok: false,
+        error: {
+          name: 'Error',
+          message: 'engine worker missing or invalid prepared graph',
+        },
+      };
+      if (responseCorrelationId != null) response.correlationId = responseCorrelationId;
+      self.postMessage(response);
+      return;
+    }
+
+    if (prepared?.preparedId) {
+      _workerPrepared = prepared;
+      _workerPreparedId = prepared.preparedId;
+    }
+
+    try {
+      const result = await runEngine(engineId, startId, endId, prepared, {
+        forceSerialRouting,
+        parallelPolicy,
+      });
+      const response = { type: 'result', requestId, ok: true, result };
+      if (responseCorrelationId != null) response.correlationId = responseCorrelationId;
+      self.postMessage(response);
+    } catch (error) {
+      const response = {
+        type: 'result',
+        requestId,
+        ok: false,
+        error: {
+          name: error?.name ?? 'Error',
+          message: error?.message ?? String(error),
+        },
+      };
+      if (responseCorrelationId != null) response.correlationId = responseCorrelationId;
+      self.postMessage(response);
+    }
+    return;
+  }
+
   if (message.type !== 'run') return;
 
   const {
@@ -97,6 +155,7 @@ self.onmessage = async (event) => {
     forceSerialRouting = false,
     parallelPolicy = null,
   } = message;
+  const responseCorrelationId = message.correlationId ?? null;
 
   // Defensive: requestId must be present
   if (typeof requestId !== 'string' && typeof requestId !== 'number') {
@@ -175,10 +234,12 @@ self.onmessage = async (event) => {
       forceSerialRouting,
       parallelPolicy,
     });
-    self.postMessage({ type: 'result', requestId, ok: true, result });
+    const response = { type: 'result', requestId, ok: true, result };
+    if (responseCorrelationId != null) response.correlationId = responseCorrelationId;
+    self.postMessage(response);
     self.postMessage({ type: 'status', requestId, state: 'idle', engineId: null });
   } catch (error) {
-    self.postMessage({
+    const response = {
       type: 'result',
       requestId,
       ok: false,
@@ -186,7 +247,9 @@ self.onmessage = async (event) => {
         name: error?.name ?? 'Error',
         message: error?.message ?? String(error),
       },
-    });
+    };
+    if (responseCorrelationId != null) response.correlationId = responseCorrelationId;
+    self.postMessage(response);
     self.postMessage({
       type: 'status',
       requestId,

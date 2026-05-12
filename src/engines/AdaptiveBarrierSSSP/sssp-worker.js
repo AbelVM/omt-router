@@ -1,3 +1,5 @@
+//# sourceURL=ssspWorker
+
 /**
  * Worker optimized for cache locality and atomic synchronization
  * Designed for the SSSP algorithm with a shared memory approach, this worker processes 

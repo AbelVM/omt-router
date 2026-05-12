@@ -4,10 +4,17 @@ import {
   onEngineWorkerStatusChange as defaultOnEngineWorkerStatusChange,
   cancelRunningEngine as defaultCancelRunningEngine,
   dispose as defaultDispose,
+  buildTileURL,
+  buildGraphForTiles,
 } from '../index.js';
+import { getTilesWithinRadius } from '../tiles/tilesManager.js';
 import { DEFAULT_LOCALE, LOCALES, resolveLocale } from './l10n_defaults.js';
 import { RouteFailureReason } from '../engines/router.js';
 import './MapLibreRoutingControl.css';
+import { isoline } from '../isolines/index.js';
+import * as Core from './MapLibreRoutingControl.core.js';
+import * as UI from './MapLibreRoutingControl.ui.js';
+import * as MapModule from './MapLibreRoutingControl.map.js';
 
 const DEFAULT_OPTIONS = {
   defaultMode: 'car',
@@ -24,6 +31,15 @@ const DEFAULT_OPTIONS = {
   mapPosition: 'top-left',
   startColor: '#2563eb',
   endColor: '#dc2626',
+  features: 'both',
+  isolineSourceId: 'omtr-isoline-source',
+  isolineFillLayerId: 'omtr-isoline-fill',
+  isolineOutlineLayerId: 'omtr-isoline-outline',
+  // Controls how many extra meters / multiplier to apply when selecting
+  // tiles for isoline graph building. Increasing these fetches a larger
+  // neighborhood to avoid isoline clipping at tile seams.
+  isolineTileSearchMultiplier: 1.6,
+  isolineTileSearchExtraMeters: 200,
   locale: 'auto',
   routeOptions: {
     maxAutoRadius: 8,
@@ -46,67 +62,7 @@ const ENGINE_BADGE_ICONS = Object.freeze({
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
 });
 
-const RAD = Math.PI / 180;
-const EARTH_RADIUS_METERS = 6_371_000;
-
-function haversineMeters(a, b) {
-  const [lng1, lat1] = a;
-  const [lng2, lat2] = b;
-  const dLat = (lat2 - lat1) * RAD;
-  const dLng = (lng2 - lng1) * RAD;
-  const lat1Rad = lat1 * RAD;
-  const lat2Rad = lat2 * RAD;
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinDLng * sinDLng;
-  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(h));
-}
-
-function getRouteDistance(coords) {
-  let total = 0;
-  for (let i = 1; i < coords.length; i++) {
-    total += haversineMeters(coords[i - 1], coords[i]);
-  }
-  return total;
-}
-
-function parseCoords(str) {
-  const [a, b] = str.split(',').map((s) => parseFloat(s.trim()));
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  if (a < -90 || a > 90 || b < -180 || b > 180) return null;
-  return [b, a];
-}
-
-function lngLatToStr({ lng, lat }) {
-  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-}
-
-function formatDuration(minutes) {
-  if (minutes < 1) return '< 1 min';
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder > 0 ? `${hours} h ${remainder} min` : `${hours} h`;
-}
-
-function fmtDistance(m) {
-  if (m < 1000) return `${Math.round(m)} m`;
-  return `${(m / 1000).toFixed(1)} km`;
-}
-
-function fmtTime(m, mode) {
-  const speeds = { car: 50, pedestrian: 5, bicycle: 15 };
-  const mins = Math.round((m / 1000 / (speeds[mode] ?? 50)) * 60);
-  return formatDuration(mins);
-}
-
-function formatEngineBadgeName(engineId) {
-  return ENGINE_LABELS[engineId] || engineId;
-}
-
-function getEngineBadgeIcon(parallelUsed) {
-  return parallelUsed ? ENGINE_BADGE_ICONS.parallel : ENGINE_BADGE_ICONS.cpu;
-}
+const { haversineMeters, getRouteDistance, parseCoords, lngLatToStr, formatDuration, fmtDistance, fmtTime, formatEngineBadgeName, getEngineBadgeIcon } = Core;
 
 function mergeOptions(base, override) {
   const result = { ...base };
@@ -151,6 +107,8 @@ function mergeLocaleText(base, override) {
   return result;
 }
 
+// (Removed) per-control isoline tile cache — use shared cache via buildGraphForTiles
+
 export class MapLibreRoutingControl {
   constructor(options = {}) {
     this._options = mergeOptions(DEFAULT_OPTIONS, options);
@@ -176,6 +134,11 @@ export class MapLibreRoutingControl {
     this._text = localeOverride
       ? mergeLocaleText(LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE], localeOverride)
       : LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE];
+
+    // Use l10n defaults and any provided locale overrides. Keep minimal
+    // fallbacks in-place if l10n entries are missing.
+    this._text.isoline = this._text.isoline || {};
+    this._text.tabs = this._text.tabs || { routing: this._text.title || 'Routing', isolines: this._text.isoline.heading || 'Isolines' };
     this._maplibre = this._options.maplibre ?? (typeof window !== 'undefined' ? window.maplibregl : null);
 
     if (!this._maplibre || typeof this._maplibre.Marker !== 'function') {
@@ -191,11 +154,12 @@ export class MapLibreRoutingControl {
     this._originInput = null;
     this._destInput = null;
     this._statusEl = null;
+    this._statusElIsoline = null;
     this._statsEl = null;
     this._statDistEl = null;
     this._statTimeEl = null;
     this._engineBadgeEl = null;
-    this._markers = { origin: null, dest: null };
+    this._markers = { origin: null, dest: null, isoline: null };
     this._calcId = 0;
     this._suppressNextMapPointerSet = false;
     this._engineBusy = false;
@@ -205,6 +169,24 @@ export class MapLibreRoutingControl {
     this._routeSourceStyleLoadHandler = null;
     this._tileTemplatePromise = null;
     this._mounted = false;
+    // Normalize `features` option and accept common aliases.
+    let f = String(this._options.features ?? 'both').toLowerCase().trim();
+    if (f === 'isoline') f = 'isolines';
+    if (f === 'route') f = 'routing';
+    if (!['both', 'isolines', 'routing'].includes(f)) f = 'both';
+    this._features = f;
+    this._activeTab = this._features === 'isolines' ? 'isoline' : 'routing';
+    // Default isoline max cost: allow explicit option, otherwise choose
+    // sensible defaults depending on the cost field:
+    // - distance: metres (default 100 m)
+    // - travelTime/optimal: seconds (default 15 minutes -> 900 s)
+    const _optIso = this._options.isolineMaxCost;
+    const _defaultIso = Number.isFinite(Number(_optIso))
+      ? Number(_optIso)
+      : ((this._costField === 'travelTime' || this._costField === 'optimal') ? 15 * 60 : 1000);
+    this._isoline = { point: null, direction: 'from', maxCost: _defaultIso };
+    this._isolineWorker = null;
+    this._isolinePendingRequests = null;
   }
 
   _resolveThemeClass() {
@@ -229,19 +211,30 @@ export class MapLibreRoutingControl {
     this._originInput = this._panel.querySelector('#rp-origin');
     this._destInput = this._panel.querySelector('#rp-dest');
     this._statusEl = this._panel.querySelector('#rp-status');
+    this._statusElIsoline = this._panel.querySelector('#rp-status-isoline');
     this._statsEl = this._panel.querySelector('#rp-stats');
     this._statDistEl = this._panel.querySelector('#rp-stat-dist');
     this._statTimeEl = this._panel.querySelector('#rp-stat-time');
     this._statDistLabelEl = this._panel.querySelector('#rp-stat-dist-label');
     this._statTimeLabelEl = this._panel.querySelector('#rp-stat-time-label');
     this._engineBadgeEl = this._panel.querySelector('#rp-engine');
+    this._isolinePointInput = this._panel.querySelector('#rp-isoline-point');
+    this._isolineThresholdInput = this._panel.querySelector('#rp-isoline-threshold');
 
     this._bindPanelEvents();
+    // Ensure mode/cost UI and threshold UI are synced on mount
+    UI.syncModeAndCostUI(this);
     this._setupRouteSource();
 
-    this._mapClickHandler = (e) => this.setOriginFromMap(e.lngLat);
+    this._mapClickHandler = (e) => {
+      if (this._activeTab === 'isoline') return this.setIsolineFromMap(e.lngLat);
+      return this.setOriginFromMap(e.lngLat);
+    };
     this._mapContextMenuHandler = (e) => {
       e.originalEvent?.preventDefault();
+      // Don't place a destination marker when in isoline mode.
+      if (this._activeTab === 'isoline') return;
+      if (this._consumeMapPointerSuppression()) return;
       this.setDestFromMap(e.lngLat);
     };
     this._map.on('click', this._mapClickHandler);
@@ -289,7 +282,7 @@ export class MapLibreRoutingControl {
     }
 
     Object.values(this._markers).forEach((marker) => marker?.remove());
-    this._markers = { origin: null, dest: null };
+    this._markers = { origin: null, dest: null, isoline: null };
 
     if (this._map) {
       this._removeRouteLayers();
@@ -297,6 +290,22 @@ export class MapLibreRoutingControl {
 
     this._panel?.remove();
     this._map = null;
+    // Clean up any isoline worker and pending requests when the control is removed.
+    try {
+      if (this._isolinePendingRequests) {
+        for (const [id, p] of this._isolinePendingRequests) {
+          try { p.reject(new Error('control removed')); } catch (_e) {}
+        }
+        this._isolinePendingRequests = null;
+      }
+    } catch (_e) {}
+    try {
+      if (this._isolineWorker) {
+        try { this._isolineWorker.postMessage({ type: 'dispose' }); } catch (_e) {}
+        try { this._isolineWorker.terminate(); } catch (_e) {}
+        this._isolineWorker = null;
+      }
+    } catch (_e) {}
     defaultDispose();
   }
 
@@ -322,6 +331,18 @@ export class MapLibreRoutingControl {
   setDestFromMap(lngLat) {
     if (this._consumeMapPointerSuppression()) return;
     this.setDest(lngLat);
+  }
+
+  setIsoline(lngLat) {
+    this._isoline.point = [lngLat.lng, lngLat.lat];
+    if (this._isolinePointInput) this._isolinePointInput.value = lngLatToStr(lngLat);
+    this._placeIsolineMarker(this._isoline.point);
+    this._tryIsoline();
+  }
+
+  setIsolineFromMap(lngLat) {
+    if (this._consumeMapPointerSuppression()) return;
+    this.setIsoline(lngLat);
   }
 
   setUrlTemplate(urlTemplate) {
@@ -365,258 +386,282 @@ export class MapLibreRoutingControl {
   }
 
   _buildPanelMarkup() {
-    return `
-      <span class="rp-title">${this._text.title}</span>
-
-      <div class="rp-modes">
-        <button type="button" class="rp-mode-btn" data-mode="pedestrian" aria-pressed="false" title="${this._text.modeTitles.pedestrian}">
-          <span class="rp-mode-icon">🚶</span>
-          <span class="rp-mode-label">${this._text.modes.pedestrian}</span>
-        </button>
-        <button type="button" class="rp-mode-btn active" data-mode="car" aria-pressed="true" title="${this._text.modeTitles.car}">
-          <span class="rp-mode-icon">🚗</span>
-          <span class="rp-mode-label">${this._text.modes.car}</span>
-        </button>
-        <button type="button" class="rp-mode-btn" data-mode="bicycle" aria-pressed="false" title="${this._text.modeTitles.bicycle}">
-          <span class="rp-mode-icon">🚲</span>
-          <span class="rp-mode-label">${this._text.modes.bicycle}</span>
-        </button>
-      </div>
-
-      <div class="rp-section">
-        <span class="rp-section-label">${this._text.optimizeFor}</span>
-        <div class="rp-costs">
-          <button type="button" class="rp-cost-btn active" data-cost-field="distance" aria-pressed="true" title="${this._text.costTitles.distance}">
-            ${this._text.costLabels.distance}
-          </button>
-          <button type="button" class="rp-cost-btn" data-cost-field="travelTime" aria-pressed="false" title="${this._text.costTitles.travelTime}">
-            ${this._text.costLabels.travelTime}
-          </button>
-          <button type="button" class="rp-cost-btn" data-cost-field="optimal" aria-pressed="false" title="${this._text.costTitles.optimal}">
-            ${this._text.costLabels.optimal}
-          </button>
-        </div>
-        <div class="rp-inputs">
-          <div class="rp-input-row">
-            <svg class="rp-point-icon rp-point-icon--origin" viewBox="0 0 10 10">
-              <circle cx="5" cy="5" r="4.5"/>
-            </svg>
-            <input id="rp-origin" type="text" placeholder="${this._text.originPlaceholder}" autocomplete="off" spellcheck="false" />
-          </div>
-          <div class="rp-swap-wrap">
-            <button type="button" class="rp-swap-btn" id="rp-swap-btn" title="${this._text.reverseRoute}" aria-label="${this._text.reverseRoute}">⇅</button>
-          </div>
-          <div class="rp-input-row">
-            <svg class="rp-point-icon rp-point-icon--dest" viewBox="0 0 10 10">
-              <circle cx="5" cy="5" r="4.5"/>
-            </svg>
-            <input id="rp-dest" type="text" placeholder="${this._text.destinationPlaceholder}" autocomplete="off" spellcheck="false" />
-          </div>
-        </div>
-      </div>
-
-      <div class="rp-hint">
-        <span class="rp-hint-item"><span class="rp-hint-key">${this._text.leftClick}</span> ${this._text.setOrigin}</span>
-        <span class="rp-hint-sep">·</span>
-        <span class="rp-hint-item"><span class="rp-hint-key">${this._text.rightClick}</span> ${this._text.setDestination}</span>
-      </div>
-
-      <div class="rp-stats" id="rp-stats" hidden>
-        <div class="rp-stat">
-          <span class="rp-stat-value" id="rp-stat-dist">—</span>
-          <span class="rp-stat-label" id="rp-stat-dist-label">${this._text.stats.distance}</span>
-        </div>
-        <div class="rp-stat-divider"></div>
-        <div class="rp-stat">
-          <span class="rp-stat-value" id="rp-stat-time">—</span>
-          <span class="rp-stat-label" id="rp-stat-time-label">${this._text.stats.estTime}</span>
-        </div>
-      </div>
-
-      <div class="rp-engine" id="rp-engine" hidden></div>
-      <div class="rp-status" id="rp-status" role="status" aria-live="polite" hidden></div>
-    `;
+    return UI.buildPanelMarkup(this);
   }
 
   _bindPanelEvents() {
-    const modeButtons = this._panel.querySelectorAll('.rp-mode-btn');
+    // Scope routing controls to the routing panel (if present) so isoline
+    // controls don't accidentally get bound by the routing handlers.
+    const routingPanel = this._panel.querySelector('#rp-routing-panel') || this._panel;
+    const modeButtons = routingPanel.querySelectorAll('.rp-mode-btn');
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        this._mode = btn.dataset.mode;
+        const newMode = btn.dataset.mode;
+        // If the selection didn't change, keep UI consistent but avoid re-running route
+        if (this._mode === newMode) {
+          modeButtons.forEach((b) => {
+            const isActive = b === btn;
+            b.classList.toggle('active', isActive);
+            b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+          UI.syncModeAndCostUI(this);
+          return;
+        }
+        this._mode = newMode;
         modeButtons.forEach((b) => {
           const isActive = b === btn;
           b.classList.toggle('active', isActive);
           b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
+        UI.syncModeAndCostUI(this);
         this._tryRoute();
       });
     });
 
-    const costButtons = this._panel.querySelectorAll('.rp-cost-btn');
+    const costButtons = routingPanel.querySelectorAll('.rp-cost-btn');
     costButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
-        this._costField = btn.dataset.costField;
+        const newCost = btn.dataset.costField;
+        // Avoid recomputing if the cost field didn't change; keep UI state consistent
+        if (this._costField === newCost) {
+          costButtons.forEach((b) => {
+            const isActive = b === btn;
+            b.classList.toggle('active', isActive);
+            b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+          UI.syncModeAndCostUI(this);
+          return;
+        }
+        this._costField = newCost;
         costButtons.forEach((b) => {
           const isActive = b === btn;
           b.classList.toggle('active', isActive);
           b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
+        UI.syncModeAndCostUI(this);
         this._tryRoute();
       });
     });
 
-    this._originInput.addEventListener('change', () => {
-      const coords = parseCoords(this._originInput.value);
-      if (coords) {
-        this._origin = coords;
-        this._placeMarker('origin', coords);
-        this._tryRoute();
-      }
-    });
+    if (this._originInput) {
+      this._originInput.addEventListener('change', () => {
+        const coords = parseCoords(this._originInput.value);
+        if (coords) {
+          this._origin = coords;
+          this._placeMarker('origin', coords);
+          this._tryRoute();
+        }
+      });
+    }
 
-    this._destInput.addEventListener('change', () => {
-      const coords = parseCoords(this._destInput.value);
-      if (coords) {
-        this._dest = coords;
-        this._placeMarker('dest', coords);
-        this._tryRoute();
-      }
-    });
+    if (this._destInput) {
+      this._destInput.addEventListener('change', () => {
+        const coords = parseCoords(this._destInput.value);
+        if (coords) {
+          this._dest = coords;
+          this._placeMarker('dest', coords);
+          this._tryRoute();
+        }
+      });
+    }
 
-    this._panel.querySelector('#rp-swap-btn').addEventListener('click', () => {
-      this._reverseRoute();
-    });
+    const swapBtn = this._panel.querySelector('#rp-swap-btn');
+    if (swapBtn) {
+      swapBtn.addEventListener('click', () => {
+        this._reverseRoute();
+      });
+    }
 
     this._panel.addEventListener('mousedown', (e) => e.stopPropagation());
     this._panel.addEventListener('wheel', (e) => e.stopPropagation());
     this._panel.addEventListener('contextmenu', (e) => e.stopPropagation());
+
+    // Tabs (when both features available)
+    const tabRoutingBtn = this._panel.querySelector('#rp-tab-routing');
+    const tabIsolineBtn = this._panel.querySelector('#rp-tab-isoline');
+    if (tabRoutingBtn && tabIsolineBtn) {
+      tabRoutingBtn.addEventListener('click', () => {
+        tabRoutingBtn.classList.add('active');
+        tabIsolineBtn.classList.remove('active');
+        const rpRoute = this._panel.querySelector('#rp-routing-panel');
+        const rpIso = this._panel.querySelector('#rp-isoline-panel');
+        if (rpRoute) rpRoute.hidden = false;
+        if (rpIso) rpIso.hidden = true;
+        this._activeTab = 'routing';
+        this._clearIsoline();
+        UI.syncModeAndCostUI(this);
+        UI.resetOtherUI(this, 'routing');
+      });
+      tabIsolineBtn.addEventListener('click', () => {
+        tabIsolineBtn.classList.add('active');
+        tabRoutingBtn.classList.remove('active');
+        const rpRoute = this._panel.querySelector('#rp-routing-panel');
+        const rpIso = this._panel.querySelector('#rp-isoline-panel');
+        if (rpRoute) rpRoute.hidden = true;
+        if (rpIso) rpIso.hidden = false;
+        this._activeTab = 'isoline';
+        // Clear routing visuals (route layers/sources) and remove any
+        // routing markers (origin/dest) so the isoline view is clean.
+        this._clearRoute();
+        try {
+          if (this._markers.origin) {
+            this._markers.origin.remove();
+            this._markers.origin = null;
+          }
+        } catch (_e) {}
+        try {
+          if (this._markers.dest) {
+            this._markers.dest.remove();
+            this._markers.dest = null;
+          }
+        } catch (_e) {}
+        UI.syncModeAndCostUI(this);
+        UI.resetOtherUI(this, 'isoline');
+      });
+    }
+
+    // Isoline controls
+    const isoDirBtns = this._panel.querySelectorAll('.rp-isoline-direction-btn');
+    isoDirBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const newDir = btn.dataset.direction;
+        // If direction unchanged, refresh UI/marker but avoid recalculation
+        const wasSame = this._isoline.direction === newDir;
+        this._isoline.direction = newDir;
+        isoDirBtns.forEach((b) => b.classList.toggle('active', b === btn));
+        // Update marker color immediately so UI reflects the selected direction
+        const color = this._isoline.direction === 'from' ? this._options.startColor : this._options.endColor;
+        try {
+          const mk = this._markers.isoline;
+          if (mk && typeof mk.getElement === 'function') {
+            const el = mk.getElement();
+            if (el && el.style) el.style.background = color;
+          }
+        } catch (_e) {}
+        // Update the small bullet in the isoline point input to match direction
+        try {
+          const svg = this._panel.querySelector('#rp-isoline-panel .rp-point-icon');
+          if (svg && svg.classList) {
+            svg.classList.toggle('rp-point-icon--origin', this._isoline.direction === 'from');
+            svg.classList.toggle('rp-point-icon--dest', this._isoline.direction === 'to');
+          }
+        } catch (_e) {}
+
+        if (!wasSame && this._isoline.point) this._tryIsoline();
+      });
+    });
+
+    const isoPoint = this._panel.querySelector('#rp-isoline-point');
+    if (isoPoint) {
+      isoPoint.addEventListener('change', () => {
+        const coords = parseCoords(isoPoint.value || '');
+        if (coords) {
+          this._isoline.point = coords;
+          this._placeIsolineMarker(coords);
+          this._tryIsoline();
+        }
+      });
+    }
+
+    // Bind isoline-specific mode/cost controls (scoped to isoline panel)
+    const isoPanel = this._panel.querySelector('#rp-isoline-panel');
+    if (isoPanel) {
+      const isoModeBtns = isoPanel.querySelectorAll('.rp-mode-btn');
+      isoModeBtns.forEach((b) => {
+        b.addEventListener('click', () => {
+          const newMode = b.dataset.mode;
+          // If mode unchanged, refresh UI state only
+          if (this._mode === newMode) {
+            isoModeBtns.forEach((bb) => {
+              const isActive = bb === b;
+              bb.classList.toggle('active', isActive);
+              bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+              UI.syncModeAndCostUI(this);
+              return;
+          }
+          this._mode = newMode;
+          isoModeBtns.forEach((bb) => {
+            const isActive = bb === b;
+            bb.classList.toggle('active', isActive);
+            bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+          UI.syncModeAndCostUI(this);
+          this._tryIsoline();
+        });
+      });
+
+      const isoCostBtns = isoPanel.querySelectorAll('.rp-cost-btn');
+      isoCostBtns.forEach((b) => {
+        b.addEventListener('click', () => {
+          const newCost = b.dataset.costField;
+          // If the cost selection didn't change, just refresh UI/threshold
+          if (this._costField === newCost) {
+            isoCostBtns.forEach((bb) => {
+              const isActive = bb === b;
+              bb.classList.toggle('active', isActive);
+              bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+            UI.syncModeAndCostUI(this);
+            return;
+          }
+          this._costField = newCost;
+          isoCostBtns.forEach((bb) => {
+            const isActive = bb === b;
+            bb.classList.toggle('active', isActive);
+            bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+          UI.syncModeAndCostUI(this);
+          this._tryIsoline();
+        });
+      });
+
+      const isoThreshold = isoPanel.querySelector('#rp-isoline-threshold');
+      if (isoThreshold) {
+        const handleIsoThresholdChange = () => {
+          const raw = Number(isoThreshold.value || 0);
+          if (!Number.isFinite(raw) || raw < 0) return;
+          // Convert minutes -> seconds for travelTime/optimal, otherwise meters
+          if (this._costField === 'travelTime' || this._costField === 'optimal') {
+            this._isoline.maxCost = raw * 60;
+          } else {
+            this._isoline.maxCost = raw;
+          }
+          this._tryIsoline();
+        };
+        // Trigger recalculation immediately on input changes (not just on blur/enter)
+        isoThreshold.addEventListener('input', handleIsoThresholdChange);
+        isoThreshold.addEventListener('change', handleIsoThresholdChange);
+      }
+    }
+  }
+
+  _updateIsolineThresholdUI() {
+    return UI.updateIsolineThresholdUI(this);
   }
 
   _setupRouteSource() {
-    if (!this._map) return;
-    if (this._map.getSource(this._options.routeSourceId)) return;
-    this._routeSourceStyleLoadHandler = () => {
-      if (!this._mounted || !this._map) return;
-      if (this._map.getSource(this._options.routeSourceId)) return;
-      this._map.addSource(this._options.routeSourceId, {
-        type: 'geojson',
-        lineMetrics: true,
-        data: { type: 'FeatureCollection', features: [] },
-      });
-      this._map.addLayer({
-        id: this._options.routeCasingLayerId,
-        type: 'line',
-        source: this._options.routeSourceId,
-        paint: {
-          'line-color': '#ffffff',
-          'line-width': 10,
-          'line-opacity': 0.5,
-        },
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-      });
-      if (this._options.showGraph) {
-        this._map.addSource(this._options.graphSourceId, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-        this._map.addLayer({
-          id: this._options.graphLayerId,
-          type: 'line',
-          source: this._options.graphSourceId,
-          paint: {
-            'line-color': '#00ff00',
-            'line-width': 2,
-            'line-opacity': 0.9,
-          },
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-        });
-      }
-
-      this._map.addLayer({
-        id: this._options.routeLayerId,
-        type: 'line',
-        source: this._options.routeSourceId,
-        paint: {
-          'line-color': this._options.startColor,
-          'line-gradient': [
-            'interpolate-hcl',
-            ['linear'],
-            ['line-progress'],
-            0,
-            this._options.startColor,
-            1,
-            this._options.endColor,
-          ],
-          'line-width': 4,
-          'line-opacity': 0.9,
-        },
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-      });
-
-      if (this._origin && this._dest) {
-        this._tryRoute();
-      }
-    };
-
-    if (this._map.isStyleLoaded()) {
-      this._routeSourceStyleLoadHandler();
-    } else {
-      this._map.once('load', this._routeSourceStyleLoadHandler);
-    }
+    return MapModule.setupRouteSource(this);
   }
 
   _removeRouteLayers() {
-    for (const id of [
-      this._options.routeLayerId,
-      this._options.routeCasingLayerId,
-      this._options.graphLayerId,
-    ]) {
-      if (this._map.getLayer(id)) {
-        this._map.removeLayer(id);
-      }
-    }
-    for (const id of [this._options.routeSourceId, this._options.graphSourceId]) {
-      if (this._map.getSource(id)) {
-        this._map.removeSource(id);
-      }
-    }
+    return MapModule.removeRouteLayers(this);
   }
 
   _placeMarker(type, lngLat) {
-    if (this._markers[type]) {
-      this._markers[type].setLngLat(lngLat);
-      return;
-    }
+    return MapModule.placeMarker(this, type, lngLat);
+  }
 
-    const dot = document.createElement('div');
-    dot.className = `rp-map-dot rp-map-dot--${type}`;
-    dot.style.backgroundColor = type === 'origin'
-      ? this._options.startColor
-      : this._options.endColor;
-    const marker = new this._maplibre.Marker({ element: dot, draggable: true })
-      .setLngLat(lngLat)
-      .addTo(this._map);
+  _placeIsolineMarker(lngLat) {
+    return MapModule.placeIsolineMarker(this, lngLat);
+  }
 
-    this._markers[type] = marker;
+  _clearIsoline() {
+    return MapModule.clearIsoline(this);
+  }
 
-    marker.on('dragstart', () => {
-      this._suppressNextMapPointerSet = true;
-      dot.classList.add('is-dragging');
-    });
-
-    marker.on('dragend', () => {
-      dot.classList.remove('is-dragging');
-      const ll = marker.getLngLat();
-      const next = [ll.lng, ll.lat];
-      if (type === 'origin') {
-        this._origin = next;
-        this._originInput.value = lngLatToStr(ll);
-      } else {
-        this._dest = next;
-        this._destInput.value = lngLatToStr(ll);
-      }
-      this._tryRoute();
-    });
+  async _tryIsoline() {
+    return Core.tryIsoline(this);
   }
 
   _consumeMapPointerSuppression() {
@@ -645,48 +690,39 @@ export class MapLibreRoutingControl {
   }
 
   _setStatus(html, cls = '') {
-    if (!this._statusEl) return;
-    this._statusEl.className = `rp-status${cls ? ' ' + cls : ''}`;
-    if (cls === 'loading' && html.includes('rp-spinner')) {
-      this._statusEl.innerHTML = html;
+    // Choose the status element for the currently active tab, falling back
+    // to whichever status element exists. Clear the other to avoid stale
+    // messages appearing in the hidden panel.
+    const target = this._activeTab === 'isoline'
+      ? (this._statusElIsoline || this._statusEl)
+      : (this._statusEl || this._statusElIsoline);
+    if (!target) return;
+
+    const other = target === this._statusEl ? this._statusElIsoline : this._statusEl;
+
+    target.className = `rp-status${cls ? ' ' + cls : ''}`;
+    if (cls === 'loading') {
+      const spinnerHtml = '<span class="rp-spinner"></span>';
+      const hasSpinner = /rp-spinner/.test(String(html));
+      target.innerHTML = hasSpinner ? String(html) : `${spinnerHtml}${String(html)}`;
     } else {
-      this._statusEl.textContent = html;
+      target.textContent = html;
     }
-    this._statusEl.hidden = !html;
+    target.hidden = !html;
+
+    if (other && other !== target) {
+      other.textContent = '';
+      other.hidden = true;
+      other.className = 'rp-status';
+    }
   }
 
   _showStats(result) {
-    if (
-      !this._statsEl ||
-      !this._statDistEl ||
-      !this._statTimeEl ||
-      !this._statDistLabelEl ||
-      !this._statTimeLabelEl ||
-      !this._engineBadgeEl
-    ) {
-      console.warn('[omt-router] skipping stats update because the control panel is not mounted');
-      return;
-    }
-
-    const distanceM = result.costField === 'distance' ? result.cost : getRouteDistance(result.coordinates);
-    const timeText = result.costField !== 'distance' ? this._formatDurationSeconds(result.cost) : fmtTime(distanceM, this._mode);
-    const engine = result.engine ?? 'cpu';
-    const parallelUsed = Boolean(result.parallelUsed);
-
-    this._statDistEl.textContent = fmtDistance(distanceM);
-    this._statTimeEl.textContent = timeText;
-    this._statDistLabelEl.textContent = this._text.stats.distance;
-    this._statTimeLabelEl.textContent = this._costField === 'distance' ? this._text.stats.estTime : this._text.stats.travelTime;
-    this._statsEl.hidden = false;
-    this._engineBadgeEl.className = `rp-engine ${parallelUsed ? 'rp-engine--parallel' : 'rp-engine--cpu'}`;
-    const costLabel = this._text.costLabels[this._costField] ?? this._text.costLabels.distance;
-    const engineLabel = formatEngineBadgeName(engine);
-    this._engineBadgeEl.innerHTML = `${getEngineBadgeIcon(parallelUsed)}${engineLabel} · ${costLabel}`;
-    this._engineBadgeEl.hidden = false;
+    return UI.showStats(this, result);
   }
 
   _formatDurationSeconds(seconds) {
-    return formatDuration(Math.round(seconds / 60));
+    return UI.formatDurationSeconds(seconds);
   }
 
   _hideStats() {
@@ -695,167 +731,30 @@ export class MapLibreRoutingControl {
   }
 
   _clearRoute() {
-    if (!this._map || !this._map.getSource(this._options.routeSourceId)) return;
-    this._map.getSource(this._options.routeSourceId).setData({ type: 'FeatureCollection', features: [] });
+    return MapModule.clearRoute(this);
   }
 
   _clearGraph() {
-    if (!this._map || !this._map.getSource(this._options.graphSourceId)) return;
-    this._map.getSource(this._options.graphSourceId).setData({ type: 'FeatureCollection', features: [] });
+    return MapModule.clearGraph(this);
   }
 
   async _tryRoute() {
-    if (!this._mounted) return;
-    if (!this._origin || !this._dest) return;
-    this._setupRouteSource();
-    if (!this._map?.getSource(this._options.routeSourceId)) {
-      this._setStatus(this._text.status.waitingStyle, 'loading');
-      return;
-    }
-    if (!this._urlTemplate) {
-      if (this._tileJsonUrl) {
-        await this._loadTileTemplate();
-        if (!this._mounted) return;
-      }
-      if (!this._urlTemplate) {
-        this._setStatus(this._text.status.tileUrl, 'error');
-        this._clearRoute();
-        return;
-      }
-    }
-
-
-    const id = ++this._calcId;
-    this._hideStats();
-    this._clearRoute();
-    this._clearGraph();
-    this._setStatus(`<span class="rp-spinner"></span>${this._text.status.calculating}`, 'loading');
-
-    let timedOut = false;
-    const timeoutHandle = setTimeout(() => {
-      timedOut = true;
-      this._cancelRunningEngine?.(`timeout_${this._routeTimeoutMs}ms`);
-    }, this._routeTimeoutMs);
-
-    try {
-      const result = await this._routeFunction(this._origin, this._dest, this._mode, this._urlTemplate, {
-        costField: this._costField,
-        tileUrlTransform: this._tileUrlTransform,
-        tileProxyTemplate: this._tileProxyTemplate,
-        includeGraph: this._options.showGraph,
-        ...this._routeOptions,
-      });
-
-      if (!this._mounted || id !== this._calcId) return;
-      if (!result.found || !result.coordinates?.length) {
-        this._handleRouteFailure(result);
-        return;
-      }
-
-      this._map.getSource(this._options.routeSourceId).setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: result.coordinates },
-        properties: {},
-      });
-
-      if (this._options.showGraph) {
-        if (result.graph) {
-          this._map.getSource(this._options.graphSourceId).setData(this._buildGraphGeoJSON(result.graph));
-        } else {
-          this._clearGraph();
-        }
-      }
-
-      const coords = result.coordinates;
-      if (coords.length > 0) {
-        const snappedOrigin = coords[0];
-        const snappedDest = coords[coords.length - 1];
-        this._origin = snappedOrigin;
-        this._dest = snappedDest;
-        this._placeMarker('origin', snappedOrigin);
-        this._placeMarker('dest', snappedDest);
-        this._originInput.value = lngLatToStr({ lng: snappedOrigin[0], lat: snappedOrigin[1] });
-        this._destInput.value = lngLatToStr({ lng: snappedDest[0], lat: snappedDest[1] });
-      }
-
-      if (coords.length > 1) {
-        const bounds = coords.reduce(
-          (b, c) => b.extend(c),
-          new this._maplibre.LngLatBounds(coords[0], coords[0])
-        );
-        this._map.fitBounds(bounds, { padding: 100, maxZoom: 16, duration: 600 });
-      }
-
-      this._showStats(result);
-      this._setStatus('');
-    } catch (err) {
-      if (!this._mounted || id !== this._calcId) return;
-      console.error('[omt-router] routing error:', err);
-      if (err?.code === 'engine_cancelled') {
-        this._setStatus(
-          timedOut ? this._text.status.timedOut : this._text.status.cancelled,
-          'error'
-        );
-      } else {
-        const errorMessage = err?.message || (typeof err === 'string' ? err : this._text.status.unknownError ?? 'Unknown routing error');
-        this._setStatus(`${this._text.status.routeErrorPrefix} ${errorMessage}`, 'error');
-      }
-      this._clearRoute();
-      this._clearGraph();
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
+    return Core.tryRoute(this);
   }
 
   _handleRouteFailure(result) {
-    console.warn('[omt-router] route failed:', result);
-    const reason = result?.reason;
-    switch (reason) {
-      case RouteFailureReason.TILE_CORS:
-        this._setStatus(this._text.status.tileCors, 'error');
-        break;
-      case RouteFailureReason.POOR_SNAP:
-        this._setStatus(this._text.status.poorSnap, 'error');
-        break;
-      case RouteFailureReason.NO_NODE:
-        this._setStatus(this._text.status.noNode, 'error');
-        break;
-      case RouteFailureReason.NO_PATH:
-        this._setStatus(this._text.status.noPath, 'error');
-        break;
-      case RouteFailureReason.INCOMPLETE_PATH:
-        this._setStatus(this._text.status.incompletePath, 'error');
-        break;
-      default:
-        this._setStatus(this._text.status.noRoute, 'error');
-        break;
-    }
-    this._clearRoute();
-    this._clearGraph();
+    return Core.handleRouteFailure(this, result);
   }
 
   _buildGraphGeoJSON(graph) {
-    const nodes = graph?.nodes;
-    if (!graph?.nodes || !graph?.edges?.length) {
-      return { type: 'FeatureCollection', features: [] };
-    }
+    return Core.buildGraphGeoJSON(graph);
+  }
 
-    const features = [];
-    for (const edge of graph.edges) {
-      const sourceNode = nodes.get(edge.source);
-      const targetNode = nodes.get(edge.target);
-      if (!sourceNode || !targetNode) continue;
-      features.push({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: [sourceNode.coords, targetNode.coords],
-        },
-        properties: {},
-      });
-    }
-
-    return { type: 'FeatureCollection', features };
+  _centerMapOnSource(sourceId, fitOptions = { padding: 100, maxZoom: 16, duration: 600 }) {
+    try {
+      console.log('[dbg] _centerMapOnSource delegator called', { sourceId, mapPresent: !!this._map });
+    } catch (_e) {}
+    return MapModule.centerMapOnSource(this, sourceId, fitOptions);
   }
 }
 
