@@ -367,7 +367,20 @@ export async function tryIsoline(ctrl) {
 
         const smallColor = ctrl._isoline.direction === 'from' ? ctrl._options.startColor : ctrl._options.endColor;
         const bigColor = ctrl._isoline.direction === 'from' ? ctrl._options.endColor : ctrl._options.startColor;
-        const expr = ['interpolate-hcl', ['linear'], ['get', 'valueMax'], minVal, smallColor, maxVal, bigColor];
+        const eps = Math.max(1e-6, (maxVal - minVal) * 1e-6);
+        const expr = [
+          'interpolate-hcl',
+          ['linear'],
+          ['get', 'valueMax'],
+          minVal,
+          smallColor,
+          minVal + eps,
+          smallColor,
+          maxVal - eps,
+          bigColor,
+          maxVal,
+          bigColor,
+        ];
 
         if (ctrl._map && typeof ctrl._map.getLayer === 'function') {
           if (ctrl._map.getLayer(ctrl._options.isolineFillLayerId)) {

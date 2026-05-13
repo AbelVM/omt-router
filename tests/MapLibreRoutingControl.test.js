@@ -111,6 +111,8 @@ describe('MapLibreRoutingControl', () => {
       getSource(id) {
         return this.sources.get(id) ?? null;
       },
+      setPaintProperty: vi.fn(),
+      setLayoutProperty: vi.fn(),
       getLayer(id) {
         return this.layers.has(id) ? { id } : null;
       },
@@ -172,6 +174,67 @@ describe('MapLibreRoutingControl', () => {
     expect(control._engineBadgeEl.hidden).toBe(false);
     expect(control._statsEl.hidden).toBe(false);
     expect(control._originInput.value).toContain('0.000000');
+  });
+
+  it('anchors isoline interpolation endpoints to the configured colors', async () => {
+    const routeFunction = vi.fn(async () => ({
+      found: true,
+      graph: {
+        nodes: new Map([
+          [0, { coords: [0, -0.0001] }],
+          [1, { coords: [0, 0.0001] }],
+        ]),
+        edges: [
+          {
+            source: 0,
+            target: 1,
+            cost: 1,
+            reverseCost: 1,
+            length: 100,
+            travelTime: 100,
+          },
+        ],
+      },
+    }));
+
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      routeFunction,
+    });
+
+    control._mounted = true;
+    control._map = fakeMap;
+    fakeMap.addSource(control._options.isolineSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    fakeMap.addLayer({ id: control._options.isolineFillLayerId });
+    fakeMap.addLayer({ id: control._options.isolineOutlineLayerId });
+    control._isoline = { point: [0, 0], direction: 'from' };
+    control._urlTemplate = 'http://example.com/{z}/{x}/{y}.pbf';
+
+    await control._tryIsoline();
+
+    const fillColorCall = fakeMap.setPaintProperty.mock.calls.find(
+      ([layerId, property]) => layerId === control._options.isolineFillLayerId && property === 'fill-color'
+    );
+    expect(fillColorCall).toBeDefined();
+    const expression = fillColorCall[2];
+    expect(expression[0]).toBe('interpolate-hcl');
+    expect(expression[1]).toEqual(['linear']);
+    expect(expression[2]).toEqual(['get', 'valueMax']);
+    expect(expression).toEqual(
+      expect.arrayContaining([
+        'interpolate-hcl',
+        ['linear'],
+        ['get', 'valueMax'],
+        expect.any(Number),
+        control._options.startColor,
+        expect.any(Number),
+        control._options.startColor,
+        expect.any(Number),
+        control._options.endColor,
+        expect.any(Number),
+        control._options.endColor,
+      ])
+    );
   });
 
   it('loads tile template once and caches the promise', async () => {

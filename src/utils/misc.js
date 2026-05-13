@@ -64,53 +64,66 @@ export function isWithinDistanceMeters([lng1, lat1], [lng2, lat2], maxDistanceM)
  * @returns {number[]} Array of pretty break points.
  */
 export function prettyBreaks(min, max, n = 5) {
-    if (min === max) return [min];
-    
-    // 1. Ensure order and calculate range
-    const reverse = min > max;
-    const startVal = reverse ? max : min;
-    const endVal = reverse ? min : max;
-    const range = endVal - startVal;
-    
-    // 2. Calculate the raw step size
-    const rawStep = range / n;
+  if (min === max) return [min];
 
-    // 3. Magnitude (e.g., if rawStep is 2,000,000,000, magnitude is 1,000,000,000)
-    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  // 1. Ensure order and calculate range
+  const reverse = min > max;
+  const startVal = reverse ? max : min;
+  const endVal = reverse ? min : max;
+  const range = endVal - startVal;
 
-    // 4. Normalize the step to a value between 1 and 10
-    const residual = rawStep / magnitude;
+  // 2. Calculate the raw step size
+  const rawStep = range / n;
 
-    // 5. Choose the "nicest" step (1, 2, 5, or 10)
-    let prettyStep;
-    if (residual < 1.5) prettyStep = 1;
-    else if (residual < 3) prettyStep = 2;
-    else if (residual < 7) prettyStep = 5;
-    else prettyStep = 10;
+  // 3. Magnitude (e.g., if rawStep is 2,000,000,000, magnitude is 1,000,000,000)
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
 
-    const finalStep = prettyStep * magnitude;
+  // 4. Normalize the step to a value between 1 and 10
+  const residual = rawStep / magnitude;
 
-    // 6. Anchor the start and end values to the finalStep
-    const start = Math.floor(startVal / finalStep) * finalStep;
-    const end = Math.ceil(endVal / finalStep) * finalStep;
+  // 5. Choose the "nicest" step (1, 2, 5, or 10)
+  let prettyStep;
+  if (residual < 1.5) prettyStep = 1;
+  else if (residual < 3) prettyStep = 2;
+  else if (residual < 7) prettyStep = 5;
+  else prettyStep = 10;
 
-    const breaks = [];
-    let current = start;
-    
-    // 7. Handle decimal precision vs. large integer scales
-    // For billions, precision will be 0 or negative, so we use Math.max(0, ...)
-    const precision = Math.max(0, -Math.floor(Math.log10(finalStep)));
+  const finalStep = prettyStep * magnitude;
 
-    // Small epsilon to prevent floating point "almost there" errors
-    const epsilon = finalStep / 1e9;
+  // 6. Anchor the start and end values to the finalStep
+  const start = Math.floor(startVal / finalStep) * finalStep;
+  const end = Math.ceil(endVal / finalStep) * finalStep;
 
-    while (current <= end + epsilon) {
-        // toFixed handles clean string conversion; Number() converts it back
-        // This approach handles scientific notation for extremely large values automatically.
-        breaks.push(Number(current.toFixed(precision)));
-        current += finalStep;
-    }
+  const breaks = [];
+  let current = start;
 
-    return reverse ? breaks.reverse() : breaks;
+  // 7. Handle decimal precision vs. large integer scales
+  // For billions, precision will be 0 or negative, so we use Math.max(0, ...)
+  const precision = Math.max(0, -Math.floor(Math.log10(finalStep)));
+
+  // Small epsilon to prevent floating point "almost there" errors
+  const epsilon = finalStep / 1e9;
+
+  while (current <= end + epsilon) {
+    // toFixed handles clean string conversion; Number() converts it back
+    // This approach handles scientific notation for extremely large values automatically.
+    breaks.push(Number(current.toFixed(precision)));
+    current += finalStep;
+  }
+
+  return reverse ? breaks.reverse() : breaks;
 }
 
+/**
+ * Calculate the signed area of a polygon ring using the shoelace formula.
+ * Positive area indicates counter-clockwise (CCW) orientation, negative indicates clockwise (CW).
+ * @param {Array<[number, number]>} ring - Array of [x, y] coordinates.
+ * @returns {number} Signed area of the ring.
+ */
+export const signedArea = (ring) => {
+  let a = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  return a / 2;
+};

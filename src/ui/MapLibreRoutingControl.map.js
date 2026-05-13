@@ -68,13 +68,17 @@ export function setupRouteSource(ctrl) {
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      const initialIsolineColor = ctrl._isoline && ctrl._isoline.direction === 'from'
+        ? ctrl._options.startColor
+        : ctrl._options.endColor;
+
       ctrl._map.addLayer({
         id: ctrl._options.isolineFillLayerId,
         type: 'fill',
         source: ctrl._options.isolineSourceId,
         paint: {
-          'fill-color': ctrl._options.startColor,
-          'fill-outline-color': ctrl._options.startColor,
+          'fill-color': initialIsolineColor,
+          'fill-outline-color': initialIsolineColor,
           'fill-opacity': 0.2,
         },
         layout: {
