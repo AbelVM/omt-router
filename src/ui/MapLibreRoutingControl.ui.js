@@ -167,9 +167,7 @@ export function updateIsolineThresholdUI(ctrl) {
       isoUnit.textContent = 'm';
       isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost) ? ctrl._isoline.maxCost : '';
     }
-  } catch (e) {
-    // silent
-  }
+  } catch (_e) { void _e; }
 }
 
 export function setStatus(ctrl, html, cls = '') {
@@ -285,9 +283,7 @@ export function syncModeAndCostUI(ctrl) {
 
     // Ensure isoline threshold UI matches the selected costField
     updateIsolineThresholdUI(ctrl);
-  } catch (e) {
-    // silent
-  }
+  } catch (_e) { void _e; }
 }
 
 export function resetOtherUI(ctrl, activeTab) {
@@ -360,7 +356,5 @@ export function resetOtherUI(ctrl, activeTab) {
         statusRoute.className = 'rp-status';
       }
     }
-  } catch (e) {
-    // silent
-  }
+  } catch (_e) { void _e; }
 }

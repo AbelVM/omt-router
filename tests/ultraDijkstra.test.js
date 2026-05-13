@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UltraDijkstra, ultraDijkstraRouter } from '../src/engines/UltraDijkstra/index.js';
+import { UltraDijkstra as _UltraDijkstra, ultraDijkstraRouter } from '../src/engines/UltraDijkstra/index.js';
 import QuadHeap from '../src/engines/UltraDijkstra/heap.js';
 
 describe('QuadHeap', () => {

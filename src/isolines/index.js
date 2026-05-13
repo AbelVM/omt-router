@@ -102,7 +102,7 @@ export async function isoline({
 	const points = [];
 	// Exclude values strictly greater than the threshold + epsilon so tricontour
 	// only receives points within the requested isoband range.
-	const factor = 1.1; // 10% epsilon to prevent floating point "almost there" issues
+	const factor = 1.5; // 50% epsilon to prevent floating point "almost there" issues
 	let breaks = prettyBreaks(0, maxCost, 7).filter(k => k < maxCost);
 	breaks.push(maxCost);
 	breaks.sort((a, b) => a - b);

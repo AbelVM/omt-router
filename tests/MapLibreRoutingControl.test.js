@@ -423,7 +423,7 @@ describe('MapLibreRoutingControl', () => {
     const delayedMap = {
       ...fakeMap,
       isStyleLoaded: () => false,
-      once: (event, cb) => {
+      once: (event, _cb) => {
         if (event === 'load') {
           // do not invoke callback to simulate a still-loading style
         }

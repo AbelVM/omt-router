@@ -117,73 +117,7 @@ function ringMatchesHull(ring, hull, eps = 1e-6) {
   return true;
 }
 
-// promote largest ring to outer and fix winding: outer CCW (signedArea > 0), holes CW (signedArea < 0)
-function normalizePolygonRings(polygon) {
-  // Preserve ringsort grouping when possible. Only adjust winding and
-  // ensure outer ring is first. Avoid promoting largest ring blindly
-  // (that can reassign holes to wrong outer and create overlaps).
-  const rings = polygon.map(closeRing).filter(r => r && r.length >= 4);
-  if (rings.length === 0) return [];
-
-  // deduplicate exact/reversed rings while preserving original order
-  function canonicalRingKey(ring, digits = 9) {
-    const n0 = ring.length;
-    const closed = ring[0][0] === ring[n0 - 1][0] && ring[0][1] === ring[n0 - 1][1];
-    const n = closed ? n0 - 1 : n0;
-    const coords = ring.slice(0, n);
-    const toStr = (p) => `${p[0].toFixed(digits)},${p[1].toFixed(digits)}`;
-    // produce a rotation/reversal invariant key by taking minimal rotation
-    let best = null;
-    for (let start = 0; start < n; start++) {
-      const seq = new Array(n);
-      for (let i = 0; i < n; i++) seq[i] = toStr(coords[(start + i) % n]);
-      const key = seq.join(';');
-      if (best === null || key < best) best = key;
-    }
-    const rev = coords.slice().reverse();
-    for (let start = 0; start < n; start++) {
-      const seq = new Array(n);
-      for (let i = 0; i < n; i++) seq[i] = toStr(rev[(start + i) % n]);
-      const key = seq.join(';');
-      if (key < best) best = key;
-    }
-    return best;
-  }
-  const seen = new Set();
-  const uniq = [];
-  for (const r of rings) {
-    const key = canonicalRingKey(r);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    uniq.push(r);
-  }
-
-  // if outer (first) is not CCW, try to find a ring with positive area
-  // and move it to front. This preserves ringsort grouping when present.
-  if (signedArea(uniq[0]) <= 0) {
-    const posIdx = uniq.findIndex(r => signedArea(r) > 0);
-    if (posIdx > 0) {
-      const [outer] = uniq.splice(posIdx, 1);
-      uniq.unshift(outer);
-    } else {
-      // fallback: no positively oriented ring found; pick largest by abs area
-      const absAreas = uniq.map(r => Math.abs(signedArea(r)));
-      let maxIdx = 0;
-      for (let i = 1; i < uniq.length; i++) if (absAreas[i] > absAreas[maxIdx]) maxIdx = i;
-      if (maxIdx !== 0) {
-        const [largest] = uniq.splice(maxIdx, 1);
-        uniq.unshift(largest);
-      }
-    }
-  }
-
-  // enforce winding: outer CCW (>0), holes CW (<0)
-  if (signedArea(uniq[0]) < 0) uniq[0] = uniq[0].slice().reverse();
-  for (let i = 1; i < uniq.length; i++) {
-    if (signedArea(uniq[i]) > 0) uniq[i] = uniq[i].slice().reverse();
-  }
-  return uniq;
-}
+// normalizePolygonRings removed — not used in current pipeline
 
 
 /**

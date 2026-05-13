@@ -38,7 +38,7 @@ function _ensureIsolineWorker(ctrl) {
       const err = new Error(ev?.message ?? 'Isoline worker error');
       if (ctrl._isolinePendingRequests) {
         for (const [id, p] of ctrl._isolinePendingRequests) {
-          try { p.reject(err); } catch (_e) {}
+          try { p.reject(err); } catch (_e) { void _e; }
           ctrl._isolinePendingRequests.delete(id);
         }
       }
@@ -58,7 +58,7 @@ async function computeIsolineInWorker(ctrl, params) {
   if (!ctrl._isolinePendingRequests) ctrl._isolinePendingRequests = new Map();
   if (ctrl._isolinePendingRequests.size) {
     for (const [id, p] of ctrl._isolinePendingRequests) {
-      try { p.reject(new Error('isoline cancelled')); } catch (_e) {}
+      try { p.reject(new Error('isoline cancelled')); } catch (_e) { void _e; }
       ctrl._isolinePendingRequests.delete(id);
     }
   }
@@ -86,16 +86,16 @@ async function computeIsolineInWorker(ctrl, params) {
       const graphForTransfer = {};
       for (const key of Object.keys(g)) {
         const val = g[key];
-        if (ArrayBuffer.isView(val) && val.buffer) {
-          // copy the typed array to avoid neutering original cache
-          try {
-            const copy = val.slice();
-            graphForTransfer[key] = copy;
-            transferList.push(copy.buffer);
-          } catch (err) {
-            // Fallback: if slice fails for some reason, include original (will be structured-cloned)
-            graphForTransfer[key] = val;
-          }
+          if (ArrayBuffer.isView(val) && val.buffer) {
+            // copy the typed array to avoid neutering original cache
+            try {
+              const copy = val.slice();
+              graphForTransfer[key] = copy;
+              transferList.push(copy.buffer);
+            } catch (_err) {
+              // Fallback: if slice fails for some reason, include original (will be structured-cloned)
+              graphForTransfer[key] = val;
+            }
         } else {
           graphForTransfer[key] = val;
         }
@@ -235,10 +235,10 @@ export async function tryIsoline(ctrl) {
   }
 
   const calcId = ++ctrl._calcId;
-  try {
     try {
-      ctrl._cancelRunningEngine?.('isoline_cancelled');
-    } catch (_e) {}
+      try {
+        ctrl._cancelRunningEngine?.('isoline_cancelled');
+      } catch (_e) { void _e; }
     ctrl._setStatus(`<span class="rp-spinner"></span>${ctrl._text.status?.calculatingIsoline || 'Calculating isoline'}`, 'loading');
     const point = [ctrl._isoline.point[0], ctrl._isoline.point[1]];
 
@@ -335,7 +335,8 @@ export async function tryIsoline(ctrl) {
         } else {
           throw isoErr;
         }
-      } catch (fallbackErr) {
+      } catch (_fallbackErr) {
+        void _fallbackErr;
         throw isoErr;
       }
     }
@@ -392,11 +393,11 @@ export async function tryIsoline(ctrl) {
             ctrl._map.setPaintProperty(ctrl._options.isolineOutlineLayerId, 'text-color', expr);
           }
         }
-      } catch (_e) {}
+      } catch (_e) { void _e; }
 
       try {
         ctrl._centerMapOnSource(ctrl._options.isolineSourceId, { padding: 100, maxZoom: 16, duration: 600 });
-      } catch (_e) {}
+      } catch (_e) { void _e; }
     }
 
     ctrl._setStatus('', '');
@@ -408,7 +409,7 @@ export async function tryIsoline(ctrl) {
       if (src && typeof src.setData === 'function') {
         src.setData({ type: 'FeatureCollection', features: [] });
       }
-    } catch (_e) {}
+    } catch (_e) { void _e; }
     if (ctrl._mounted) ctrl._setStatus(ctrl._text.status?.noRoute || 'Isoline failed', 'error');
   }
 }

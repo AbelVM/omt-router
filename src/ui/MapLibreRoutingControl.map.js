@@ -1,11 +1,13 @@
-import { buildTileURL } from '../index.js';
+import { buildTileURL as _buildTileURL } from '../index.js';
 
 export function setupRouteSource(ctrl) {
   if (!ctrl._map) return;
   if (ctrl._map.getSource(ctrl._options.routeSourceId)) return;
+
   ctrl._routeSourceStyleLoadHandler = () => {
     if (!ctrl._mounted || !ctrl._map) return;
     if (ctrl._map.getSource(ctrl._options.routeSourceId)) return;
+
     ctrl._map.addSource(ctrl._options.routeSourceId, {
       type: 'geojson',
       lineMetrics: true,
@@ -79,7 +81,7 @@ export function setupRouteSource(ctrl) {
         paint: {
           'fill-color': initialIsolineColor,
           'fill-outline-color': initialIsolineColor,
-          'fill-opacity': 0.2,
+          'fill-opacity': 0.4,
         },
         layout: {
           'fill-sort-key': ['-', ['get', 'valueMax']],
@@ -188,8 +190,8 @@ export function placeIsolineMarker(ctrl, lngLat) {
           svg.classList.toggle('rp-point-icon--origin', ctrl._isoline.direction === 'from');
           svg.classList.toggle('rp-point-icon--dest', ctrl._isoline.direction === 'to');
         }
-      } catch (e) { }
-    } catch (e) { }
+      } catch (_e) { void _e; }
+    } catch (_e) { void _e; }
     return;
   }
 
@@ -205,7 +207,7 @@ export function placeIsolineMarker(ctrl, lngLat) {
       svg.classList.toggle('rp-point-icon--origin', ctrl._isoline.direction === 'from');
       svg.classList.toggle('rp-point-icon--dest', ctrl._isoline.direction === 'to');
     }
-  } catch (e) { }
+  } catch (_e) { void _e; }
 
   marker.on('dragstart', () => {
     ctrl._suppressNextMapPointerSet = true;
@@ -228,7 +230,7 @@ export function placeIsolineMarker(ctrl, lngLat) {
         tileUrlTransform: ctrl._tileUrlTransform,
         tileProxyTemplate: ctrl._tileProxyTemplate,
       });
-    } catch (e) { }
+    } catch (_e) { void _e; }
     ctrl._tryIsoline?.();
   });
 }

@@ -12,10 +12,9 @@ describe('isolines', () => {
     nodes.set(2, { id: 2, coords: [1, 1] });
     nodes.set(3, { id: 3, coords: [0, 1] });
 
-    let eid = 0;
-    const makeEdge = (s, t, length = 1) => ({ id: eid++, source: s, target: t, cost: length, reverseCost: length, length, speed: 10, travelTime: length / (10 / 3.6), properties: {} });
-
     const edges = [];
+    const makeEdge = (s, t, length = 1) => ({ id: edges.length, source: s, target: t, cost: length, reverseCost: length, length, speed: 10, travelTime: length / (10 / 3.6), properties: {} });
+
     edges.push(makeEdge(0, 1));
     edges.push(makeEdge(1, 2));
     edges.push(makeEdge(2, 3));
@@ -44,14 +43,13 @@ describe('isoPHAST direction and pedestrian mode', () => {
     nodes.set(2, { id: 2, coords: [2, 0] });
     nodes.set(3, { id: 3, coords: [3, 0] });
 
-    let eid = 0;
     const edges = [];
     // 0 -> 1 (one-way)
-    edges.push({ id: eid++, source: 0, target: 1, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} });
+    edges.push({ id: edges.length, source: 0, target: 1, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} });
     // 1 -> 2 (one-way)
-    edges.push({ id: eid++, source: 1, target: 2, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} });
+    edges.push({ id: edges.length, source: 1, target: 2, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} });
     // 2 -> 3 (one-way)
-    edges.push({ id: eid++, source: 2, target: 3, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} });
+    edges.push({ id: edges.length, source: 2, target: 3, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} });
 
     const graph = { nodes, edges, mode: 'car' };
     const prepared = buildCH(graph, 'distance');
@@ -83,8 +81,8 @@ describe('isoPHAST direction and pedestrian mode', () => {
     const graph = { nodes, edges, mode: 'car' };
     const prepared = buildCH(graph, 'distance');
 
-    const carRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
-    const pedRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'pedestrian', outputUnscaled: true });
+    const _carRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    const _pedRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'pedestrian', outputUnscaled: true });
 
     // invoke pedestrian mode which should trigger a CH rebuild marked undirected
     const pedRes2 = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'pedestrian', outputUnscaled: true });

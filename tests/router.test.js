@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCH, validateRouteResult, prepareGraph, computeRoute, ROUTER_TUNING, RouteFailureReason } from '../src/engines/router.js';
+import { buildCH, validateRouteResult, prepareGraph, computeRoute, ROUTER_TUNING as _ROUTER_TUNING, RouteFailureReason } from '../src/engines/router.js';
 
 function createSimpleGraph() {
   const nodes = new Map([

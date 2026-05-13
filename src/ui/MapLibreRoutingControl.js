@@ -4,14 +4,12 @@ import {
   onEngineWorkerStatusChange as defaultOnEngineWorkerStatusChange,
   cancelRunningEngine as defaultCancelRunningEngine,
   dispose as defaultDispose,
-  buildTileURL,
-  buildGraphForTiles,
+  buildTileURL as _buildTileURL,
+  buildGraphForTiles as _buildGraphForTiles,
 } from '../index.js';
-import { getTilesWithinRadius } from '../tiles/tilesManager.js';
 import { DEFAULT_LOCALE, LOCALES, resolveLocale } from './l10n_defaults.js';
-import { RouteFailureReason } from '../engines/router.js';
 import './MapLibreRoutingControl.css';
-import { isoline } from '../isolines/index.js';
+
 import * as Core from './MapLibreRoutingControl.core.js';
 import * as UI from './MapLibreRoutingControl.ui.js';
 import * as MapModule from './MapLibreRoutingControl.map.js';
@@ -47,22 +45,9 @@ const DEFAULT_OPTIONS = {
   },
 };
 
-const ENGINE_LABELS = Object.freeze({
-  'ultra-dijkstra': 'UltraDijkstra',
-  'bidirectional-astar': 'Bidirectional A★',
-  'adaptive-barrier': 'Adaptive Barrier',
-  'delta-stepping': 'Delta Stepping',
-  cpu: 'CPU',
-});
+// (intentionally omitted duplicate badge/label constants present in core)
 
-const ENGINE_BADGE_ICONS = Object.freeze({
-  parallel:
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.9 4.9 2.2 2.2"/><path d="m16.9 16.9 2.2 2.2"/><path d="m16.9 7.1 2.2-2.2"/><path d="m4.9 19.1 2.2-2.2"/></svg>',
-  cpu:
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
-});
-
-const { haversineMeters, getRouteDistance, parseCoords, lngLatToStr, formatDuration, fmtDistance, fmtTime, formatEngineBadgeName, getEngineBadgeIcon } = Core;
+const { parseCoords, lngLatToStr } = Core;
 
 function mergeOptions(base, override) {
   const result = { ...base };
@@ -293,19 +278,19 @@ export class MapLibreRoutingControl {
     // Clean up any isoline worker and pending requests when the control is removed.
     try {
       if (this._isolinePendingRequests) {
-        for (const [id, p] of this._isolinePendingRequests) {
-          try { p.reject(new Error('control removed')); } catch (_e) {}
+        for (const [_id, p] of this._isolinePendingRequests) {
+          try { p.reject(new Error('control removed')); } catch (_e) { void _e; }
         }
         this._isolinePendingRequests = null;
       }
-    } catch (_e) {}
+    } catch (_e) { void _e; }
     try {
       if (this._isolineWorker) {
-        try { this._isolineWorker.postMessage({ type: 'dispose' }); } catch (_e) {}
-        try { this._isolineWorker.terminate(); } catch (_e) {}
+        try { this._isolineWorker.postMessage({ type: 'dispose' }); } catch (_e) { void _e; }
+        try { this._isolineWorker.terminate(); } catch (_e) { void _e; }
         this._isolineWorker = null;
       }
-    } catch (_e) {}
+    } catch (_e) { void _e; }
     defaultDispose();
   }
 
@@ -508,13 +493,13 @@ export class MapLibreRoutingControl {
             this._markers.origin.remove();
             this._markers.origin = null;
           }
-        } catch (_e) {}
+        } catch (_e) { void _e; }
         try {
           if (this._markers.dest) {
             this._markers.dest.remove();
             this._markers.dest = null;
           }
-        } catch (_e) {}
+        } catch (_e) { void _e; }
         UI.syncModeAndCostUI(this);
         UI.resetOtherUI(this, 'isoline');
       });
@@ -537,7 +522,7 @@ export class MapLibreRoutingControl {
             const el = mk.getElement();
             if (el && el.style) el.style.background = color;
           }
-        } catch (_e) {}
+        } catch (_e) { void _e; }
         // Update the small bullet in the isoline point input to match direction
         try {
           const svg = this._panel.querySelector('#rp-isoline-panel .rp-point-icon');
@@ -545,7 +530,7 @@ export class MapLibreRoutingControl {
             svg.classList.toggle('rp-point-icon--origin', this._isoline.direction === 'from');
             svg.classList.toggle('rp-point-icon--dest', this._isoline.direction === 'to');
           }
-        } catch (_e) {}
+        } catch (_e) { void _e; }
 
         if (!wasSame && this._isoline.point) this._tryIsoline();
       });
@@ -753,7 +738,7 @@ export class MapLibreRoutingControl {
   _centerMapOnSource(sourceId, fitOptions = { padding: 100, maxZoom: 16, duration: 600 }) {
     try {
       console.log('[dbg] _centerMapOnSource delegator called', { sourceId, mapPresent: !!this._map });
-    } catch (_e) {}
+    } catch (_e) { void _e; }
     return MapModule.centerMapOnSource(this, sourceId, fitOptions);
   }
 }
