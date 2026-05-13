@@ -4,8 +4,8 @@ import {
   onEngineWorkerStatusChange as defaultOnEngineWorkerStatusChange,
   cancelRunningEngine as defaultCancelRunningEngine,
   dispose as defaultDispose,
-  buildTileURL as _buildTileURL,
-  buildGraphForTiles as _buildGraphForTiles,
+  // buildTileURL as _buildTileURL,
+  // buildGraphForTiles as _buildGraphForTiles,
 } from '../index.js';
 import { DEFAULT_LOCALE, LOCALES, resolveLocale } from './l10n_defaults.js';
 import './MapLibreRoutingControl.css';

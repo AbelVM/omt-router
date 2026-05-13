@@ -1,5 +1,3 @@
-import { buildTileURL as _buildTileURL } from '../index.js';
-
 export function setupRouteSource(ctrl) {
   if (!ctrl._map) return;
   if (ctrl._map.getSource(ctrl._options.routeSourceId)) return;
