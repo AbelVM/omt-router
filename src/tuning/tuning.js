@@ -1,6 +1,16 @@
+/**
+ * @module src/tuning/tuning
+ * @description Engine-selection tuning helpers for router runtime behavior.
+ *   Handles browser runtime detection, ML feature normalization, profile caching,
+ *   and selecting optimal routing engine choices for parallel and non-parallel modes.
+ */
+
 import { ROUTER_TUNING_ML_MODEL } from './model.js';
 
+/** Minimum confidence floor for ML-based engine selection. */
 const ML_MIN_CONFIDENCE_FLOOR = 0.36;
+
+/** Minimum probability margin floor between top ML predictions. */
 const ML_MIN_MARGIN_FLOOR = 0.04;
 
 const PARALLEL_ENGINE_DEFAULTS = Object.freeze({
@@ -30,7 +40,19 @@ const HAS_PARALLEL_ROUTING_RUNTIME = IS_BROWSER_RUNTIME &&
   typeof crossOriginIsolated === 'boolean' &&
   crossOriginIsolated;
 
+/**
+ * Return a finite number or a fallback when the value is invalid.
+ * @param {number} value Candidate numeric value.
+ * @param {number} fallback Fallback value for invalid input.
+ * @returns {number} The original finite value or the fallback.
+ */
 const safeNumber = (value, fallback) => (Number.isFinite(value) ? value : fallback);
+
+/**
+ * Return a valid scale value for normalization, avoiding near-zero or invalid values.
+ * @param {number} value Candidate scale value.
+ * @returns {number} The input value when finite and nonzero, otherwise 1.
+ */
 const safeScale = (value) => (Number.isFinite(value) && Math.abs(value) > 1e-12 ? value : 1);
 
 const RUNTIME_MODEL_PROFILE_CACHE = (() => {
@@ -106,6 +128,11 @@ const RUNTIME_MODEL_PROFILE_CACHE = (() => {
   return Object.freeze(cache);
 })();
 
+/**
+ * Convert raw scores into normalized probabilities using the softmax function.
+ * @param {number[]} scores Raw score values to normalize.
+ * @returns {number[]} Probability values that sum to 1, or an empty array for invalid input.
+ */
 function softmax(scores) {
   if (!Array.isArray(scores) || scores.length === 0) return [];
 
@@ -137,6 +164,11 @@ function softmax(scores) {
   return scores;
 }
 
+/**
+ * Find the top two probability indices in an array.
+ * @param {number[]} probs Probability values.
+ * @returns {{bestIndex:number, secondIndex:number}} Indices of the highest and second-highest values.
+ */
 export function findTopTwoIndices(probs) {
   if (!Array.isArray(probs) || probs.length === 0) {
     return { bestIndex: -1, secondIndex: -1 };
@@ -166,6 +198,11 @@ export function findTopTwoIndices(probs) {
   return { bestIndex, secondIndex };
 }
 
+/**
+ * Resolve ML feature values from graph metrics, supplying safe defaults when needed.
+ * @param {object} [features={}] Graph feature inputs used for model scoring.
+ * @returns {object} A normalized map of ML feature values for runtime engine inference.
+ */
 export function resolveMlFeatureValues(features = {}) {
   const {
     safeN: safeNRaw,
@@ -309,6 +346,13 @@ export function resolveMlFeatureValues(features = {}) {
   };
 }
 
+/**
+ * Infer engine probabilities using a runtime-linear regression model.
+ * @param {object} regressors Regression metadata keyed by engine class.
+ * @param {number[]} normalized Feature values after scaling.
+ * @param {string[]} classes Ordered engine class labels.
+ * @returns {number[]|null} Probability vector for each class or null for invalid input.
+ */
 function inferDistanceEngineWithRuntimeLinear(regressors, normalized, classes) {
   if (!regressors || typeof regressors !== 'object' || !Array.isArray(classes)) {
     return null;
@@ -336,6 +380,12 @@ function inferDistanceEngineWithRuntimeLinear(regressors, normalized, classes) {
   return softmax(scores);
 }
 
+/**
+ * Infer the best distance engine using cached runtime model profiles.
+ * @param {object} features Graph metrics used to compute ML features.
+ * @param {string} profileKey Tuning profile key from the runtime model cache.
+ * @returns {string|null} Best predicted engine identifier or fallback engine.
+ */
 function inferDistanceEngineWithMl(features, profileKey) {
   if (!IS_BROWSER_RUNTIME) return null;
 
@@ -381,6 +431,12 @@ function inferDistanceEngineWithMl(features, profileKey) {
   return typeof predictedEngine === 'string' ? predictedEngine : fallbackEngine;
 }
 
+/**
+ * Normalize engine selection to known valid identifiers.
+ * @param {string} engineId Candidate engine identifier.
+ * @param {string} fallbackEngine Fallback engine identifier.
+ * @returns {string} A supported engine identifier.
+ */
 function normalizeDistanceEngine(engineId, fallbackEngine) {
   if (engineId === 'adaptive-barrier' || engineId === 'ultra-dijkstra') {
     return engineId;
@@ -388,20 +444,40 @@ function normalizeDistanceEngine(engineId, fallbackEngine) {
   return fallbackEngine;
 }
 
+/**
+ * Check whether the current runtime supports browser parallel routing.
+ * @returns {boolean} True when the browser environment can support SharedArrayBuffer and workers.
+ */
 export function hasParallelRoutingRuntime() {
   return HAS_PARALLEL_ROUTING_RUNTIME;
 }
 
+/**
+ * Select a non-parallel routing engine based on runtime metrics.
+ * @param {object} metrics Metrics used for ML inference.
+ * @returns {string} Chosen engine identifier for non-parallel mode.
+ */
 export function selectDistanceEngineNoParallel(metrics) {
   const modelEngine = inferDistanceEngineWithMl(metrics, 'sabOff');
   return normalizeDistanceEngine(modelEngine, 'adaptive-barrier');
 }
 
+/**
+ * Select the best parallel routing engine when parallel runtime is available.
+ * @param {object} metrics Metrics used for ML inference.
+ * @returns {string} Chosen engine identifier for parallel mode.
+ */
 export function selectDistanceEngineParallel(metrics) {
   const modelEngine = inferDistanceEngineWithMl(metrics, 'sabOn');
   return normalizeDistanceEngine(modelEngine, 'ultra-dijkstra');
 }
 
+/**
+ * Determine whether the given engine should run in parallel.
+ * @param {string} engineId Candidate engine identifier.
+ * @param {boolean} hasParallelRuntime Whether the runtime supports parallel execution.
+ * @returns {boolean} True when parallel execution is supported and enabled for the engine.
+ */
 export function shouldUseParallelForEngine(engineId, hasParallelRuntime) {
   if (!hasParallelRuntime) return false;
 
@@ -411,6 +487,12 @@ export function shouldUseParallelForEngine(engineId, hasParallelRuntime) {
   return Boolean(engineTuning.fallbackUseParallel);
 }
 
+/**
+ * Get the parallelization policy for a supported engine.
+ * @param {string} engineId Candidate engine identifier.
+ * @param {boolean} hasParallelRuntime Whether the runtime supports parallel execution.
+ * @returns {object|null} The policy object for the engine or null when unavailable.
+ */
 export function getParallelPolicyForEngine(engineId, hasParallelRuntime) {
   if (!shouldUseParallelForEngine(engineId, hasParallelRuntime)) return null;
 
@@ -418,6 +500,11 @@ export function getParallelPolicyForEngine(engineId, hasParallelRuntime) {
   return engineTuning?.policy ?? null;
 }
 
+/**
+ * Select the best engine for the current runtime and metrics.
+ * @param {object} metrics Metrics used for ML engine selection.
+ * @returns {string} Selected engine identifier for the current runtime.
+ */
 export function selectBestEngine(metrics) {
   const parallelRuntime = hasParallelRoutingRuntime();
   return parallelRuntime

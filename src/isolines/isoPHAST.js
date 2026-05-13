@@ -1,3 +1,9 @@
+/**
+ * @module src/isolines/isoPHAST
+ * @description Low-level CH-based isoline distance engine.
+ *   Builds or reuses a contracted hierarchy and queries distances within a threshold.
+ */
+
 import { Graph } from 'contraction-hierarchy-js';
 import { haversineDistance as haversine } from '../utils/misc.js';
 import { attachArrangeShim } from './chShim.js';

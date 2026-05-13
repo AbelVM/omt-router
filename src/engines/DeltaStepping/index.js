@@ -1,3 +1,7 @@
+/**
+ * @module src/engines/DeltaStepping/index
+ * @description Parallel delta-stepping point-to-point routing.
+ */
 import { PowerPool } from 'performance-helpers/powerPool';
 import deltaWorker from './delta-worker.js?worker&inline';
 
@@ -34,6 +38,10 @@ function getSharedPool(workerCount) {
   return sharedPool;
 }
 
+/**
+ * DeltaSteppingSSSP implements the delta-stepping single-source shortest path
+ * algorithm with optional shared-memory worker parallelism.
+ */
 class DeltaSteppingSSSP {
   constructor(n, m, delta = 200, {
     forceSerialRouting = false,

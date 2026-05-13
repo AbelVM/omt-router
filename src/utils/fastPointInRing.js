@@ -27,6 +27,7 @@
  * const tree = buildRingIndex(prepared);
  * const hits = ringsContainingPoint(lon, lat, prepared, tree);
  * ```
+ * @module src/utils/fastPointInRing
  */
 import RBush from 'rbush';
 

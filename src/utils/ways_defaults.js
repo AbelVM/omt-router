@@ -1,4 +1,11 @@
 /**
+ * Default transportation way classifications and speed heuristics.
+ * This module provides mode-specific acceptance rules and default priority
+ * values used by the routing graph builder and engine.
+ * @module src/utils/ways_defaults
+ */
+
+/**
  * Classification of ways for different transportation modes
  * from https://openmaptiles.org/schema/#transportation
  * using mapconfig filters from https://github.com/pgrouting/osm2pgrouting
@@ -189,6 +196,12 @@ export const MODE_BASE_SPEEDS_KMH = {
  * @param {'car'|'pedestrian'|'bicycle'} mode
  * @param {string} roadClass
  * @returns {number}
+ */
+/**
+ * Get the default speed in km/h for a given transport mode and road class.
+ * @param {'car'|'pedestrian'|'bicycle'} mode Transport mode.
+ * @param {string} roadClass OpenMapTiles road class.
+ * @returns {number} Default speed in kilometers per hour.
  */
 export function getDefaultSpeedKmh(mode, roadClass) {
   if (mode === 'car') {

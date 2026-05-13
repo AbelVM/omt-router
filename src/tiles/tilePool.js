@@ -1,3 +1,9 @@
+/**
+ * Tile worker pool manager for tile parsing and tile-fetch coordination.
+ * This module exports a shared PowerPool used by the application to parse tiles
+ * in background workers without creating excessive worker instances.
+ * @module src/tiles/tilePool
+ */
 import { PowerPool } from 'performance-helpers/powerPool';
 import tilesWorker from './tilesWorker?worker&inline.js';
 
@@ -8,12 +14,21 @@ const TILE_POOL_BASE_SIZE = Math.min(2, TILE_POOL_MAX_SIZE);
 let _pool = null;
 const IS_WORKER_AVAILABLE = typeof Worker !== 'undefined';
 
+/**
+ * Get the shared tile worker pool.
+ * Creates the pool on first invocation and returns the cached instance afterwards.
+ * @returns {import('performance-helpers/powerPool').PowerPool}
+ */
 export function getSharedTilePool() {
   if (_pool) return _pool;
   if (!IS_WORKER_AVAILABLE) {
     throw new Error('Web Worker is not available in this environment.');
   }
 
+  /**
+   * Create the shared tile parsing pool lazily and return it.
+   * @returns {import('performance-helpers/powerPool').PowerPool}
+   */
   _pool = new PowerPool(tilesWorker, {
     size: TILE_POOL_BASE_SIZE,
     maxSize: TILE_POOL_MAX_SIZE,
@@ -36,6 +51,11 @@ export function getSharedTilePool() {
   return _pool;
 }
 
+/**
+ * Dispose of the shared tile worker pool and reset internal state.
+ * Safe to call multiple times.
+ * @returns {void}
+ */
 export function disposeSharedTilePool() {
   if (!_pool) return;
   try {

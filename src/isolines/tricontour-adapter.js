@@ -1,3 +1,9 @@
+/**
+ * @module src/isolines/tricontour-adapter
+ * @description Utility adapter converting d3-tricontour isoband output into GeoJSON.
+ *   Includes ring cleanup, hull artifact removal, and polygon/hole topology reconstruction.
+ */
+
 import { tricontour } from 'd3-tricontour';
 import { signedArea } from '../utils/misc';
 import { pointInRing, findInteriorPoint } from '../utils/fastPointInRing';

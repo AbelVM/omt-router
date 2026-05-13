@@ -4,7 +4,11 @@ import { isoline } from '../isolines/index.js';
 import { buildTileURL, buildGraphForTiles } from '../index.js';
 import worker from './MapLibreRoutingControl.isoline.worker?worker&inline.js';
 
-// Helper: run isoline computation in a dedicated worker to avoid blocking UI.
+/**
+ * Ensure the isoline worker is created and wired for this control.
+ * @param {object} ctrl Control instance that owns worker state.
+ * @returns {Worker|null} Worker instance or null when workers are unavailable.
+ */
 function _ensureIsolineWorker(ctrl) {
   if (ctrl._isolineWorker) return ctrl._isolineWorker;  
   if (typeof Worker === 'undefined') return null;
@@ -53,6 +57,13 @@ function _ensureIsolineWorker(ctrl) {
   }
 }
 
+/**
+ * Compute an isoline using a dedicated worker when available.
+ * Falls back to main-thread computation when worker support is missing.
+ * @param {object} ctrl Control instance owning worker state.
+ * @param {object} params Isoline computation parameters.
+ * @returns {Promise<*>} Resolves with GeoJSON isoline result.
+ */
 async function computeIsolineInWorker(ctrl, params) {
   // Clear any old pending requests: we only keep one active isoline job per control.
   if (!ctrl._isolinePendingRequests) ctrl._isolinePendingRequests = new Map();
@@ -134,6 +145,12 @@ const ENGINE_BADGE_ICONS = Object.freeze({
 const RAD = Math.PI / 180;
 const EARTH_RADIUS_METERS = 6_371_000;
 
+/**
+ * Calculate the great-circle distance between two `[lng, lat]` points.
+ * @param {number[]} a First coordinate [lng, lat].
+ * @param {number[]} b Second coordinate [lng, lat].
+ * @returns {number} Distance in meters.
+ */
 export function haversineMeters(a, b) {
   const [lng1, lat1] = a;
   const [lng2, lat2] = b;
@@ -147,6 +164,11 @@ export function haversineMeters(a, b) {
   return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(h));
 }
 
+/**
+ * Compute the total route distance from a sequence of coordinates.
+ * @param {Array<number[]>} coords Route coordinates as [lng, lat] pairs.
+ * @returns {number} Total distance in meters.
+ */
 export function getRouteDistance(coords) {
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
@@ -155,6 +177,11 @@ export function getRouteDistance(coords) {
   return total;
 }
 
+/**
+ * Parse a comma-separated latitude/longitude string into [lng, lat].
+ * @param {string} str Input string like "lat, lng".
+ * @returns {[number, number]|null} Parsed coordinates or null if invalid.
+ */
 export function parseCoords(str) {
   const [a, b] = String(str || '').split(',').map((s) => parseFloat(s.trim()));
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
@@ -162,10 +189,20 @@ export function parseCoords(str) {
   return [b, a];
 }
 
+/**
+ * Format a longitude/latitude pair into a standardized display string.
+ * @param {{lng:number,lat:number}} param0 Coordinate object.
+ * @returns {string} Formatted coordinate string.
+ */
 export function lngLatToStr({ lng, lat }) {
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
+/**
+ * Format a duration in minutes into a human-friendly string.
+ * @param {number} minutes Duration in minutes.
+ * @returns {string} Human-readable duration.
+ */
 export function formatDuration(minutes) {
   if (minutes < 1) return '< 1 min';
   if (minutes < 60) return `${minutes} min`;
@@ -174,25 +211,51 @@ export function formatDuration(minutes) {
   return remainder > 0 ? `${hours} h ${remainder} min` : `${hours} h`;
 }
 
+/**
+ * Format a distance in meters into meters or kilometers.
+ * @param {number} m Distance in meters.
+ * @returns {string} Formatted distance string.
+ */
 export function fmtDistance(m) {
   if (m < 1000) return `${Math.round(m)} m`;
   return `${(m / 1000).toFixed(1)} km`;
 }
 
+/**
+ * Format a distance cost into estimated travel time based on mode.
+ * @param {number} m Distance in meters.
+ * @param {string} mode Travel mode identifier.
+ * @returns {string} Estimated travel time label.
+ */
 export function fmtTime(m, mode) {
   const speeds = { car: 50, pedestrian: 5, bicycle: 15 };
   const mins = Math.round((m / 1000 / (speeds[mode] ?? 50)) * 60);
   return formatDuration(mins);
 }
 
+/**
+ * Resolve a routing engine identifier to a human-friendly badge label.
+ * @param {string} engineId Routing engine identifier.
+ * @returns {string} Badge label.
+ */
 export function formatEngineBadgeName(engineId) {
   return ENGINE_LABELS[engineId] || engineId;
 }
 
+/**
+ * Get the SVG icon for the engine badge.
+ * @param {boolean} parallelUsed Whether a parallel engine was used.
+ * @returns {string} Inline SVG icon markup.
+ */
 export function getEngineBadgeIcon(parallelUsed) {
   return parallelUsed ? ENGINE_BADGE_ICONS.parallel : ENGINE_BADGE_ICONS.cpu;
 }
 
+/**
+ * Convert a routing graph into GeoJSON features for map visualization.
+ * @param {object} graph Graph structure with nodes and edges.
+ * @returns {object} GeoJSON FeatureCollection.
+ */
 export function buildGraphGeoJSON(graph) {
   const nodes = graph?.nodes;
   if (!graph?.nodes || !graph?.edges?.length) {
@@ -217,6 +280,11 @@ export function buildGraphGeoJSON(graph) {
   return { type: 'FeatureCollection', features };
 }
 
+/**
+ * Compute an isoline from the current control state and update the map source.
+ * @param {object} ctrl Control instance.
+ * @returns {Promise<void>}
+ */
 export async function tryIsoline(ctrl) {
   if (!ctrl._mounted) return;
   if (!ctrl._isoline || !ctrl._isoline.point) return;
@@ -414,6 +482,11 @@ export async function tryIsoline(ctrl) {
   }
 }
 
+/**
+ * Compute the current route and render route and optional graph layers.
+ * @param {object} ctrl Control instance.
+ * @returns {Promise<void>}
+ */
 export async function tryRoute(ctrl) {
   if (!ctrl._mounted) return;
   if (!ctrl._origin || !ctrl._dest) return;
@@ -513,6 +586,11 @@ export async function tryRoute(ctrl) {
   }
 }
 
+/**
+ * Handle route failure reasons by setting a localized control status and clearing visuals.
+ * @param {object} ctrl Control instance.
+ * @param {object} result Route result object with failure reason.
+ */
 export function handleRouteFailure(ctrl, result) {
   console.warn('[omt-router] route failed:', result);
   const reason = result?.reason;

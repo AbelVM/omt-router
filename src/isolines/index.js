@@ -1,4 +1,10 @@
 
+/**
+ * @module src/isolines/index
+ * @description Public isoline API that computes GeoJSON isolines from a prepared graph.
+ *   Uses CH preprocessing, point snapping, and d3-tricontour band generation.
+ */
+
 import isoPHAST from './isoPHAST.js';
 import { buildCH } from '../engines/router.js';
 import { findEndpointCandidate, createAugmentedGraph } from '../graphs/snapper.js';

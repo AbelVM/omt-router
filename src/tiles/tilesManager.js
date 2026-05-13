@@ -1,9 +1,14 @@
 /**
- * Slippy tile calculation: Convert latitude and longitude to tile indices (Z, X, Y) based on the zoom level.
- * @param {*} lng
- * @param {*} lat
- * @param {*} zoom
- * @returns
+ * Tile coordinate helpers for map tile selection and index conversion.
+ * @module src/tiles/tilesManager
+ */
+
+/**
+ * Convert longitude/latitude to a slippy tile coordinate at the given zoom.
+ * @param {number} lng Longitude in degrees.
+ * @param {number} lat Latitude in degrees.
+ * @param {number} zoom Tile zoom level.
+ * @returns {{z:number,x:number,y:number}} Tile coord in Z/X/Y schema.
  */
 function getZXY(lng, lat, zoom) {
   const n = 2 ** zoom;
@@ -20,6 +25,14 @@ function getZXY(lng, lat, zoom) {
  * @param {*} zoom
  * @param {*} schema
  * @returns
+ */
+/**
+ * Get a tile coordinate using either XYZ or TMS schema.
+ * @param {number} lng Longitude in degrees.
+ * @param {number} lat Latitude in degrees.
+ * @param {number} zoom Tile zoom level.
+ * @param {'zxy'|'tms'} [schema='zxy'] Tile coordinate schema.
+ * @returns {{z:number,x:number,y:number}} Normalized tile descriptor.
  */
 function getTile(lng, lat, zoom, schema = 'zxy') {
   const tile = getZXY(lng, lat, zoom);
@@ -39,11 +52,12 @@ function getTile(lng, lat, zoom, schema = 'zxy') {
  * every neighbor tile. The neighbor loop is also inlined into the outer Map
  * so no intermediate array is allocated per step.
  *
- * @param {*} point0
- * @param {*} point1
- * @param {*} zoom
- * @param {*} radius
- * @param {*} schema
+ * @param {[number, number]} point0 Starting coordinate [lng, lat].
+ * @param {[number, number]} point1 Ending coordinate [lng, lat].
+ * @param {number} zoom Tile zoom level.
+ * @param {number} [radius=0] Neighbor radius around each traversed tile.
+ * @param {'zxy'|'tms'} [schema='zxy'] Tile schema.
+ * @returns {Array<{z:number,x:number,y:number}>} Unique tiles crossing the line.
  */
 export function getTilesAlongLine(point0, point1, zoom, radius = 0, schema = 'zxy') {
   // Tile selection should always use a fixed zoom for consistent
@@ -107,8 +121,9 @@ export function getTilesAlongLine(point0, point1, zoom, radius = 0, schema = 'zx
  * @param {number} lng
  * @param {number} lat
  * @param {number} zoom
- * @param {number} radiusMeters
- * @param {'zxy'|'tms'} [schema]
+ * @param {number} radiusMeters Radius in meters from the center coordinate.
+ * @param {'zxy'|'tms'} [schema='zxy'] Tile schema.
+ * @returns {Array<{z:number,x:number,y:number}>} Tiles that intersect the circular search area.
  */
 export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy') {
   // Force a fixed zoom (14) for tiles used by isolines and other

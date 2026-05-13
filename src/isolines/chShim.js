@@ -1,9 +1,14 @@
 /**
- * attachArrangeShim(Graph)
+ * @module src/isolines/chShim
+ * @description Shim helper for `contraction-hierarchy-js` path arrangement.
+ *   Prevents the underlying library from using `process.exit()` during contraction.
+ */
+
+/**
+ * Attach a temporary contract-path arrangement shim to the provided Graph class.
  *
- * Temporarily overrides `Graph.prototype._arrangeContractedPaths` with a
- * safer implementation that never calls `process.exit()`. Returns a function
- * that restores the original implementation when called.
+ * @param {Function} Graph Contraction hierarchy Graph constructor.
+ * @returns {Function} Restore function that resets the original shim.
  */
 export function attachArrangeShim(Graph) {
 

@@ -47,6 +47,12 @@ const DEFAULT_OPTIONS = {
 
 const { parseCoords, lngLatToStr } = Core;
 
+/**
+ * Merge nested option objects while preserving base defaults.
+ * @param {object} base Default option values.
+ * @param {object} override User-provided options.
+ * @returns {object} Merged options object.
+ */
 function mergeOptions(base, override) {
   const result = { ...base };
   for (const key in override) {
@@ -62,6 +68,12 @@ function mergeOptions(base, override) {
   return result;
 }
 
+/**
+ * Merge locale text overrides into a base locale bundle.
+ * @param {object} base Base locale text values.
+ * @param {object} override Optional locale override values.
+ * @returns {object} Merged locale text.
+ */
 function mergeLocaleText(base, override) {
   if (!override || typeof override !== 'object' || Array.isArray(override)) {
     return base;
@@ -92,7 +104,13 @@ function mergeLocaleText(base, override) {
 
 // (Removed) per-control isoline tile cache — use shared cache via buildGraphForTiles
 
+/**
+ * MapLibre control for route planning, isoline display, and route status UI.
+ */
 export class MapLibreRoutingControl {
+  /**
+   * @param {object} [options] Control configuration.
+   */
   constructor(options = {}) {
     this._options = mergeOptions(DEFAULT_OPTIONS, options);
     this._routeFunction = this._options.routeFunction ?? defaultRoute;
@@ -179,6 +197,11 @@ export class MapLibreRoutingControl {
     return 'routing-panel--theme-auto';
   }
 
+  /**
+   * MapLibre control lifecycle method invoked when the control is added to the map.
+   * @param {object} map MapLibre map instance.
+   * @returns {HTMLElement} DOM element for the control.
+   */
   onAdd(map) {
     this._mounted = true;
     this._map = map;
@@ -240,6 +263,10 @@ export class MapLibreRoutingControl {
     return this._panel;
   }
 
+  /**
+   * MapLibre control lifecycle method invoked when the control is removed.
+   * Cleans up event listeners, markers, workers, and map layers.
+   */
   onRemove() {
     this._mounted = false;
     this._unsubscribeEngineStatus?.();
@@ -292,6 +319,10 @@ export class MapLibreRoutingControl {
     defaultDispose();
   }
 
+  /**
+   * Set the route origin from a MapLibre lngLat object and trigger routing.
+   * @param {{lng:number,lat:number}} lngLat Origin coordinate.
+   */
   setOrigin(lngLat) {
     this._origin = [lngLat.lng, lngLat.lat];
     this._originInput.value = lngLatToStr(lngLat);
@@ -299,6 +330,10 @@ export class MapLibreRoutingControl {
     this._tryRoute();
   }
 
+  /**
+   * Set the route destination from a MapLibre lngLat object and trigger routing.
+   * @param {{lng:number,lat:number}} lngLat Destination coordinate.
+   */
   setDest(lngLat) {
     this._dest = [lngLat.lng, lngLat.lat];
     this._destInput.value = lngLatToStr(lngLat);
@@ -316,6 +351,10 @@ export class MapLibreRoutingControl {
     this.setDest(lngLat);
   }
 
+  /**
+   * Set the isoline origin point from a MapLibre lngLat object and trigger isoline computation.
+   * @param {{lng:number,lat:number}} lngLat Isoline coordinate.
+   */
   setIsoline(lngLat) {
     this._isoline.point = [lngLat.lng, lngLat.lat];
     if (this._isolinePointInput) this._isolinePointInput.value = lngLatToStr(lngLat);
@@ -328,11 +367,19 @@ export class MapLibreRoutingControl {
     this.setIsoline(lngLat);
   }
 
+  /**
+   * Update the tile URL template used for routing and isoline graph requests.
+   * @param {string|null} urlTemplate Template string for tile requests.
+   */
   setUrlTemplate(urlTemplate) {
     this._urlTemplate = urlTemplate;
     this._tryRoute();
   }
 
+  /**
+   * Configure a tile metadata JSON URL and reload tile template metadata.
+   * @param {string} url TileJSON endpoint URL.
+   */
   setTileJsonUrl(url) {
     this._tileJsonUrl = url;
     this._urlTemplate = null;
@@ -343,6 +390,10 @@ export class MapLibreRoutingControl {
     });
   }
 
+  /**
+   * Load tile metadata from TileJSON and cache the resolved URL template.
+   * @returns {Promise<string|null>} Resolved URL template or null.
+   */
   async _loadTileTemplate() {
     if (!this._tileJsonUrl) return null;
     if (this._tileTemplatePromise) return this._tileTemplatePromise;
@@ -372,6 +423,9 @@ export class MapLibreRoutingControl {
     return UI.buildPanelMarkup(this);
   }
 
+  /**
+   * Bind DOM event handlers for the control panel controls and tabs.
+   */
   _bindPanelEvents() {
     // Scope routing controls to the routing panel (if present) so isoline
     // controls don't accidentally get bound by the routing handlers.
@@ -643,6 +697,10 @@ export class MapLibreRoutingControl {
     return MapModule.clearIsoline(this);
   }
 
+  /**
+   * Delegate isoline computation to the core UI module.
+   * @returns {Promise<void>}
+   */
   async _tryIsoline() {
     return Core.tryIsoline(this);
   }
@@ -653,6 +711,9 @@ export class MapLibreRoutingControl {
     return true;
   }
 
+  /**
+   * Swap origin and destination and recompute the route.
+   */
   _reverseRoute() {
     if (!this._origin && !this._dest) return;
     const previousOrigin = this._origin;
@@ -672,6 +733,11 @@ export class MapLibreRoutingControl {
     this._tryRoute();
   }
 
+  /**
+   * Set the visible status message for the active control tab.
+   * @param {string} html Status text or HTML.
+   * @param {string} [cls] Optional status CSS class.
+   */
   _setStatus(html, cls = '') {
     // Choose the status element for the currently active tab, falling back
     // to whichever status element exists. Clear the other to avoid stale
@@ -721,6 +787,10 @@ export class MapLibreRoutingControl {
     return MapModule.clearGraph(this);
   }
 
+  /**
+   * Delegate route computation to the core UI module.
+   * @returns {Promise<void>}
+   */
   async _tryRoute() {
     return Core.tryRoute(this);
   }
@@ -733,6 +803,12 @@ export class MapLibreRoutingControl {
     return Core.buildGraphGeoJSON(graph);
   }
 
+  /**
+   * Center the map view on a named GeoJSON source.
+   * @param {string} sourceId Map source id.
+   * @param {object} [fitOptions] Map fitBounds options.
+   * @returns {Promise<void>|undefined}
+   */
   _centerMapOnSource(sourceId, fitOptions = { padding: 100, maxZoom: 16, duration: 600 }) {
     try {
       console.log('[dbg] _centerMapOnSource delegator called', { sourceId, mapPresent: !!this._map });

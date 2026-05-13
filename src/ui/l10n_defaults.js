@@ -471,6 +471,11 @@ const LOCALE_ALIASES = {
   'zh-hk': 'zh',
 };
 
+/**
+ * Normalize a locale identifier to a supported locale code.
+ * @param {string} value Locale string such as 'en-US' or 'fr'.
+ * @returns {string} Supported locale code fallbacking to default.
+ */
 function normalizeLocale(value) {
   if (!value || typeof value !== 'string') return DEFAULT_LOCALE;
   const normalized = value.trim().toLowerCase();
@@ -480,6 +485,12 @@ function normalizeLocale(value) {
   return DEFAULT_LOCALE;
 }
 
+/**
+ * Resolve the requested locale to a supported locale bundle.
+ * Uses browser locale when requestedLocale is 'auto'.
+ * @param {string} [requestedLocale='auto'] Requested locale string.
+ * @returns {string} Resolved supported locale code.
+ */
 function resolveLocale(requestedLocale = 'auto') {
   if (requestedLocale && typeof requestedLocale === 'string' && requestedLocale.toLowerCase() !== 'auto') {
     return normalizeLocale(requestedLocale);

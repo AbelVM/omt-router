@@ -1,4 +1,11 @@
 
+/**
+ * @module graphs/graphMetrics
+ *
+ * Graph analysis helpers for route metrics, density features, and prepared
+ * graph summaries. This module supports both raw graph objects produced by
+ * graphBuilder and prepared graphs used by the routing engine.
+ */
 import { haversineDistance } from '../utils/misc.js';
 
 /**
@@ -288,6 +295,7 @@ export function nodeCentrality(graph, nodeId, mode = '') {
  * @param {[number, number]} srcCoords
  * @param {[number, number]} tgtCoords
  * @param {object} [opts]
+ * @returns {{ emptyRatio: number, globalCoverage: number, relativeDensity: number }}
  */
 export function getDensityFeatures(preparedGraph, srcCoords, tgtCoords, opts = {}) {
     const maxRes = opts.maxRes || 256;

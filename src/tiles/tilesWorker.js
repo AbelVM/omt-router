@@ -1,4 +1,9 @@
 //# sourceURL=tilesWorker
+/**
+ * Worker module that fetches and parses map tiles in a background thread.
+ * Handles retryable fetch failures, cross-origin classification, and tile buffer transfer.
+ * @module src/tiles/tilesWorker
+ */
 import { u82o, o2u8 } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerRetry } from 'performance-helpers/powerRetry';
@@ -13,6 +18,11 @@ const retryer = new PowerRetry({
   retryIf: (err) => err?.status >= 500 || err?.status === 408,
 });
 
+/**
+ * Determine whether a URL is cross-origin with respect to the worker's current origin.
+ * @param {string} url Tile request URL.
+ * @returns {boolean}
+ */
 function isCrossOriginUrl(url) {
   try {
     if (typeof self?.location?.origin !== 'string') return false;
@@ -23,6 +33,12 @@ function isCrossOriginUrl(url) {
   }
 }
 
+/**
+ * Create a structured fetch error payload from a tile request failure.
+ * @param {string} url Tile request URL.
+ * @param {Error|object} err Error object or response failure.
+ * @returns {{code:string,message:string,status?:number}}
+ */
 function classifyFetchError(url, err) {
   if (err?.status) {
     return {
@@ -45,6 +61,11 @@ function classifyFetchError(url, err) {
   };
 }
 
+/**
+ * Handle incoming worker messages for tile parsing requests.
+ * Expects an object with `op: 'parse-tile'` and tile request details.
+ * @param {MessageEvent} e Worker message event.
+ */
 self.onmessage = async (e) => {
   const buffer = e.data;
   const data = buffer instanceof ArrayBuffer || ArrayBuffer.isView(buffer) ? u82o(buffer) : buffer;

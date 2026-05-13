@@ -1,6 +1,11 @@
 /**
- *  Interpolate a URL template like "myserver/{z}/{x}/{y}.pbf" or a proxy template
- *  containing "{url}" using a simple placeholder replacement.
+ * Generic utility helpers for routing and tile URL calculations.
+ * @module src/utils/misc
+ */
+
+/**
+ * Interpolate a URL template like "myserver/{z}/{x}/{y}.pbf" or a proxy template
+ * containing "{url}" using a simple placeholder replacement.
  * @param {string} template
  * @param {Object} values
  * @returns {string}

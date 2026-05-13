@@ -1,3 +1,7 @@
+/**
+ * @module src/engines/BidirectionalAStar/index
+ * @description CPU bidirectional A* routing with heuristic search.
+ */
 import { haversineDistance as haversine } from '../../utils/misc.js';
 
 const DIST_SCALE = 10;

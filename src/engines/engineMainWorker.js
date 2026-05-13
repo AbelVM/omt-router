@@ -1,3 +1,11 @@
+/**
+ * @module src/engines/engineMainWorker
+ * @description Worker entrypoint for deferred routing execution.
+ *
+ * Receives serialized prepared graphs and route requests from the main thread,
+ * restores typed coordinate arrays, and dispatches work to the selected CPU
+ * routing engine implementation.
+ */
 //# sourceURL=engineMainWorker
 import { bidirectionalAStar } from './BidirectionalAStar/index.js';
 import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
@@ -20,6 +28,12 @@ function normalizeEngineId(engineId, fallback = 'bidirectional-astar') {
   return ENGINE_ID_ALIASES[engineId] ?? engineId;
 }
 
+/**
+ * Restore runtime-only graph data after transferring a prepared graph across
+ * worker boundaries.
+ * @param {Object} prepared - Serialized prepared graph object.
+ * @returns {Object} Restored prepared graph with coordsArr available.
+ */
 function restorePreparedGraph(prepared) {
   if (!prepared || !prepared.N) return prepared;
 
@@ -40,6 +54,17 @@ function restorePreparedGraph(prepared) {
   return prepared;
 }
 
+/**
+ * Dispatch a route query to the selected engine implementation.
+ * @param {string} engineId
+ * @param {number} startId
+ * @param {number} endId
+ * @param {Object} prepared
+ * @param {Object} [options]
+ * @param {boolean} [options.forceSerialRouting]
+ * @param {Object|null} [options.parallelPolicy]
+ * @returns {Promise<Object>} Route result from the engine.
+ */
 async function runEngine(engineId, startId, endId, prepared, {
   forceSerialRouting = false,
   parallelPolicy = null,

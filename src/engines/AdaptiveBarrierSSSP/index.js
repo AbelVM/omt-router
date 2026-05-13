@@ -1,3 +1,8 @@
+/**
+ * @module src/engines/AdaptiveBarrierSSSP/index
+ * @description Adaptive parallel barrier SSSP implementation with optional
+ * worker-backed frontier processing.
+ */
 import { PowerPool } from 'performance-helpers/powerPool';
 import ssspWorker from './sssp-worker?worker&inline';
 
@@ -140,13 +145,10 @@ export class AdaptiveBarrierSSSP {
   }
 
   /**
-   * High-speed data ingestion
-   * Optimized for bulk loading with minimal overhead, suitable for large graphs.
-   * Expects pre-processed edge lists for maximum throughput.
-   * Note: This method is not thread-safe and should be called before any solve() calls.
-   * @param {*} sources - array of source node indices
-   * @param {*} targets - array of target node indices
-   * @param {*} weights - array of edge weights
+   * High-speed data ingestion.
+   * @param {number|Array<number>} sources - single source index or source list.
+   * @param {number|Array<number>} targets - single target index or target list.
+   * @param {number|Array<number>} weights - single weight or weights list.
    */
   loadGraph(sources, targets, weights) {
     if (typeof sources === 'number') {

@@ -1,6 +1,9 @@
 import QuadHeap from './heap.js';
 
 /**
+ * @module src/engines/UltraDijkstra/index
+ * @description Ultra-fast 4-ary Dijkstra routing implementation for road graphs.
+ *
  * 4-ary Dijkstra Solver
  * Designed for ultra-fast single-source shortest path queries on large, sparse graphs.
  * Uses a custom 4-ary heap for O(1) lookups and O(log4 N) updates, and an

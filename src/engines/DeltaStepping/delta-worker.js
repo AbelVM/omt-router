@@ -1,4 +1,8 @@
 //# sourceURL=deltaWorker
+/**
+ * @file src/engines/DeltaStepping/delta-worker.js
+ * @description SharedArrayBuffer worker kernel for delta-stepping relaxation.
+ */
 const STATE_NEXT_SIZE = 0;
 const INF_DISTANCE = 0x3fffffff;
 

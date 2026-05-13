@@ -1,3 +1,7 @@
+/**
+ * Create map sources and layers for route, graph, and isoline visualization.
+ * @param {object} ctrl Control instance.
+ */
 export function setupRouteSource(ctrl) {
   if (!ctrl._map) return;
   if (ctrl._map.getSource(ctrl._options.routeSourceId)) return;
@@ -117,6 +121,10 @@ export function setupRouteSource(ctrl) {
   }
 }
 
+/**
+ * Remove route, graph, and isoline map layers and sources.
+ * @param {object} ctrl Control instance.
+ */
 export function removeRouteLayers(ctrl) {
   for (const id of [
     ctrl._options.routeLayerId,
@@ -136,6 +144,12 @@ export function removeRouteLayers(ctrl) {
   }
 }
 
+/**
+ * Place or update a draggable route marker on the map.
+ * @param {object} ctrl Control instance.
+ * @param {'origin'|'dest'} type Marker type.
+ * @param {number[]} lngLat Coordinate [lng, lat].
+ */
 export function placeMarker(ctrl, type, lngLat) {
   if (ctrl._markers[type]) {
     ctrl._markers[type].setLngLat(lngLat);
@@ -173,6 +187,11 @@ export function placeMarker(ctrl, type, lngLat) {
   });
 }
 
+/**
+ * Place or update a draggable isoline source marker on the map.
+ * @param {object} ctrl Control instance.
+ * @param {number[]} lngLat Coordinate [lng, lat].
+ */
 export function placeIsolineMarker(ctrl, lngLat) {
   const coords = [lngLat[0], lngLat[1]];
   const color = ctrl._isoline.direction === 'from' ? ctrl._options.startColor : ctrl._options.endColor;
@@ -233,6 +252,10 @@ export function placeIsolineMarker(ctrl, lngLat) {
   });
 }
 
+/**
+ * Clear isoline geometry and remove the isoline marker from the map.
+ * @param {object} ctrl Control instance.
+ */
 export function clearIsoline(ctrl) {
   if (!ctrl._map) return;
   const src = ctrl._map.getSource(ctrl._options.isolineSourceId);
@@ -245,16 +268,30 @@ export function clearIsoline(ctrl) {
   }
 }
 
+/**
+ * Clear the current route geometry from the map source.
+ * @param {object} ctrl Control instance.
+ */
 export function clearRoute(ctrl) {
   if (!ctrl._map || !ctrl._map.getSource(ctrl._options.routeSourceId)) return;
   ctrl._map.getSource(ctrl._options.routeSourceId).setData({ type: 'FeatureCollection', features: [] });
 }
 
+/**
+ * Clear the optional route graph debug layer from the map.
+ * @param {object} ctrl Control instance.
+ */
 export function clearGraph(ctrl) {
   if (!ctrl._map || !ctrl._map.getSource(ctrl._options.graphSourceId)) return;
   ctrl._map.getSource(ctrl._options.graphSourceId).setData({ type: 'FeatureCollection', features: [] });
 }
 
+/**
+ * Fit the map view to the bounds of a named GeoJSON source.
+ * @param {object} ctrl Control instance.
+ * @param {string} sourceId Source id for the geojson source.
+ * @param {object} [fitOptions] fitBounds options.
+ */
 export async function centerMapOnSource(ctrl, sourceId, fitOptions = { padding: 50, maxZoom: 16 }) {
   if (!ctrl._map || !sourceId) return;
   try {

@@ -1,3 +1,11 @@
+/**
+ * @module graphs/graphBuilder
+ *
+ * Utilities for parsing OpenMapTiles transportation tiles and assembling
+ * the resulting road network into a routing graph. Exported helpers include
+ * synchronous and asynchronous graph builders, as well as segment merging
+ * utilities used by the router and worker layers.
+ */
 import { VectorTile } from '@mapbox/vector-tile';
 import Pbf from 'pbf';
 import { u82o } from 'performance-helpers/powerBuffer';

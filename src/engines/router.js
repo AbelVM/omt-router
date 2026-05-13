@@ -1,5 +1,7 @@
 /**
- * chRouter.js - Routing engine with CPU bidirectional A*.
+ * @module src/engines/router
+ * @description High-level routing orchestration, engine selection, and
+ * route validation for CPU-based pathfinding algorithms.
  *
  * CPU path: bidirectional A* (forward from start + backward from end).
  *   Frontiers alternate on the smaller heap. Meeting node found when a node

@@ -1,5 +1,10 @@
 import { fmtDistance, formatDuration, formatEngineBadgeName, getEngineBadgeIcon, fmtTime } from './MapLibreRoutingControl.core.js';
 
+/**
+ * Build the interactive control panel HTML for routing and isoline features.
+ * @param {object} ctrl Control instance containing localization and state.
+ * @returns {string} HTML markup for the control panel.
+ */
 export function buildPanelMarkup(ctrl) {
     const routingHtml = `
 
@@ -153,6 +158,10 @@ export function buildPanelMarkup(ctrl) {
   return routingHtml;
 }
 
+/**
+ * Synchronize the isoline threshold input and unit label with the selected cost mode.
+ * @param {object} ctrl Control instance.
+ */
 export function updateIsolineThresholdUI(ctrl) {
   try {
     const isoPanel = ctrl._panel && ctrl._panel.querySelector ? ctrl._panel.querySelector('#rp-isoline-panel') : null;
@@ -170,6 +179,12 @@ export function updateIsolineThresholdUI(ctrl) {
   } catch (_e) { void _e; }
 }
 
+/**
+ * Update the visible status message for the current active tab.
+ * @param {object} ctrl Control instance.
+ * @param {string} html Status text or HTML.
+ * @param {string} [cls] Optional CSS class for status styling.
+ */
 export function setStatus(ctrl, html, cls = '') {
   const target = ctrl._activeTab === 'isoline'
     ? (ctrl._statusElIsoline || ctrl._statusEl)
@@ -195,6 +210,11 @@ export function setStatus(ctrl, html, cls = '') {
   }
 }
 
+/**
+ * Render route statistics and engine badge details in the control panel.
+ * @param {object} ctrl Control instance.
+ * @param {object} result Route result object.
+ */
 export function showStats(ctrl, result) {
   if (
     !ctrl._statsEl ||
@@ -225,6 +245,11 @@ export function showStats(ctrl, result) {
   ctrl._engineBadgeEl.hidden = false;
 }
 
+/**
+ * Fallback distance calculation when route result lacks explicit distance.
+ * @param {Array<number[]>} coords Route coordinates.
+ * @returns {number} Total distance in meters.
+ */
 function getRouteDistanceFallback(coords) {
   if (!Array.isArray(coords) || coords.length < 2) return 0;
   let total = 0;
@@ -243,10 +268,19 @@ function getRouteDistanceFallback(coords) {
   return total;
 }
 
+/**
+ * Format isoline duration seconds into a readable duration label.
+ * @param {number} seconds Duration in seconds.
+ * @returns {string}
+ */
 export function formatDurationSeconds(seconds) {
   return formatDuration(Math.round(seconds / 60));
 }
 
+/**
+ * Reflect selected travel mode, cost field, and isoline direction in the panel UI.
+ * @param {object} ctrl Control instance.
+ */
 export function syncModeAndCostUI(ctrl) {
   try {
     if (!ctrl || !ctrl._panel) return;
@@ -286,6 +320,11 @@ export function syncModeAndCostUI(ctrl) {
   } catch (_e) { void _e; }
 }
 
+/**
+ * Reset inputs and status for the inactive control mode when tabs switch.
+ * @param {object} ctrl Control instance.
+ * @param {'routing'|'isoline'} activeTab Currently active tab name.
+ */
 export function resetOtherUI(ctrl, activeTab) {
   try {
     if (!ctrl || !ctrl._panel) return;
