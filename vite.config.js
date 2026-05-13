@@ -57,6 +57,14 @@ export default defineConfig({
   server: {
     watch: null
   },
+  resolve: {
+    alias: [
+      {
+        find: 'fs',
+        replacement: resolve(__dirname, 'src/shims/fs-browser.js')
+      }
+    ]
+  },
   build: {
     target: 'es2020',
     lib: {
@@ -82,6 +90,11 @@ export default defineConfig({
     // },
     rollupOptions: {
       external: ['perf_hooks', 'crypto', 'fs'],
+      transform: {
+        define: {
+          'import.meta': '{}'
+        }
+      }
     },
   },
 });
