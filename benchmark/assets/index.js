@@ -635,10 +635,14 @@ stopBtn.addEventListener('click', async () => {
   if (_results.length > 0) {
     if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
       _reportVariants = createReportVariants();
+      if (!_reportVariants.some((variant) => variant.key === _reportSelection)) {
+        _reportSelection = 'combined';
+      }
       updateReportTypeControls();
+      showReportVariant(getSelectedReportVariant());
+    } else {
+      showReport(_results, buildReportContext());
     }
-
-    showReport(_results, buildReportContext());
     const savedPaths = [];
 
     if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
