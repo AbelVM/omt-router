@@ -300,7 +300,11 @@
       min-width: 100%;
     }
     thead th {
-      background: var(--bg); color: var(--subtext);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--bg);
+      color: var(--subtext);
       font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
       padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border);
       cursor: pointer; user-select: none; white-space: nowrap;
@@ -317,8 +321,26 @@
     }
     .badge-gpu    { background: #dcfce7; color: #15803d; }
     .badge-cpu    { background: #f1f5f9; color: #475569; }
+    .badge-astar  { background: #eff6ff; color: #1d4ed8; }
+    .badge-barrier { background: #f5f3ff; color: #7c3aed; }
+    .badge-delta  { background: #fdf2f8; color: #db2777; }
+    .badge-dijkstra { background: #fffbeb; color: #b45309; }
     .badge-error  { background: #fef2f2; color: #b91c1c; }
+    .badge-error-recoverable { background: #fff7ed; color: #c2410c; }
     .badge-na     { background: #f1f5f9; color: #94a3b8; }
+
+    .error-chip {
+      display: inline-flex;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      white-space: nowrap;
+      margin-right: 4px;
+    }
+    .error-chip.warning { background: #fff7ed; color: #c2410c; }
+    .error-chip.danger { background: #fef2f2; color: #b91c1c; }
 
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
     td.faster { color: var(--green); font-weight: 600; }

@@ -6012,7 +6012,19 @@ var _r = class {
 			relativeDensity: E * f / D
 		};
 	}
-}, B = new ge(0, { name: "omt-router" }), vr = 10, yr = xn(), br = 200, xr = 10 * 6e4, Sr = "v2", V = Object.freeze({
+};
+//#endregion
+//#region src/engines/router.js
+if (ze !== void 0 && ze.prototype?._postToWorkerObj) {
+	let e = ze.prototype._postToWorkerObj;
+	ze.prototype._postToWorkerObj = function(t, n, r, i, a, o) {
+		if (n && n.message && typeof n.message == "object" && n.message !== null && !ArrayBuffer.isView(n.message) && !(n.message instanceof ArrayBuffer) && Array.isArray(n.transfer) && n.transfer.length > 0 && t?.worker?._underlying?.postMessage) try {
+			return t.worker._underlying.postMessage(n.message, n.transfer), typeof t._startTimes?.push == "function" && t._startTimes.push(r), t.tasks++, this._activeTasks++, t.lastActive = r, this._isIdle && this._updateIdleState(), i ? o : !0;
+		} catch {}
+		return e.call(this, t, n, r, i, a, o);
+	};
+}
+var B = new ge(0, { name: "omt-router" }), vr = 10, yr = xn(), br = 200, xr = 10 * 6e4, Sr = "v2", V = Object.freeze({
 	IDLE: "idle",
 	RUNNING: "running",
 	CANCELLING: "cancelling",
@@ -6023,7 +6035,7 @@ var _r = class {
 	adaptiveBarrier: "adaptive-barrier",
 	deltaStepping: "delta-stepping",
 	ultraDijkstra: "ultra-dijkstra"
-}), wr = typeof navigator < "u" ? navigator.hardwareConcurrency ?? 4 : 4, Tr = Math.max(1, wr - 1), Er = Math.min(4, Tr), Dr = null, Or = 0, H = Object.freeze({
+}), wr = typeof navigator < "u" ? navigator.hardwareConcurrency ?? 4 : 4, Tr = Math.max(1, wr - 1), Er = Math.min(8, Tr), Dr = null, Or = 0, H = Object.freeze({
 	MISSING_RESULT: "missing_result",
 	ENDPOINT_MISMATCH: "endpoint_mismatch",
 	INVALID_PATH: "invalid_path",
@@ -6060,10 +6072,10 @@ function Nr(e, t) {
 	return e.travelTime * (1 + Ar * (n - 1));
 }
 function Pr(e, t, n, r, i, a = {}) {
-	let o = li(t, n), s = e._prepared?.[t]?.[o];
+	let o = ci(t, n), s = e._prepared?.[t]?.[o];
 	if (!s) {
 		var c;
-		s = mi(e, t, n), (c = e._prepared ?? (e._prepared = {}))[t] ?? (c[t] = {}), e._prepared[t][o] = s;
+		s = pi(e, t, n), (c = e._prepared ?? (e._prepared = {}))[t] ?? (c[t] = {}), e._prepared[t][o] = s;
 	}
 	return s.metrics = fr(s, e, r, i, a), s;
 }
@@ -6076,7 +6088,7 @@ var Fr = null, Ir = 0, W = /* @__PURE__ */ new Map(), Lr = null, Rr = 0, G = {
 	startedAt: null,
 	lastError: null
 }, zr = /* @__PURE__ */ new Set();
-function Br(e) {
+function K(e) {
 	G = {
 		...G,
 		...e
@@ -6085,11 +6097,11 @@ function Br(e) {
 		e({ ...G });
 	} catch {}
 }
-function Vr(e) {
+function Br(e) {
 	for (let t of W.values()) t.reject(e);
 	W.clear();
 }
-function Hr() {
+function Vr() {
 	if (Fr) {
 		try {
 			Fr.terminate();
@@ -6097,16 +6109,16 @@ function Hr() {
 		Fr = null, Lr = null;
 	}
 }
-function Ur(e, t = U.ENGINE_ERROR) {
+function Hr(e, t = U.ENGINE_ERROR) {
 	let n = Error(e);
 	return n.code = t, n;
 }
-function Wr() {
+function Ur() {
 	return Fr || (typeof Worker > "u" ? null : (Fr = new dr(), Fr.onmessage = (e) => {
 		let t = e.data ?? {};
 		if (t.type === "status") {
 			let e = t.requestId == null ? null : W.get(t.requestId), n = W.size;
-			t.state === V.RUNNING ? Br({
+			t.state === V.RUNNING ? K({
 				state: V.RUNNING,
 				running: !0,
 				engineId: kr(t.engineId, e?.engineId ?? null),
@@ -6114,7 +6126,7 @@ function Wr() {
 				requestCount: n,
 				startedAt: e?.startedAt ?? Date.now(),
 				lastError: null
-			}) : t.state === V.ERROR ? Br({
+			}) : t.state === V.ERROR ? K({
 				state: V.ERROR,
 				running: n > 0,
 				engineId: null,
@@ -6122,7 +6134,7 @@ function Wr() {
 				requestCount: n,
 				startedAt: null,
 				lastError: t.error ?? "engine worker error"
-			}) : t.state === V.IDLE && Br({
+			}) : t.state === V.IDLE && K({
 				state: n > 0 ? V.RUNNING : V.IDLE,
 				running: n > 0,
 				engineId: n > 0 ? G.engineId : null,
@@ -6139,7 +6151,7 @@ function Wr() {
 		W.delete(t.requestId);
 		let { resolve: r, reject: i } = n;
 		if (t.ok) {
-			Br({
+			K({
 				state: W.size > 0 ? V.RUNNING : V.IDLE,
 				running: W.size > 0,
 				engineId: W.size > 0 ? G.engineId : null,
@@ -6150,17 +6162,17 @@ function Wr() {
 			}), r(t.result);
 			return;
 		}
-		Br({
+		K({
 			state: V.ERROR,
 			running: !1,
 			engineId: null,
 			requestId: null,
 			startedAt: null,
 			lastError: t.error?.message ?? "engine worker error"
-		}), i(Ur(t.error?.message ?? "engine worker failed", U.ENGINE_WORKER_FAILED));
+		}), i(Hr(t.error?.message ?? "engine worker failed", U.ENGINE_WORKER_FAILED));
 	}, Fr.onerror = (e) => {
-		let t = e?.message ?? "engine worker crashed", n = Ur(t, U.ENGINE_WORKER_CRASHED);
-		Br({
+		let t = e?.message ?? "engine worker crashed", n = Hr(t, U.ENGINE_WORKER_CRASHED);
+		K({
 			state: V.ERROR,
 			running: !1,
 			engineId: null,
@@ -6168,13 +6180,13 @@ function Wr() {
 			requestCount: 0,
 			startedAt: null,
 			lastError: t
-		}), Hr(), Vr(n);
+		}), Vr(), Br(n);
 	}, Fr));
 }
-function Gr(e) {
+function Wr(e) {
 	return e._engineWorkerPreparedId || (e._engineWorkerPreparedId = `prepared-${++Rr}`), e._engineWorkerPreparedId;
 }
-function Kr(e) {
+function Gr(e) {
 	return e._engineWorkerBackup || (e._engineWorkerBackup = {
 		adjPtr: e.adjPtr.slice(),
 		adjTo: e.adjTo.slice(),
@@ -6184,11 +6196,11 @@ function Kr(e) {
 		revAdjCost: e.revAdjCost.slice()
 	}), e._engineWorkerBackup;
 }
-function qr(e) {
+function Kr(e) {
 	return ArrayBuffer.isView(e) && e.buffer.byteLength === 0;
 }
-function Jr(e) {
-	if (!e._coordsX || !e._coordsY || qr(e._coordsX) || qr(e._coordsY)) {
+function qr(e) {
+	if (!e._coordsX || !e._coordsY || Kr(e._coordsX) || Kr(e._coordsY)) {
 		let t = new Float32Array(e.N), n = new Float32Array(e.N);
 		for (let r = 0; r < e.N; r += 1) {
 			let i = e.coordsArr[r];
@@ -6197,10 +6209,10 @@ function Jr(e) {
 		e._coordsX = t, e._coordsY = n;
 	}
 }
-function Yr(e) {
+function Jr(e) {
 	return e.transferToWorker && e.reclaimFromWorker ? e : (e.transferToWorker = function({ preserveMainThread: e = !0 } = {}) {
-		return Jr(this), e && Kr(this), {
-			preparedId: Gr(this),
+		return qr(this), e && Gr(this), {
+			preparedId: Wr(this),
 			adjPtr: this.adjPtr,
 			adjTo: this.adjTo,
 			adjCost: this.adjCost,
@@ -6217,16 +6229,16 @@ function Yr(e) {
 		if (this._engineWorkerBackup) {
 			let e = this._engineWorkerBackup;
 			this.adjPtr = e.adjPtr, this.adjTo = e.adjTo, this.adjCost = e.adjCost, this.revAdjPtr = e.revAdjPtr, this.revAdjFrom = e.revAdjFrom, this.revAdjCost = e.revAdjCost, this._engineWorkerBackup = null;
-		} else if (qr(this.adjPtr) || qr(this.adjTo) || qr(this.adjCost) || qr(this.revAdjPtr) || qr(this.revAdjFrom) || qr(this.revAdjCost)) throw Error("Prepared graph was transferred without a main-thread backup and cannot be reclaimed.");
-		Jr(this);
+		} else if (Kr(this.adjPtr) || Kr(this.adjTo) || Kr(this.adjCost) || Kr(this.revAdjPtr) || Kr(this.revAdjFrom) || Kr(this.revAdjCost)) throw Error("Prepared graph was transferred without a main-thread backup and cannot be reclaimed.");
+		qr(this);
 	}, e);
 }
-function Xr(e) {
-	return Yr(e), e.transferToWorker({ preserveMainThread: !0 });
+function Yr(e) {
+	return Jr(e), e.transferToWorker({ preserveMainThread: !0 });
 }
-function Zr(e) {
-	return Yr(e), Jr(e), {
-		preparedId: Gr(e),
+function Xr(e) {
+	return Jr(e), qr(e), {
+		preparedId: Wr(e),
 		adjPtr: e.adjPtr.slice(),
 		adjTo: e.adjTo.slice(),
 		adjCost: e.adjCost.slice(),
@@ -6242,7 +6254,7 @@ function Zr(e) {
 		coordsAreGeographic: e.coordsAreGeographic
 	};
 }
-function Qr(e) {
+function Zr(e) {
 	return [
 		e.adjPtr.buffer,
 		e.adjTo.buffer,
@@ -6254,7 +6266,7 @@ function Qr(e) {
 		e.coordsY.buffer
 	];
 }
-async function $r(e, t, n, r, i, { forceSerialRouting: a = !1, parallelPolicy: o = null } = {}) {
+async function Qr(e, t, n, r, i, { forceSerialRouting: a = !1, parallelPolicy: o = null } = {}) {
 	switch (r?.reclaimFromWorker && r.reclaimFromWorker(), e) {
 		case "bidirectional-astar": return B.log(() => `bidirectional A* (E=${r.E}, beeline=${i.toFixed(0)} m)`), zn(t, n, r);
 		case "adaptive-barrier": return B.log(() => `adaptive barrier SSP (E=${r.E}, beeline=${i.toFixed(0)} m)`), Jn(t, n, r, {
@@ -6270,7 +6282,7 @@ async function $r(e, t, n, r, i, { forceSerialRouting: a = !1, parallelPolicy: o
 		default: return B.warn(`unknown selectedEngine: ${e}, falling back to ultra-dijkstra`), cr(t, n, r);
 	}
 }
-async function ei(e = null) {
+async function $r(e = null) {
 	if (typeof Worker > "u") return null;
 	let t = Number.isFinite(Number(e)) && Number(e) > 0 ? Math.min(Math.max(1, Math.floor(Number(e))), Tr) : Er;
 	if (Dr && Or >= t) return Dr;
@@ -6281,7 +6293,7 @@ async function ei(e = null) {
 		Dr = null;
 	}
 	return Or = t, Dr = new ze(dr, {
-		size: Math.min(2, t),
+		size: Math.min(8, t),
 		maxSize: t,
 		lazy: !0,
 		autoScale: {
@@ -6299,9 +6311,9 @@ async function ei(e = null) {
 		idleTimeout: 3e4
 	}), Dr;
 }
-async function ti(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = null } = {}) {
-	let o = Wr();
-	if (!o) throw Ur("engine worker is unavailable", U.ENGINE_WORKER_UNAVAILABLE);
+async function ei(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = null } = {}) {
+	let o = Ur();
+	if (!o) throw Hr("engine worker is unavailable", U.ENGINE_WORKER_UNAVAILABLE);
 	let s = ++Ir, c = Date.now();
 	return await new Promise((l, u) => {
 		W.set(s, {
@@ -6310,7 +6322,7 @@ async function ti(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = 
 			reject: u,
 			engineId: e,
 			startedAt: c
-		}), Br({
+		}), K({
 			state: V.RUNNING,
 			running: !0,
 			engineId: e,
@@ -6319,13 +6331,13 @@ async function ti(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = 
 			startedAt: c,
 			lastError: null
 		});
-		let d = Gr(r);
+		let d = Wr(r);
 		if (Lr !== d) {
-			let e = Xr(r);
+			let e = Yr(r);
 			o.postMessage({
 				type: "prepare",
 				prepared: e
-			}, Qr(e)), Lr = d;
+			}, Zr(e)), Lr = d;
 		}
 		o.postMessage({
 			type: "run",
@@ -6339,10 +6351,10 @@ async function ti(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = 
 		});
 	});
 }
-async function ni(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = null, engineWorkerPoolSize: o = null } = {}) {
-	let s = await ei(o);
-	if (!s) throw Ur("engine worker pool is unavailable", U.ENGINE_WORKER_UNAVAILABLE);
-	let c = `request-${++Ir}`, l = Zr(r), u = Qr(l), d = await s.postMessage({
+async function ti(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = null, engineWorkerPoolSize: o = null } = {}) {
+	let s = await $r(o);
+	if (!s) throw Hr("engine worker pool is unavailable", U.ENGINE_WORKER_UNAVAILABLE);
+	let c = `request-${++Ir}`, l = Xr(r), u = Zr(l), d = await s.postMessage({
 		type: "prepareAndRun",
 		requestId: c,
 		engineId: e,
@@ -6355,24 +6367,24 @@ async function ni(e, t, n, r, { forceSerialRouting: i = !1, parallelPolicy: a = 
 		awaitResponse: !0,
 		zeroCopy: !0
 	});
-	if (!d || d.ok !== !0) throw Ur(`engine worker pool failed: ${d?.error?.message ?? "unknown error"}`, U.ENGINE_WORKER_FAILED);
+	if (!d || d.ok !== !0) throw Hr(`engine worker pool failed: ${d?.error?.message ?? "unknown error"}`, U.ENGINE_WORKER_FAILED);
 	return d.result;
 }
-function ri() {
+function ni() {
 	return { ...G };
 }
-function ii(e) {
+function ri(e) {
 	return typeof e == "function" ? (zr.add(e), e({ ...G }), () => {
 		zr.delete(e);
 	}) : () => {};
 }
-function ai(e = "cancelled") {
-	return W.size === 0 ? !1 : (Br({
+function ii(e = "cancelled") {
+	return W.size === 0 ? !1 : (K({
 		state: V.CANCELLING,
 		running: !0,
 		lastError: e,
 		requestCount: W.size
-	}), Hr(), Vr(Ur(`routing cancelled: ${e}`, U.ENGINE_CANCELLED)), Br({
+	}), Vr(), Br(Hr(`routing cancelled: ${e}`, U.ENGINE_CANCELLED)), K({
 		state: V.IDLE,
 		running: !1,
 		engineId: null,
@@ -6382,20 +6394,20 @@ function ai(e = "cancelled") {
 		lastError: e
 	}), !0);
 }
-function oi() {
+function ai() {
 	if (Dr) try {
 		Dr.shutdown();
 	} finally {
 		Dr = null, Or = 0;
 	}
 }
-function si(e = "shutdown") {
-	W.size > 0 && (Br({
+function oi(e = "shutdown") {
+	W.size > 0 && (K({
 		state: V.CANCELLING,
 		running: !0,
 		lastError: e,
 		requestCount: W.size
-	}), Vr(Ur(`engine shutdown: ${e}`, U.ENGINE_SHUTDOWN))), Hr(), oi(), Br({
+	}), Br(Hr(`engine shutdown: ${e}`, U.ENGINE_SHUTDOWN))), Vr(), ai(), K({
 		state: V.IDLE,
 		running: !1,
 		engineId: null,
@@ -6405,7 +6417,7 @@ function si(e = "shutdown") {
 		lastError: null
 	});
 }
-function ci(e, t, n, r) {
+function si(e, t, n, r) {
 	return [
 		Sr,
 		e.N,
@@ -6417,18 +6429,18 @@ function ci(e, t, n, r) {
 		r
 	].join(":");
 }
-function li(e, t = {}) {
+function ci(e, t = {}) {
 	if (!jr(e)) return "none";
 	let { intersectionPenaltySec: n } = dt(t);
 	return `i${n}`;
 }
-function ui(e, t) {
+function li(e, t) {
 	return Math.max(1, Math.max(Math.abs(e), Math.abs(t)) * .02);
 }
-function di(e, t) {
-	return !Number.isFinite(e) || !Number.isFinite(t) ? !0 : Math.abs(e - t) > ui(e, t);
+function ui(e, t) {
+	return !Number.isFinite(e) || !Number.isFinite(t) ? !0 : Math.abs(e - t) > li(e, t);
 }
-function fi(e, t) {
+function di(e, t) {
 	if (!Array.isArray(e) || e.length === 0) return null;
 	let { adjPtr: n, adjTo: r, adjCost: i, adjCostMap: a } = t, o = 0, s = e.length;
 	for (let t = 1; t < s; t++) {
@@ -6453,7 +6465,7 @@ function fi(e, t) {
 	}
 	return o / vr;
 }
-function pi(e, t, n = null) {
+function fi(e, t, n = null) {
 	if (!e?.found) return {
 		valid: !!e,
 		actualCost: e?.cost ?? null,
@@ -6468,8 +6480,8 @@ function pi(e, t, n = null) {
 			reason: H.ENDPOINT_MISMATCH
 		};
 	}
-	let i = fi(r, t);
-	return Number.isFinite(i) ? di(i, e.cost) ? {
+	let i = di(r, t);
+	return Number.isFinite(i) ? ui(i, e.cost) ? {
 		valid: !1,
 		actualCost: i,
 		reason: H.COST_MISMATCH
@@ -6483,7 +6495,7 @@ function pi(e, t, n = null) {
 		reason: H.INVALID_PATH
 	};
 }
-function mi(e, t = "distance", n = {}) {
+function pi(e, t = "distance", n = {}) {
 	let { nodes: r, edges: i } = e, a = r.size, o = dt(n), s = jr(t) && o.intersectionPenaltySec > 0, c = null;
 	if (s) {
 		let e = new Int32Array(a);
@@ -6563,12 +6575,12 @@ function mi(e, t = "distance", n = {}) {
 		coordsArr: te,
 		costField: t,
 		penalties: o,
-		penaltyKey: li(t, o),
+		penaltyKey: ci(t, o),
 		distScale: vr,
 		coordsAreGeographic: e.coordsAreGeographic === !0
 	};
 }
-async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphCategory: a = "", costField: o = n.costField ?? "distance", useCache: s = !0, allowFallback: c = !0, forceSerialRouting: l = !1, useWorkerPool: u = !1, engineWorkerPoolSize: d = null, engineWorkerMaxPoolSize: f = null } = {}) {
+async function mi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphCategory: a = "", costField: o = n.costField ?? "distance", useCache: s = !0, allowFallback: c = !0, forceSerialRouting: l = !1, useWorkerPool: u = !1, engineWorkerPoolSize: d = null, engineWorkerMaxPoolSize: f = null } = {}) {
 	if (!Number.isInteger(e) || e < 0) throw Error("Invalid startId: expected a non-negative integer.");
 	if (!Number.isInteger(t) || t < 0) throw Error("Invalid endId: expected a non-negative integer.");
 	if (!n || typeof n != "object" || !Array.isArray(n.coordsArr) || !ArrayBuffer.isView(n.adjPtr)) throw Error("Invalid prepared graph object: expected result of buildCH().");
@@ -6578,7 +6590,7 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 	})));
 	let p = n.coordsArr[e], m = n.coordsArr[t], h = E(p, m), g = yr, _ = i === "auto" ? En(n.metrics) : i, v = kr(_, "bidirectional-astar"), y = !!l, x = null;
 	y || (x = Tn(v, g), y = !x);
-	let S = ci(n, e, t, v);
+	let S = si(n, e, t, v);
 	if (s) {
 		let r = n._routeCache.get(S);
 		if (r) {
@@ -6591,7 +6603,7 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 					cost: Number.isFinite(t.cost) ? t.cost : Infinity
 				};
 			}
-			let i = pi(r, n, {
+			let i = fi(r, n, {
 				startId: e,
 				endId: t
 			});
@@ -6609,24 +6621,24 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 	}
 	r === "gpu" && B.warn("forceEngine=\"gpu\" requested, but GPU routing has been removed; using CPU routing");
 	let C, w = null;
-	if (typeof Worker > "u" || !u) if (typeof Worker > "u") C = await $r(v, e, t, n, h, {
+	if (typeof Worker > "u" || !u) if (typeof Worker > "u") C = await Qr(v, e, t, n, h, {
 		forceSerialRouting: y,
 		parallelPolicy: x
 	});
 	else try {
-		C = await ti(v, e, t, n, {
+		C = await ei(v, e, t, n, {
 			forceSerialRouting: y,
 			parallelPolicy: x
 		});
 	} catch (r) {
 		if (r?.code === U.ENGINE_CANCELLED || r?.code === U.ENGINE_WORKER_BUSY) throw r;
-		B.warn(`engine worker unavailable (${r?.code ?? "unknown_error"}), falling back to main thread execution`), C = await $r(v, e, t, n, h, {
+		B.warn(`engine worker unavailable (${r?.code ?? "unknown_error"}), falling back to main thread execution`), C = await Qr(v, e, t, n, h, {
 			forceSerialRouting: y,
 			parallelPolicy: x
 		});
 	}
 	else try {
-		C = await ni(v, e, t, n, {
+		C = await ti(v, e, t, n, {
 			forceSerialRouting: y,
 			parallelPolicy: x,
 			engineWorkerPoolSize: d
@@ -6635,12 +6647,12 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 		if (r?.code === U.ENGINE_CANCELLED) throw r;
 		B.warn(`engine worker pool unavailable (${r?.code ?? "unknown_error"}), falling back to route worker singleton or main thread`);
 		try {
-			C = await ti(v, e, t, n, {
+			C = await ei(v, e, t, n, {
 				forceSerialRouting: y,
 				parallelPolicy: x
 			});
 		} catch {
-			C = await $r(v, e, t, n, h, {
+			C = await Qr(v, e, t, n, h, {
 				forceSerialRouting: y,
 				parallelPolicy: x
 			});
@@ -6650,7 +6662,7 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 		...C,
 		engine: kr(C?.engine, _)
 	};
-	let T = pi(C, n, {
+	let T = fi(C, n, {
 		startId: e,
 		endId: t
 	});
@@ -6662,14 +6674,14 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 			detail: T.reason
 		};
 		try {
-			C = await ti("bidirectional-astar", e, t, n, { forceSerialRouting: y });
+			C = await ei("bidirectional-astar", e, t, n, { forceSerialRouting: y });
 		} catch {
 			C = zn(e, t, n);
 		}
 		C = {
 			...C,
 			engine: "bidirectional-astar"
-		}, T = pi(C, n, {
+		}, T = fi(C, n, {
 			startId: e,
 			endId: t
 		}), T.valid || (B.warn("bidirectional A* fallback also returned an invalid route; returning no_path"), C = {
@@ -6690,7 +6702,7 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 			detail: null
 		};
 		try {
-			C = await ti("bidirectional-astar", e, t, n, { forceSerialRouting: y });
+			C = await ei("bidirectional-astar", e, t, n, { forceSerialRouting: y });
 		} catch {
 			C = zn(e, t, n);
 		}
@@ -6710,7 +6722,7 @@ async function hi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphC
 		_routeValidated: !0
 	}), C;
 }
-async function gi(e, t, n, r = {}) {
+async function hi(e, t, n, r = {}) {
 	if (!n || typeof n != "object" || !(n.nodes instanceof Map) || !Array.isArray(n.edges)) throw Error("Invalid graph: expected object with nodes Map and edges array.");
 	let { costField: i = "distance", penalties: a = {}, snapDistancesM: o, graphCategory: s = "", maxAcceptableSnapDistanceM: c = 60, engineId: l = "auto", engineWorkerPoolSize: u = null, engineWorkerMaxPoolSize: d = null } = r, f = ot(i);
 	st(l);
@@ -6774,7 +6786,7 @@ async function gi(e, t, n, r = {}) {
 	}
 	let ne = Pr(v, i, p, h, g);
 	B.log("dispatching route query...");
-	let j = await hi(h, g, ne, {
+	let j = await mi(h, g, ne, {
 		engineId: l,
 		graphCategory: s,
 		costField: i,
@@ -6786,7 +6798,7 @@ async function gi(e, t, n, r = {}) {
 		if ((j.reason === H.NO_PATH || j.reason === H.INCOMPLETE_PATH) && (e || t)) {
 			let n = v, r = h, a = g;
 			if (e && (n = nn(n, C), r = n._lastAddedNodeId ?? n.nodes.size - 1), t && (n = nn(n, w), a = n._lastAddedNodeId ?? n.nodes.size - 1), n !== v) {
-				let e = Pr(n, i, p, r, a), t = await hi(r, a, e, {
+				let e = Pr(n, i, p, r, a), t = await mi(r, a, e, {
 					graphCategory: s,
 					costField: i
 				});
@@ -6804,7 +6816,7 @@ async function gi(e, t, n, r = {}) {
 			}
 		}
 		if ((T || D) && (j.reason === H.NO_PATH || j.reason === H.INCOMPLETE_PATH)) {
-			let e = await hi(k, A, Pr(O, i, p, k, A), {
+			let e = await mi(k, A, Pr(O, i, p, k, A), {
 				graphCategory: s,
 				costField: i
 			});
@@ -6862,7 +6874,7 @@ async function gi(e, t, n, r = {}) {
 		endSnapDistanceM: b
 	};
 }
-var _i = {
+var gi = {
 	en: {
 		title: "Route Planner",
 		tabs: {
@@ -7504,7 +7516,7 @@ var _i = {
 			routeErrorPrefix: "路由错误 —"
 		}
 	}
-}, vi = {
+}, _i = {
 	"en-us": "en",
 	"en-gb": "en",
 	"es-es": "es",
@@ -7521,19 +7533,19 @@ var _i = {
 	"zh-tw": "zh",
 	"zh-hk": "zh"
 };
-function yi(e) {
+function vi(e) {
 	if (!e || typeof e != "string") return "en";
 	let t = e.trim().toLowerCase();
-	if (vi[t]) return vi[t];
+	if (_i[t]) return _i[t];
 	let n = t.split(/[-_]/)[0];
-	return _i[n] ? n : "en";
+	return gi[n] ? n : "en";
 }
-function bi(e = "auto") {
-	return e && typeof e == "string" && e.toLowerCase() !== "auto" ? yi(e) : typeof navigator < "u" ? yi(navigator.language || navigator.userLanguage || "") : "en";
+function yi(e = "auto") {
+	return e && typeof e == "string" && e.toLowerCase() !== "auto" ? vi(e) : typeof navigator < "u" ? vi(navigator.language || navigator.userLanguage || "") : "en";
 }
 //#endregion
 //#region node_modules/tinyqueue/index.js
-var xi = class {
+var bi = class {
 	constructor(e = [], t = (e, t) => e < t ? -1 : +(e > t)) {
 		if (this.data = e, this.length = this.data.length, this.compare = t, this.length > 0) for (let e = (this.length >> 1) - 1; e >= 0; e--) this._down(e);
 	}
@@ -7566,11 +7578,11 @@ var xi = class {
 		}
 		t[e] = i;
 	}
-}, Si = 6371, Ci = Math.PI / 180;
-function wi(e, t, n, r = Infinity, i = Infinity, a) {
+}, xi = 6371, Si = Math.PI / 180;
+function Ci(e, t, n, r = Infinity, i = Infinity, a) {
 	let o = 1, s = [];
-	r === void 0 && (r = Infinity), i !== void 0 && (o = Di(i / Si));
-	let c = new xi([], Ei), l = {
+	r === void 0 && (r = Infinity), i !== void 0 && (o = Ei(i / xi));
+	let c = new bi([], Ti), l = {
 		left: 0,
 		right: e.ids.length - 1,
 		axis: 0,
@@ -7579,13 +7591,13 @@ function wi(e, t, n, r = Infinity, i = Infinity, a) {
 		minLat: -90,
 		maxLng: 180,
 		maxLat: 90
-	}, u = Math.cos(n * Ci);
+	}, u = Math.cos(n * Si);
 	for (; l;) {
 		let i = l.right, d = l.left;
 		if (i - d <= e.nodeSize) for (let r = d; r <= i; r++) {
 			let i = e.ids[r];
 			if (!a || a(i)) {
-				let a = ki(t, n, e.coords[2 * r], e.coords[2 * r + 1], u);
+				let a = Oi(t, n, e.coords[2 * r], e.coords[2 * r + 1], u);
 				c.push({
 					id: i,
 					dist: a
@@ -7595,7 +7607,7 @@ function wi(e, t, n, r = Infinity, i = Infinity, a) {
 		else {
 			let r = d + i >> 1, o = e.coords[2 * r], s = e.coords[2 * r + 1], f = e.ids[r];
 			if (!a || a(f)) {
-				let e = ki(t, n, o, s, u);
+				let e = Oi(t, n, o, s, u);
 				c.push({
 					id: f,
 					dist: e
@@ -7620,7 +7632,7 @@ function wi(e, t, n, r = Infinity, i = Infinity, a) {
 				maxLat: l.maxLat,
 				dist: 0
 			};
-			m.dist = Ti(t, n, u, m), h.dist = Ti(t, n, u, h), c.push(m), c.push(h);
+			m.dist = wi(t, n, u, m), h.dist = wi(t, n, u, h), c.push(m), c.push(h);
 		}
 		let f;
 		for (; (f = c.pop()) && "id" in f;) if (f.dist > o || (s.push(f.id), s.length === r)) return s;
@@ -7628,32 +7640,32 @@ function wi(e, t, n, r = Infinity, i = Infinity, a) {
 	}
 	return s;
 }
-function Ti(e, t, n, r) {
+function wi(e, t, n, r) {
 	let i = r.minLng, a = r.maxLng, o = r.minLat, s = r.maxLat;
-	if (e >= i && e <= a) return t < o ? Di((t - o) * Ci) : t > s ? Di((t - s) * Ci) : 0;
-	let c = Math.min(Di((e - i) * Ci), Di((e - a) * Ci)), l = Ai(t, c);
-	return l > o && l < s ? Oi(c, n, t, l) : Math.min(Oi(c, n, t, o), Oi(c, n, t, s));
+	if (e >= i && e <= a) return t < o ? Ei((t - o) * Si) : t > s ? Ei((t - s) * Si) : 0;
+	let c = Math.min(Ei((e - i) * Si), Ei((e - a) * Si)), l = ki(t, c);
+	return l > o && l < s ? Di(c, n, t, l) : Math.min(Di(c, n, t, o), Di(c, n, t, s));
 }
-function Ei(e, t) {
+function Ti(e, t) {
 	return e.dist - t.dist;
 }
-function Di(e) {
+function Ei(e) {
 	let t = Math.sin(e / 2);
 	return t * t;
 }
-function Oi(e, t, n, r) {
-	return t * Math.cos(r * Ci) * e + Di((n - r) * Ci);
+function Di(e, t, n, r) {
+	return t * Math.cos(r * Si) * e + Ei((n - r) * Si);
 }
-function ki(e, t, n, r, i) {
-	return Oi(Di((e - n) * Ci), i, t, r);
+function Oi(e, t, n, r, i) {
+	return Di(Ei((e - n) * Si), i, t, r);
 }
-function Ai(e, t) {
+function ki(e, t) {
 	let n = 1 - 2 * t;
-	return n <= 0 ? e > 0 ? 90 : -90 : Math.atan(Math.tan(e * Ci) / n) / Ci;
+	return n <= 0 ? e > 0 ? 90 : -90 : Math.atan(Math.tan(e * Si) / n) / Si;
 }
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/coordinateLookup.js
-function ji(e) {
+function Ai(e) {
 	if (!e._geoJsonFlag) throw Error("Cannot use Coordinate Lookup on a non-GeoJson network.");
 	let t = /* @__PURE__ */ new Set();
 	Object.keys(e._nodeToIndexLookup).forEach((e) => {
@@ -7666,13 +7678,13 @@ function ji(e) {
 	for (let e of n) this.index.add(e[0], e[1]);
 	this.index.finish();
 }
-ji.prototype.getClosestNetworkPt = function(e, t) {
-	let n = wi(this.index, e, t, 1)[0];
+Ai.prototype.getClosestNetworkPt = function(e, t) {
+	let n = Ci(this.index, e, t, 1)[0];
 	return this.coordinate_list[n];
 };
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/buildOutputs.js
-function Mi(e, t, n, r) {
+function ji(e, t, n, r) {
 	if (e.length === 0) return [n[r]];
 	let i = [], a = r;
 	i.push(n[a]);
@@ -7682,7 +7694,7 @@ function Mi(e, t, n, r) {
 	}
 	return i;
 }
-function Ni(e, t, n, r, i, a, o, s) {
+function Mi(e, t, n, r, i, a, o, s) {
 	let c = [], l = [a], u = r[a], d = i[a];
 	if (u) for (; u.attrs != null;) c.push({
 		id: u.attrs,
@@ -7696,7 +7708,7 @@ function Ni(e, t, n, r, i, a, o, s) {
 		let n = e.direction === "f" ? t[e.id]._start_index : t[e.id]._end_index, r = e.direction === "f" ? t[e.id]._end_index : t[e.id]._start_index, i = [...t[e.id]._ordered];
 		return f === n ? f = r : (i.reverse(), f = n), i;
 	}), m = [].concat(...p), h = m.map((e) => t[e]._id), g, _, v, y;
-	return e.nodes && (y = Mi(m, t, o, s)), (e.properties || e.path) && (_ = m.map((e) => {
+	return e.nodes && (y = ji(m, t, o, s)), (e.properties || e.path) && (_ = m.map((e) => {
 		let { _start_index: n, _end_index: r, _ordered: i, ...a } = t[e];
 		return a;
 	})), e.path && (v = {
@@ -7718,15 +7730,15 @@ function Ni(e, t, n, r, i, a, o, s) {
 }
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/queue.js
-function Pi(e) {
-	if (!(this instanceof Pi)) return new Pi(e);
+function Ni(e) {
+	if (!(this instanceof Ni)) return new Ni(e);
 	if (e = e || {}, !e.compare) throw Error("Please supply a comparison function to NodeHeap");
 	if (this.data = [], this.length = this.data.length, this.compare = e.compare, this.setNodeId = function(e, t) {
 		e.heapIndex = t;
 	}, this.length > 0) for (var t = this.length >> 1; t >= 0; t--) this._down(t);
 	if (e.setNodeId) for (var t = 0; t < this.length; ++t) this.setNodeId(this.data[t], t);
 }
-Pi.prototype = {
+Ni.prototype = {
 	push: function(e) {
 		this.data.push(e), this.setNodeId(e, this.length), this.length++, this._up(this.length - 1);
 	},
@@ -7761,7 +7773,7 @@ Pi.prototype = {
 };
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/pathfinding.js
-var Fi = function(e) {
+var Pi = function(e) {
 	let t = this.adjacency_list, n = this.reverse_adjacency_list, r = this._edgeProperties, i = this._edgeGeometry, a = this._createNodePool(), o = this._nodeToIndexLookup, s = this._indexToNodeLookup;
 	return e || (e = {}), { queryContractionHierarchy: c };
 	function c(c, l) {
@@ -7782,7 +7794,7 @@ var Fi = function(e) {
 		while (m[S.value.id] < w || h[C.value.id] < w);
 		else w = 0;
 		let E = { total_cost: w === Infinity ? 0 : w }, D;
-		if (e.ids || e.path || e.nodes || e.properties) if (T != null) D = Ni(e, r, i, f, p, T, s, u);
+		if (e.ids || e.path || e.nodes || e.properties) if (T != null) D = Mi(e, r, i, f, p, T, s, u);
 		else {
 			let t, n, r, i;
 			e.ids && (t = []), e.path && (n = {}), e.properties && (r = []), e.nodes && (i = []), D = {
@@ -7794,7 +7806,7 @@ var Fi = function(e) {
 		}
 		return Object.assign(E, { ...D });
 		function* O(e, t, n, r, i, o) {
-			var s = new Pi({ compare(e, t) {
+			var s = new Ni({ compare(e, t) {
 				return e.dist - t.dist;
 			} });
 			do {
@@ -7815,22 +7827,22 @@ var Fi = function(e) {
 			} while (!0);
 		}
 	}
-}, Ii;
+}, Fi;
 try {
-	Ii = Map;
+	Fi = Map;
 } catch {}
-var Li;
+var Ii;
 try {
-	Li = Set;
+	Ii = Set;
 } catch {}
-function Ri(e, t, n) {
+function Li(e, t, n) {
 	if (!e || typeof e != "object" || typeof e == "function") return e;
 	if (e.nodeType && "cloneNode" in e) return e.cloneNode(!0);
 	if (e instanceof Date) return new Date(e.getTime());
 	if (e instanceof RegExp) return new RegExp(e);
-	if (Array.isArray(e)) return e.map(zi);
-	if (Ii && e instanceof Ii) return new Map(Array.from(e.entries()));
-	if (Li && e instanceof Li) return new Set(Array.from(e.values()));
+	if (Array.isArray(e)) return e.map(Ri);
+	if (Fi && e instanceof Fi) return new Map(Array.from(e.entries()));
+	if (Ii && e instanceof Ii) return new Set(Array.from(e.values()));
 	if (e instanceof Object) {
 		t.push(e);
 		var r = Object.create(e);
@@ -7838,22 +7850,22 @@ function Ri(e, t, n) {
 			var a = t.findIndex(function(t) {
 				return t === e[i];
 			});
-			r[i] = a > -1 ? n[a] : Ri(e[i], t, n);
+			r[i] = a > -1 ? n[a] : Li(e[i], t, n);
 		}
 		return r;
 	}
 	return e;
 }
-function zi(e) {
-	return Ri(e, [], []);
+function Ri(e) {
+	return Li(e, [], []);
 }
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/geojson.js
-var Bi = function(e) {
+var zi = function(e) {
 	if (this._locked) throw Error("Cannot add GeoJSON to a contracted network");
 	if (this._geoJsonFlag) throw Error("Cannot load more than one GeoJSON file.");
 	if (this._manualAdd) throw Error("Cannot load GeoJSON file after adding Edges manually via the API.");
-	let t = zi(e);
+	let t = Ri(e);
 	this._cleanseGeoJsonNetwork(t).forEach((e, t) => {
 		let n = e.geometry.coordinates, r = e.properties;
 		if (!r || !n || !r._cost) {
@@ -7861,9 +7873,9 @@ var Bi = function(e) {
 			return;
 		}
 		let i = n[0], a = n[n.length - 1];
-		this._addEdge(i, a, r, zi(n)), this._addEdge(a, i, r, zi(n).reverse());
+		this._addEdge(i, a, r, Ri(n)), this._addEdge(a, i, r, Ri(n).reverse());
 	}), this._geoJsonFlag = !0;
-}, Vi = function(e) {
+}, Bi = function(e) {
 	let t = {}, n = e.features;
 	return n.forEach((e) => {
 		let n = e.geometry.coordinates[0].join(","), r = e.geometry.coordinates[e.geometry.coordinates.length - 1].join(","), i = `${n}|${r}`, a = `${r}|${n}`;
@@ -7879,11 +7891,11 @@ var Bi = function(e) {
 			e.properties._cost < n ? (t[a].properties.__markDelete = !0, t[a] = e) : e.properties.__markDelete = !0;
 		}
 	}), n.filter((e) => !e.properties.__markDelete);
-}, Hi = function(e, t, n, r, i) {
+}, Vi = function(e, t, n, r, i) {
 	if (this._locked) throw Error("Graph has been contracted.  No additional edges can be added.");
 	if (this._geoJsonFlag) throw Error("Can not add additional edges manually to a GeoJSON network.");
 	this._manualAdd = !0, this._addEdge(e, t, n, r, i);
-}, Ui = function(e, t, n, r, i) {
+}, Hi = function(e, t, n, r, i) {
 	let a = String(e), o = String(t);
 	if (a === o) {
 		this.debugMode && console.log("Start and End Nodes are the same.  Ignoring.");
@@ -7904,7 +7916,7 @@ var Bi = function(e) {
 		attrs: this._currentEdgeIndex
 	};
 	this.reverse_adjacency_list[c] ? this.reverse_adjacency_list[c].push(u) : this.reverse_adjacency_list[c] = [u], i && (this.adjacency_list[c] ? this.adjacency_list[c].push(u) : this.adjacency_list[c] = [u], this.reverse_adjacency_list[s] ? this.reverse_adjacency_list[s].push(l) : this.reverse_adjacency_list[s] = [l]);
-}, Wi = function(e, t, n) {
+}, Ui = function(e, t, n) {
 	this._currentEdgeIndex++, this._edgeProperties[this._currentEdgeIndex] = n, this._edgeProperties[this._currentEdgeIndex]._start_index = e, this._edgeProperties[this._currentEdgeIndex]._end_index = t;
 	let r = {
 		end: t,
@@ -7918,9 +7930,9 @@ var Bi = function(e) {
 		attrs: this._currentEdgeIndex
 	};
 	this.reverse_adjacency_list[t] ? this.reverse_adjacency_list[t].push(i) : this.reverse_adjacency_list[t] = [i];
-}, K = {};
-K.read = function(e, t) {
-	return e.readFields(K._readField, {
+}, q = {};
+q.read = function(e, t) {
+	return e.readFields(q._readField, {
 		_locked: !1,
 		_geoJsonFlag: !1,
 		adjacency_list: [],
@@ -7929,65 +7941,65 @@ K.read = function(e, t) {
 		_edgeProperties: [],
 		_edgeGeometry: []
 	}, t);
-}, K._readField = function(e, t, n) {
+}, q._readField = function(e, t, n) {
 	if (e === 1) t._locked = n.readBoolean();
 	else if (e === 2) t._geoJsonFlag = n.readBoolean();
-	else if (e === 3) t.adjacency_list.push(K.AdjList.read(n, n.readVarint() + n.pos));
-	else if (e === 4) t.reverse_adjacency_list.push(K.AdjList.read(n, n.readVarint() + n.pos));
+	else if (e === 3) t.adjacency_list.push(q.AdjList.read(n, n.readVarint() + n.pos));
+	else if (e === 4) t.reverse_adjacency_list.push(q.AdjList.read(n, n.readVarint() + n.pos));
 	else if (e === 5) {
-		var r = K._FieldEntry5.read(n, n.readVarint() + n.pos);
+		var r = q._FieldEntry5.read(n, n.readVarint() + n.pos);
 		t._nodeToIndexLookup[r.key] = r.value;
-	} else e === 6 ? t._edgeProperties.push(n.readString()) : e === 7 && t._edgeGeometry.push(K.GeometryArray.read(n, n.readVarint() + n.pos));
-}, K.write = function(e, t) {
-	if (e._locked && t.writeBooleanField(1, e._locked), e._geoJsonFlag && t.writeBooleanField(2, e._geoJsonFlag), e.adjacency_list) for (var n = 0; n < e.adjacency_list.length; n++) t.writeMessage(3, K.AdjList.write, e.adjacency_list[n]);
-	if (e.reverse_adjacency_list) for (n = 0; n < e.reverse_adjacency_list.length; n++) t.writeMessage(4, K.AdjList.write, e.reverse_adjacency_list[n]);
-	if (e._nodeToIndexLookup) for (n in e._nodeToIndexLookup) Object.prototype.hasOwnProperty.call(e._nodeToIndexLookup, n) && t.writeMessage(5, K._FieldEntry5.write, {
+	} else e === 6 ? t._edgeProperties.push(n.readString()) : e === 7 && t._edgeGeometry.push(q.GeometryArray.read(n, n.readVarint() + n.pos));
+}, q.write = function(e, t) {
+	if (e._locked && t.writeBooleanField(1, e._locked), e._geoJsonFlag && t.writeBooleanField(2, e._geoJsonFlag), e.adjacency_list) for (var n = 0; n < e.adjacency_list.length; n++) t.writeMessage(3, q.AdjList.write, e.adjacency_list[n]);
+	if (e.reverse_adjacency_list) for (n = 0; n < e.reverse_adjacency_list.length; n++) t.writeMessage(4, q.AdjList.write, e.reverse_adjacency_list[n]);
+	if (e._nodeToIndexLookup) for (n in e._nodeToIndexLookup) Object.prototype.hasOwnProperty.call(e._nodeToIndexLookup, n) && t.writeMessage(5, q._FieldEntry5.write, {
 		key: n,
 		value: e._nodeToIndexLookup[n]
 	});
 	if (e._edgeProperties) for (n = 0; n < e._edgeProperties.length; n++) t.writeStringField(6, e._edgeProperties[n]);
-	if (e._edgeGeometry) for (n = 0; n < e._edgeGeometry.length; n++) t.writeMessage(7, K.GeometryArray.write, e._edgeGeometry[n]);
-}, K.EdgeAttrs = {}, K.EdgeAttrs.read = function(e, t) {
-	return e.readFields(K.EdgeAttrs._readField, {
+	if (e._edgeGeometry) for (n = 0; n < e._edgeGeometry.length; n++) t.writeMessage(7, q.GeometryArray.write, e._edgeGeometry[n]);
+}, q.EdgeAttrs = {}, q.EdgeAttrs.read = function(e, t) {
+	return e.readFields(q.EdgeAttrs._readField, {
 		end: 0,
 		cost: 0,
 		attrs: 0
 	}, t);
-}, K.EdgeAttrs._readField = function(e, t, n) {
+}, q.EdgeAttrs._readField = function(e, t, n) {
 	e === 1 ? t.end = n.readVarint() : e === 2 ? t.cost = n.readDouble() : e === 3 && (t.attrs = n.readVarint());
-}, K.EdgeAttrs.write = function(e, t) {
+}, q.EdgeAttrs.write = function(e, t) {
 	e.end && t.writeVarintField(1, e.end), e.cost && t.writeDoubleField(2, e.cost), e.attrs && t.writeVarintField(3, e.attrs);
-}, K.AdjList = {}, K.AdjList.read = function(e, t) {
-	return e.readFields(K.AdjList._readField, { edges: [] }, t);
-}, K.AdjList._readField = function(e, t, n) {
-	e === 1 && t.edges.push(K.EdgeAttrs.read(n, n.readVarint() + n.pos));
-}, K.AdjList.write = function(e, t) {
-	if (e.edges) for (var n = 0; n < e.edges.length; n++) t.writeMessage(1, K.EdgeAttrs.write, e.edges[n]);
-}, K.LineStringAray = {}, K.LineStringAray.read = function(e, t) {
-	return e.readFields(K.LineStringAray._readField, { coords: [] }, t);
-}, K.LineStringAray._readField = function(e, t, n) {
+}, q.AdjList = {}, q.AdjList.read = function(e, t) {
+	return e.readFields(q.AdjList._readField, { edges: [] }, t);
+}, q.AdjList._readField = function(e, t, n) {
+	e === 1 && t.edges.push(q.EdgeAttrs.read(n, n.readVarint() + n.pos));
+}, q.AdjList.write = function(e, t) {
+	if (e.edges) for (var n = 0; n < e.edges.length; n++) t.writeMessage(1, q.EdgeAttrs.write, e.edges[n]);
+}, q.LineStringAray = {}, q.LineStringAray.read = function(e, t) {
+	return e.readFields(q.LineStringAray._readField, { coords: [] }, t);
+}, q.LineStringAray._readField = function(e, t, n) {
 	e === 1 && n.readPackedDouble(t.coords);
-}, K.LineStringAray.write = function(e, t) {
+}, q.LineStringAray.write = function(e, t) {
 	e.coords && t.writePackedDouble(1, e.coords);
-}, K.GeometryArray = {}, K.GeometryArray.read = function(e, t) {
-	return e.readFields(K.GeometryArray._readField, { linestrings: [] }, t);
-}, K.GeometryArray._readField = function(e, t, n) {
-	e === 1 && t.linestrings.push(K.LineStringAray.read(n, n.readVarint() + n.pos));
-}, K.GeometryArray.write = function(e, t) {
-	if (e.linestrings) for (var n = 0; n < e.linestrings.length; n++) t.writeMessage(1, K.LineStringAray.write, e.linestrings[n]);
-}, K._FieldEntry5 = {}, K._FieldEntry5.read = function(e, t) {
-	return e.readFields(K._FieldEntry5._readField, {
+}, q.GeometryArray = {}, q.GeometryArray.read = function(e, t) {
+	return e.readFields(q.GeometryArray._readField, { linestrings: [] }, t);
+}, q.GeometryArray._readField = function(e, t, n) {
+	e === 1 && t.linestrings.push(q.LineStringAray.read(n, n.readVarint() + n.pos));
+}, q.GeometryArray.write = function(e, t) {
+	if (e.linestrings) for (var n = 0; n < e.linestrings.length; n++) t.writeMessage(1, q.LineStringAray.write, e.linestrings[n]);
+}, q._FieldEntry5 = {}, q._FieldEntry5.read = function(e, t) {
+	return e.readFields(q._FieldEntry5._readField, {
 		key: "",
 		value: 0
 	}, t);
-}, K._FieldEntry5._readField = function(e, t, n) {
+}, q._FieldEntry5._readField = function(e, t, n) {
 	e === 1 ? t.key = n.readString() : e === 2 && (t.value = n.readVarint());
-}, K._FieldEntry5.write = function(e, t) {
+}, q._FieldEntry5.write = function(e, t) {
 	e.key && t.writeStringField(1, e.key), e.value && t.writeVarintField(2, e.value);
 };
 //#endregion
 //#region node_modules/ieee754/index.js
-var Gi = /* @__PURE__ */ o(((e) => {
+var Wi = /* @__PURE__ */ o(((e) => {
 	e.read = function(e, t, n, r, i) {
 		var a, o, s = i * 8 - r - 1, c = (1 << s) - 1, l = c >> 1, u = -7, d = n ? i - 1 : 0, f = n ? -1 : 1, p = e[t + d];
 		for (d += f, a = p & (1 << -u) - 1, p >>= -u, u += s; u > 0; a = a * 256 + e[t + d], d += f, u -= 8);
@@ -8002,9 +8014,9 @@ var Gi = /* @__PURE__ */ o(((e) => {
 		for (o = o << i | s, l += i; l > 0; e[n + p] = o & 255, p += m, o /= 256, l -= 8);
 		e[n + p - m] |= h * 128;
 	};
-})), Ki = /* @__PURE__ */ l((/* @__PURE__ */ o(((e, t) => {
+})), Gi = /* @__PURE__ */ l((/* @__PURE__ */ o(((e, t) => {
 	t.exports = r;
-	var n = Gi();
+	var n = Wi();
 	function r(e) {
 		this.buf = ArrayBuffer.isView && ArrayBuffer.isView(e) ? e : new Uint8Array(e || 0), this.pos = 0, this.type = 0, this.length = this.buf.length;
 	}
@@ -8350,10 +8362,10 @@ var Gi = /* @__PURE__ */ o(((e) => {
 		}
 		return n;
 	}
-})))(), 1), qi = function(e) {
+})))(), 1), Ki = function(e) {
 	let t = typeof e == "object" ? e : JSON.parse(e);
 	this._locked = t._locked, this._geoJsonFlag = t._geoJsonFlag, this.adjacency_list = t.adjacency_list, this.reverse_adjacency_list = t.reverse_adjacency_list, this._nodeToIndexLookup = t._nodeToIndexLookup, this._edgeProperties = t._edgeProperties, this._edgeGeometry = t._edgeGeometry;
-}, Ji = function() {
+}, qi = function() {
 	if (!this._locked) throw Error("No sense in saving network before it is contracted.");
 	return JSON.stringify({
 		_locked: this._locked,
@@ -8364,12 +8376,12 @@ var Gi = /* @__PURE__ */ o(((e) => {
 		_edgeProperties: this._edgeProperties,
 		_edgeGeometry: this._edgeGeometry
 	});
-}, Yi = function(e) {
-	var t = new Ki.default(e), n = K.read(t);
+}, Ji = function(e) {
+	var t = new Gi.default(e), n = q.read(t);
 	n.adjacency_list = n.adjacency_list.map((e) => e.edges), n.reverse_adjacency_list = n.reverse_adjacency_list.map((e) => e.edges), n._edgeGeometry = n._edgeGeometry.map((e) => e.linestrings.map((e) => e.coords)), n._edgeProperties = n._edgeProperties.map((e) => JSON.parse(e)), this._locked = n._locked, this._geoJsonFlag = n._geoJsonFlag, this.adjacency_list = n.adjacency_list, this.reverse_adjacency_list = n.reverse_adjacency_list, this._nodeToIndexLookup = n._nodeToIndexLookup, this._edgeProperties = n._edgeProperties, this._edgeGeometry = n._edgeGeometry, this._indexToNodeLookup = {};
 	for (let [e, t] of Object.entries(this._nodeToIndexLookup)) this._indexToNodeLookup[t] = e;
 	console.log("done loading pbf");
-}, Xi = async function(e) {
+}, Yi = async function(e) {
 	if (!this._locked) throw Error("No sense in saving network before it is contracted.");
 	let t;
 	try {
@@ -8388,17 +8400,17 @@ var Gi = /* @__PURE__ */ o(((e) => {
 		_edgeGeometry: this._edgeGeometry
 	};
 	n.adjacency_list = n.adjacency_list.map((e) => ({ edges: e.map((e) => e) })), n.reverse_adjacency_list = n.reverse_adjacency_list.map((e) => ({ edges: e.map((e) => e) })), n._edgeGeometry = n._edgeGeometry.map((e) => ({ linestrings: e.map((e) => ({ coords: e })) })), n._edgeProperties = n._edgeProperties.map((e) => JSON.stringify(e));
-	var r = new Ki.default();
-	K.write(n, r);
+	var r = new Gi.default();
+	q.write(n, r);
 	var i = r.finish();
 	t.writeFileSync(e, i), console.log(`done saving ${e}`);
 };
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/nodePool.js
-function Zi(e) {
+function Xi(e) {
 	this.id = e.id, this.dist = e.dist === void 0 ? Infinity : e.dist, this.prev = void 0, this.visited = void 0, this.opened = !1, this.heapIndex = -1;
 }
-function Qi() {
+function Zi() {
 	var e = 0, t = [];
 	return {
 		createNewState: r,
@@ -8409,19 +8421,19 @@ function Qi() {
 	}
 	function r(n) {
 		var r = t[e];
-		return r ? (r.id = n.id, r.dist = n.dist === void 0 ? Infinity : n.dist, r.prev = void 0, r.visited = void 0, r.opened = !1, r.heapIndex = -1) : (r = new Zi(n), t[e] = r), e++, r;
+		return r ? (r.id = n.id, r.dist = n.dist === void 0 ? Infinity : n.dist, r.prev = void 0, r.visited = void 0, r.opened = !1, r.heapIndex = -1) : (r = new Xi(n), t[e] = r), e++, r;
 	}
 }
 //#endregion
 //#region node_modules/contraction-hierarchy-js/src/contract.js
-var $i = function() {
+var Qi = function() {
 	if (this._locked) throw Error("Network has already been contracted");
 	this._locked = !0, this._maxUncontractedEdgeIndex = this._currentEdgeIndex;
-	let e = this._createChShortcutter(), t = (t) => this._contract(t, !0, e) - (this.adjacency_list[t] || []).length + n(t), n = (e) => (this.adjacency_list[e] || []).reduce((e, t) => e + (this.contracted_nodes[t.end] == null ? 0 : 1), 0), r = new Pi({ compare(e, t) {
+	let e = this._createChShortcutter(), t = (t) => this._contract(t, !0, e) - (this.adjacency_list[t] || []).length + n(t), n = (e) => (this.adjacency_list[e] || []).reduce((e, t) => e + (this.contracted_nodes[t.end] == null ? 0 : 1), 0), r = new Ni({ compare(e, t) {
 		return e.score - t.score;
 	} });
 	this.contracted_nodes = [], Object.keys(this._nodeToIndexLookup).forEach((e) => {
-		let n = this._nodeToIndexLookup[e], i = new ra(t(n), n);
+		let n = this._nodeToIndexLookup[e], i = new na(t(n), n);
 		r.push(i);
 	});
 	let i = 1, a = r.length;
@@ -8437,7 +8449,7 @@ var $i = function() {
 		this._contract(l.id, !1, e), this.contracted_nodes[l.id] = i, i++;
 	}
 	this._cleanAdjList(this.adjacency_list), this._cleanAdjList(this.reverse_adjacency_list), this._arrangeContractedPaths(this.adjacency_list), this._arrangeContractedPaths(this.reverse_adjacency_list), this.debugMode && console.log("Contraction complete");
-}, ea = function(e) {
+}, $i = function(e) {
 	e.forEach((e, t) => {
 		e.forEach((e) => {
 			let n = t, r = [], i = [];
@@ -8462,7 +8474,7 @@ var $i = function() {
 			this._edgeProperties[e.attrs]._ordered = o;
 		});
 	});
-}, ta = function(e) {
+}, ea = function(e) {
 	e.forEach((t, n) => {
 		let r = this.contracted_nodes[n];
 		r != null && (e[n] = e[n].filter((e) => {
@@ -8470,7 +8482,7 @@ var $i = function() {
 			return t == null ? !0 : r < t;
 		}));
 	});
-}, na = function(e, t, n) {
+}, ta = function(e, t, n) {
 	let r = (this.reverse_adjacency_list[e] || []).filter((e) => !this.contracted_nodes[e.end]), i = (this.adjacency_list[e] || []).filter((e) => !this.contracted_nodes[e.end]), a = 0;
 	return r.forEach((r) => {
 		let o = 0, s = r.cost;
@@ -8495,16 +8507,16 @@ var $i = function() {
 		});
 	}), a;
 };
-function ra(e, t) {
+function na(e, t) {
 	this.score = e, this.id = t;
 }
-var ia = function() {
+var ra = function() {
 	let e = this._createNodePool(), t = this.adjacency_list;
 	return { runDijkstra: n };
 	function n(n, r, i, a) {
 		e.reset();
 		let o = [], s = {};
-		var c = new Pi({ compare(e, t) {
+		var c = new Ni({ compare(e, t) {
 			return e.dist - t.dist;
 		} });
 		let l = e.createNewState({
@@ -8530,14 +8542,14 @@ var ia = function() {
 };
 //#endregion
 //#region node_modules/contraction-hierarchy-js/main.js
-function q(e, t) {
+function J(e, t) {
 	let n = t || {};
-	this.debugMode = n.debugMode || !1, this.adjacency_list = [], this.reverse_adjacency_list = [], this._createNodePool = Qi, this._currentNodeIndex = -1, this._nodeToIndexLookup = {}, this._indexToNodeLookup = {}, this._currentEdgeIndex = -1, this._edgeProperties = [], this._edgeGeometry = [], this._maxUncontractedEdgeIndex = 0, this._locked = !1, this._geoJsonFlag = !1, this._manualAdd = !1, e && (this._loadFromGeoJson(e), this.debugMode && (console.log("Nodes: ", this._currentNodeIndex), console.log("Edges: ", this._currentEdgeIndex)));
+	this.debugMode = n.debugMode || !1, this.adjacency_list = [], this.reverse_adjacency_list = [], this._createNodePool = Zi, this._currentNodeIndex = -1, this._nodeToIndexLookup = {}, this._indexToNodeLookup = {}, this._currentEdgeIndex = -1, this._edgeProperties = [], this._edgeGeometry = [], this._maxUncontractedEdgeIndex = 0, this._locked = !1, this._geoJsonFlag = !1, this._manualAdd = !1, e && (this._loadFromGeoJson(e), this.debugMode && (console.log("Nodes: ", this._currentNodeIndex), console.log("Edges: ", this._currentEdgeIndex)));
 }
-q.prototype.createPathfinder = Fi, q.prototype._loadFromGeoJson = Bi, q.prototype._cleanseGeoJsonNetwork = Vi, q.prototype._addContractedEdge = Wi, q.prototype.addEdge = Hi, q.prototype._addEdge = Ui, q.prototype.loadCH = qi, q.prototype.saveCH = Ji, q.prototype.loadPbfCH = Yi, q.prototype.savePbfCH = Xi, q.prototype.contractGraph = $i, q.prototype._arrangeContractedPaths = ea, q.prototype._cleanAdjList = ta, q.prototype._contract = na, q.prototype._createChShortcutter = ia;
+J.prototype.createPathfinder = Pi, J.prototype._loadFromGeoJson = zi, J.prototype._cleanseGeoJsonNetwork = Bi, J.prototype._addContractedEdge = Ui, J.prototype.addEdge = Vi, J.prototype._addEdge = Hi, J.prototype.loadCH = Ki, J.prototype.saveCH = qi, J.prototype.loadPbfCH = Ji, J.prototype.savePbfCH = Yi, J.prototype.contractGraph = Qi, J.prototype._arrangeContractedPaths = $i, J.prototype._cleanAdjList = ea, J.prototype._contract = ta, J.prototype._createChShortcutter = ra;
 //#endregion
 //#region src/shims/chShim.js
-function aa(e) {
+function ia(e) {
 	let t = e.prototype._arrangeContractedPaths;
 	return e.prototype._arrangeContractedPaths = function(e) {
 		let t = this;
@@ -8601,7 +8613,7 @@ function aa(e) {
 }
 //#endregion
 //#region src/isolines/isoPHAST.js
-function oa(e, t, n, r = {}) {
+function aa(e, t, n, r = {}) {
 	if (!e || typeof e != "object") throw Error("Invalid prepared graph for isoPHAST");
 	let { N: i } = e;
 	if (!Number.isInteger(i)) throw Error("Prepared graph missing node count `N`.");
@@ -8610,7 +8622,7 @@ function oa(e, t, n, r = {}) {
 	if (!Number.isInteger(t) || t < 0 || t >= i) throw Error(`Invalid startId ${t}: expected integer in range 0..${i - 1}`);
 	let c = new Float64Array(i).fill(Infinity), l = o === "pedestrian", u = e.distScale && Number.isFinite(e.distScale) ? e.distScale : 10;
 	if (!e._chGraph || e._chGraphMode !== o || e._chGraphIsUndirected !== l || e._chGraphCostField !== e.costField || e._chGraphPenaltyKey !== e.penaltyKey) {
-		let t = new q(), n = 0, r = e.edgeSrc || null, a = e.edgeTgt || null, s = e.edgeCostInt || null;
+		let t = new J(), n = 0, r = e.edgeSrc || null, a = e.edgeTgt || null, s = e.edgeCostInt || null;
 		if (r && a && s) for (let e = 0; e < r.length; e++) {
 			let i = r[e], o = a[e], c = s[e] / u;
 			t.addEdge(String(i), String(o), {
@@ -8628,7 +8640,7 @@ function oa(e, t, n, r = {}) {
 				}, null, l);
 			}
 		}
-		let c = aa(q);
+		let c = ia(J);
 		try {
 			t.contractGraph();
 		} finally {
@@ -8708,8 +8720,8 @@ function oa(e, t, n, r = {}) {
 }
 //#endregion
 //#region node_modules/robust-predicates/esm/util.js
-var J = 11102230246251565e-32, Y = 134217729, sa = (3 + 8 * J) * J;
-function ca(e, t, n, r, i) {
+var Y = 11102230246251565e-32, X = 134217729, oa = (3 + 8 * Y) * Y;
+function sa(e, t, n, r, i) {
 	let a, o, s, c, l = t[0], u = r[0], d = 0, f = 0;
 	u > l == u > -l ? (a = l, l = t[++d]) : (a = u, u = r[++f]);
 	let p = 0;
@@ -8718,37 +8730,37 @@ function ca(e, t, n, r, i) {
 	for (; f < n;) o = a + u, c = o - a, s = a - (o - c) + (u - c), u = r[++f], a = o, s !== 0 && (i[p++] = s);
 	return (a !== 0 || p === 0) && (i[p++] = a), p;
 }
-function la(e, t) {
+function ca(e, t) {
 	let n = t[0];
 	for (let r = 1; r < e; r++) n += t[r];
 	return n;
 }
-function X(e) {
+function Z(e) {
 	return new Float64Array(e);
 }
 //#endregion
 //#region node_modules/robust-predicates/esm/orient2d.js
-var ua = (3 + 16 * J) * J, da = (2 + 12 * J) * J, fa = (9 + 64 * J) * J * J, pa = X(4), ma = X(8), ha = X(12), ga = X(16), Z = X(4);
-function _a(e, t, n, r, i, a, o) {
+var la = (3 + 16 * Y) * Y, ua = (2 + 12 * Y) * Y, da = (9 + 64 * Y) * Y * Y, fa = Z(4), pa = Z(8), ma = Z(12), ha = Z(16), Q = Z(4);
+function ga(e, t, n, r, i, a, o) {
 	let s, c, l, u, d, f, p, m, h, g, _, v, y, b, x, S, C, w, T = e - i, E = n - i, D = t - a, O = r - a;
-	b = T * O, f = Y * T, p = f - (f - T), m = T - p, f = Y * O, h = f - (f - O), g = O - h, x = m * g - (b - p * h - m * h - p * g), S = D * E, f = Y * D, p = f - (f - D), m = D - p, f = Y * E, h = f - (f - E), g = E - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, pa[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, pa[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, pa[2] = v - (w - d) + (_ - d), pa[3] = w;
-	let k = la(4, pa), A = da * o;
-	if (k >= A || -k >= A || (d = e - T, s = e - (T + d) + (d - i), d = n - E, l = n - (E + d) + (d - i), d = t - D, c = t - (D + d) + (d - a), d = r - O, u = r - (O + d) + (d - a), s === 0 && c === 0 && l === 0 && u === 0) || (A = fa * o + sa * Math.abs(k), k += T * u + O * s - (D * l + E * c), k >= A || -k >= A)) return k;
-	b = s * O, f = Y * s, p = f - (f - s), m = s - p, f = Y * O, h = f - (f - O), g = O - h, x = m * g - (b - p * h - m * h - p * g), S = c * E, f = Y * c, p = f - (f - c), m = c - p, f = Y * E, h = f - (f - E), g = E - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, Z[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, Z[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, Z[2] = v - (w - d) + (_ - d), Z[3] = w;
-	let ee = ca(4, pa, 4, Z, ma);
-	b = T * u, f = Y * T, p = f - (f - T), m = T - p, f = Y * u, h = f - (f - u), g = u - h, x = m * g - (b - p * h - m * h - p * g), S = D * l, f = Y * D, p = f - (f - D), m = D - p, f = Y * l, h = f - (f - l), g = l - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, Z[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, Z[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, Z[2] = v - (w - d) + (_ - d), Z[3] = w;
-	let te = ca(ee, ma, 4, Z, ha);
-	return b = s * u, f = Y * s, p = f - (f - s), m = s - p, f = Y * u, h = f - (f - u), g = u - h, x = m * g - (b - p * h - m * h - p * g), S = c * l, f = Y * c, p = f - (f - c), m = c - p, f = Y * l, h = f - (f - l), g = l - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, Z[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, Z[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, Z[2] = v - (w - d) + (_ - d), Z[3] = w, ga[ca(te, ha, 4, Z, ga) - 1];
+	b = T * O, f = X * T, p = f - (f - T), m = T - p, f = X * O, h = f - (f - O), g = O - h, x = m * g - (b - p * h - m * h - p * g), S = D * E, f = X * D, p = f - (f - D), m = D - p, f = X * E, h = f - (f - E), g = E - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, fa[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, fa[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, fa[2] = v - (w - d) + (_ - d), fa[3] = w;
+	let k = ca(4, fa), A = ua * o;
+	if (k >= A || -k >= A || (d = e - T, s = e - (T + d) + (d - i), d = n - E, l = n - (E + d) + (d - i), d = t - D, c = t - (D + d) + (d - a), d = r - O, u = r - (O + d) + (d - a), s === 0 && c === 0 && l === 0 && u === 0) || (A = da * o + oa * Math.abs(k), k += T * u + O * s - (D * l + E * c), k >= A || -k >= A)) return k;
+	b = s * O, f = X * s, p = f - (f - s), m = s - p, f = X * O, h = f - (f - O), g = O - h, x = m * g - (b - p * h - m * h - p * g), S = c * E, f = X * c, p = f - (f - c), m = c - p, f = X * E, h = f - (f - E), g = E - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, Q[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, Q[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, Q[2] = v - (w - d) + (_ - d), Q[3] = w;
+	let ee = sa(4, fa, 4, Q, pa);
+	b = T * u, f = X * T, p = f - (f - T), m = T - p, f = X * u, h = f - (f - u), g = u - h, x = m * g - (b - p * h - m * h - p * g), S = D * l, f = X * D, p = f - (f - D), m = D - p, f = X * l, h = f - (f - l), g = l - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, Q[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, Q[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, Q[2] = v - (w - d) + (_ - d), Q[3] = w;
+	let te = sa(ee, pa, 4, Q, ma);
+	return b = s * u, f = X * s, p = f - (f - s), m = s - p, f = X * u, h = f - (f - u), g = u - h, x = m * g - (b - p * h - m * h - p * g), S = c * l, f = X * c, p = f - (f - c), m = c - p, f = X * l, h = f - (f - l), g = l - h, C = m * g - (S - p * h - m * h - p * g), _ = x - C, d = x - _, Q[0] = x - (_ + d) + (d - C), v = b + _, d = v - b, y = b - (v - d) + (_ - d), _ = y - S, d = y - _, Q[1] = y - (_ + d) + (d - S), w = v + _, d = w - v, Q[2] = v - (w - d) + (_ - d), Q[3] = w, ha[sa(te, ma, 4, Q, ha) - 1];
 }
-function va(e, t, n, r, i, a) {
+function _a(e, t, n, r, i, a) {
 	let o = (t - a) * (n - i), s = (e - i) * (r - a), c = o - s, l = Math.abs(o + s);
-	return Math.abs(c) >= ua * l ? c : -_a(e, t, n, r, i, a, l);
+	return Math.abs(c) >= la * l ? c : -ga(e, t, n, r, i, a, l);
 }
-(7 + 56 * J) * J, (3 + 28 * J) * J, (26 + 288 * J) * J * J, X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(8), X(8), X(8), X(4), X(8), X(8), X(16), X(12), X(192), X(192), (10 + 96 * J) * J, (4 + 48 * J) * J, (44 + 576 * J) * J * J, X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(8), X(8), X(8), X(8), X(8), X(8), X(8), X(8), X(8), X(4), X(4), X(4), X(8), X(16), X(16), X(16), X(32), X(32), X(48), X(64), X(1152), X(1152), (16 + 224 * J) * J, (5 + 72 * J) * J, (71 + 1408 * J) * J * J, X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(4), X(24), X(24), X(24), X(24), X(24), X(24), X(24), X(24), X(24), X(24), X(1152), X(1152), X(1152), X(1152), X(1152), X(2304), X(2304), X(3456), X(5760), X(8), X(8), X(8), X(16), X(24), X(48), X(48), X(96), X(192), X(384), X(384), X(384), X(768), X(96), X(96), X(96), X(1152);
+(7 + 56 * Y) * Y, (3 + 28 * Y) * Y, (26 + 288 * Y) * Y * Y, Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(8), Z(8), Z(8), Z(4), Z(8), Z(8), Z(16), Z(12), Z(192), Z(192), (10 + 96 * Y) * Y, (4 + 48 * Y) * Y, (44 + 576 * Y) * Y * Y, Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(8), Z(8), Z(8), Z(8), Z(8), Z(8), Z(8), Z(8), Z(8), Z(4), Z(4), Z(4), Z(8), Z(16), Z(16), Z(16), Z(32), Z(32), Z(48), Z(64), Z(1152), Z(1152), (16 + 224 * Y) * Y, (5 + 72 * Y) * Y, (71 + 1408 * Y) * Y * Y, Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(4), Z(24), Z(24), Z(24), Z(24), Z(24), Z(24), Z(24), Z(24), Z(24), Z(24), Z(1152), Z(1152), Z(1152), Z(1152), Z(1152), Z(2304), Z(2304), Z(3456), Z(5760), Z(8), Z(8), Z(8), Z(16), Z(24), Z(48), Z(48), Z(96), Z(192), Z(384), Z(384), Z(384), Z(768), Z(96), Z(96), Z(96), Z(1152);
 //#endregion
 //#region node_modules/delaunator/index.js
-var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
-	static from(t, n = ka, r = Aa) {
+var va = 2 ** -52, ya = new Uint32Array(512), ba = class e {
+	static from(t, n = Oa, r = ka) {
 		let i = t.length, a = new Float64Array(i * 2);
 		for (let e = 0; e < i; e++) {
 			let i = t[e];
@@ -8771,25 +8783,25 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 		}
 		let u = (o + c) / 2, d = (s + l) / 2, f = 0, p = 0, m = 0;
 		for (let t = 0, n = Infinity; t < a; t++) {
-			let r = Ca(u, d, e[2 * t], e[2 * t + 1]);
+			let r = Sa(u, d, e[2 * t], e[2 * t + 1]);
 			r < n && (f = t, n = r);
 		}
 		let h = e[2 * f], g = e[2 * f + 1];
 		for (let t = 0, n = Infinity; t < a; t++) {
 			if (t === f) continue;
-			let r = Ca(h, g, e[2 * t], e[2 * t + 1]);
+			let r = Sa(h, g, e[2 * t], e[2 * t + 1]);
 			r < n && r > 0 && (p = t, n = r);
 		}
 		let _ = e[2 * p], v = e[2 * p + 1], y = Infinity;
 		for (let t = 0; t < a; t++) {
 			if (t === f || t === p) continue;
-			let n = Ta(h, g, _, v, e[2 * t], e[2 * t + 1]);
+			let n = wa(h, g, _, v, e[2 * t], e[2 * t + 1]);
 			n < y && (m = t, y = n);
 		}
 		let b = e[2 * m], x = e[2 * m + 1];
 		if (y === Infinity) {
 			for (let t = 0; t < a; t++) this._dists[t] = e[2 * t] - e[0] || e[2 * t + 1] - e[1];
-			Da(this._ids, this._dists, 0, a - 1);
+			Ea(this._ids, this._dists, 0, a - 1);
 			let t = new Uint32Array(a), n = 0;
 			for (let e = 0, r = -Infinity; e < a; e++) {
 				let i = this._ids[e], a = this._dists[i];
@@ -8798,24 +8810,24 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 			this.hull = t.subarray(0, n), this.triangles = new Uint32Array(), this.halfedges = new Int32Array();
 			return;
 		}
-		if (va(h, g, _, v, b, x) < 0) {
+		if (_a(h, g, _, v, b, x) < 0) {
 			let e = p, t = _, n = v;
 			p = m, _ = b, v = x, m = e, b = t, x = n;
 		}
-		let S = Ea(h, g, _, v, b, x);
+		let S = Ta(h, g, _, v, b, x);
 		this._cx = S.x, this._cy = S.y;
-		for (let t = 0; t < a; t++) this._dists[t] = Ca(e[2 * t], e[2 * t + 1], S.x, S.y);
-		Da(this._ids, this._dists, 0, a - 1), this._hullStart = f;
+		for (let t = 0; t < a; t++) this._dists[t] = Sa(e[2 * t], e[2 * t + 1], S.x, S.y);
+		Ea(this._ids, this._dists, 0, a - 1), this._hullStart = f;
 		let C = 3;
 		n[f] = t[m] = p, n[p] = t[f] = m, n[m] = t[p] = f, r[f] = 0, r[p] = 1, r[m] = 2, i.fill(-1), i[this._hashKey(h, g)] = f, i[this._hashKey(_, v)] = p, i[this._hashKey(b, x)] = m, this.trianglesLen = 0, this._addTriangle(f, p, m, -1, -1, -1);
 		for (let a = 0, o = 0, s = 0; a < this._ids.length; a++) {
 			let c = this._ids[a], l = e[2 * c], u = e[2 * c + 1];
-			if (a > 0 && Math.abs(l - o) <= ya && Math.abs(u - s) <= ya || (o = l, s = u, c === f || c === p || c === m)) continue;
+			if (a > 0 && Math.abs(l - o) <= va && Math.abs(u - s) <= va || (o = l, s = u, c === f || c === p || c === m)) continue;
 			let d = 0;
 			for (let e = 0, t = this._hashKey(l, u); e < this._hashSize && (d = i[(t + e) % this._hashSize], !(d !== -1 && d !== n[d])); e++);
 			d = t[d];
 			let h = d, g;
-			for (; g = n[h], va(l, u, e[2 * h], e[2 * h + 1], e[2 * g], e[2 * g + 1]) >= 0;) if (h = g, h === d) {
+			for (; g = n[h], _a(l, u, e[2 * h], e[2 * h + 1], e[2 * g], e[2 * g + 1]) >= 0;) if (h = g, h === d) {
 				h = -1;
 				break;
 			}
@@ -8823,8 +8835,8 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 			let _ = this._addTriangle(h, c, n[h], -1, -1, r[h]);
 			r[c] = this._legalize(_ + 2), r[h] = _, C++;
 			let v = n[h];
-			for (; g = n[v], va(l, u, e[2 * v], e[2 * v + 1], e[2 * g], e[2 * g + 1]) < 0;) _ = this._addTriangle(v, c, g, r[c], -1, r[v]), r[c] = this._legalize(_ + 2), n[v] = v, C--, v = g;
-			if (h === d) for (; g = t[h], va(l, u, e[2 * g], e[2 * g + 1], e[2 * h], e[2 * h + 1]) < 0;) _ = this._addTriangle(g, c, h, -1, r[h], r[g]), this._legalize(_ + 2), r[g] = _, n[h] = h, C--, h = g;
+			for (; g = n[v], _a(l, u, e[2 * v], e[2 * v + 1], e[2 * g], e[2 * g + 1]) < 0;) _ = this._addTriangle(v, c, g, r[c], -1, r[v]), r[c] = this._legalize(_ + 2), n[v] = v, C--, v = g;
+			if (h === d) for (; g = t[h], _a(l, u, e[2 * g], e[2 * g + 1], e[2 * h], e[2 * h + 1]) < 0;) _ = this._addTriangle(g, c, h, -1, r[h], r[g]), this._legalize(_ + 2), r[g] = _, n[h] = h, C--, h = g;
 			this._hullStart = t[c] = h, n[h] = t[v] = c, n[c] = v, i[this._hashKey(l, u)] = c, i[this._hashKey(e[2 * h], e[2 * h + 1])] = h;
 		}
 		this.hull = new Uint32Array(C);
@@ -8832,7 +8844,7 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 		this.triangles = this._triangles.subarray(0, this.trianglesLen), this.halfedges = this._halfedges.subarray(0, this.trianglesLen);
 	}
 	_hashKey(e, t) {
-		return Math.floor(Sa(e - this._cx, t - this._cy) * this._hashSize) % this._hashSize;
+		return Math.floor(xa(e - this._cx, t - this._cy) * this._hashSize) % this._hashSize;
 	}
 	_legalize(e) {
 		let { _triangles: t, _halfedges: n, coords: r } = this, i = 0, a = 0;
@@ -8840,11 +8852,11 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 			let o = n[e], s = e - e % 3;
 			if (a = s + (e + 2) % 3, o === -1) {
 				if (i === 0) break;
-				e = ba[--i];
+				e = ya[--i];
 				continue;
 			}
 			let c = o - o % 3, l = s + (e + 1) % 3, u = c + (o + 2) % 3, d = t[a], f = t[e], p = t[l], m = t[u];
-			if (wa(r[2 * d], r[2 * d + 1], r[2 * f], r[2 * f + 1], r[2 * p], r[2 * p + 1], r[2 * m], r[2 * m + 1])) {
+			if (Ca(r[2 * d], r[2 * d + 1], r[2 * f], r[2 * f + 1], r[2 * p], r[2 * p + 1], r[2 * m], r[2 * m + 1])) {
 				t[e] = m, t[o] = d;
 				let r = n[u];
 				if (r === -1) {
@@ -8859,10 +8871,10 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 				}
 				this._link(e, r), this._link(o, n[a]), this._link(a, u);
 				let s = c + (o + 1) % 3;
-				i < ba.length && (ba[i++] = s);
+				i < ya.length && (ya[i++] = s);
 			} else {
 				if (i === 0) break;
-				e = ba[--i];
+				e = ya[--i];
 			}
 		}
 		return a;
@@ -8875,30 +8887,30 @@ var ya = 2 ** -52, ba = new Uint32Array(512), xa = class e {
 		return this._triangles[o] = e, this._triangles[o + 1] = t, this._triangles[o + 2] = n, this._link(o, r), this._link(o + 1, i), this._link(o + 2, a), this.trianglesLen += 3, o;
 	}
 };
-function Sa(e, t) {
+function xa(e, t) {
 	let n = e / (Math.abs(e) + Math.abs(t));
 	return (t > 0 ? 3 - n : 1 + n) / 4;
 }
-function Ca(e, t, n, r) {
+function Sa(e, t, n, r) {
 	let i = e - n, a = t - r;
 	return i * i + a * a;
 }
-function wa(e, t, n, r, i, a, o, s) {
+function Ca(e, t, n, r, i, a, o, s) {
 	let c = e - o, l = t - s, u = n - o, d = r - s, f = i - o, p = a - s, m = c * c + l * l, h = u * u + d * d, g = f * f + p * p;
 	return c * (d * g - h * p) - l * (u * g - h * f) + m * (u * p - d * f) < 0;
 }
-function Ta(e, t, n, r, i, a) {
+function wa(e, t, n, r, i, a) {
 	let o = n - e, s = r - t, c = i - e, l = a - t, u = o * o + s * s, d = c * c + l * l, f = .5 / (o * l - s * c), p = (l * u - s * d) * f, m = (o * d - c * u) * f;
 	return p * p + m * m;
 }
-function Ea(e, t, n, r, i, a) {
+function Ta(e, t, n, r, i, a) {
 	let o = n - e, s = r - t, c = i - e, l = a - t, u = o * o + s * s, d = c * c + l * l, f = .5 / (o * l - s * c);
 	return {
 		x: e + (l * u - s * d) * f,
 		y: t + (o * d - c * u) * f
 	};
 }
-function Da(e, t, n, r) {
+function Ea(e, t, n, r) {
 	if (r - n <= 20) for (let i = n + 1; i <= r; i++) {
 		let r = e[i], a = t[r], o = i - 1;
 		for (; o >= n && t[e[o]] > a;) e[o + 1] = e[o--];
@@ -8906,7 +8918,7 @@ function Da(e, t, n, r) {
 	}
 	else {
 		let i = n + r >> 1, a = n + 1, o = r;
-		Oa(e, i, a), t[e[n]] > t[e[r]] && Oa(e, n, r), t[e[a]] > t[e[r]] && Oa(e, a, r), t[e[n]] > t[e[a]] && Oa(e, n, a);
+		Da(e, i, a), t[e[n]] > t[e[r]] && Da(e, n, r), t[e[a]] > t[e[r]] && Da(e, a, r), t[e[n]] > t[e[a]] && Da(e, n, a);
 		let s = e[a], c = t[s];
 		for (;;) {
 			do
@@ -8916,24 +8928,24 @@ function Da(e, t, n, r) {
 				o--;
 			while (t[e[o]] > c);
 			if (o < a) break;
-			Oa(e, a, o);
+			Da(e, a, o);
 		}
-		e[n + 1] = e[o], e[o] = s, r - a + 1 >= o - n ? (Da(e, t, a, r), Da(e, t, n, o - 1)) : (Da(e, t, n, o - 1), Da(e, t, a, r));
+		e[n + 1] = e[o], e[o] = s, r - a + 1 >= o - n ? (Ea(e, t, a, r), Ea(e, t, n, o - 1)) : (Ea(e, t, n, o - 1), Ea(e, t, a, r));
 	}
 }
-function Oa(e, t, n) {
+function Da(e, t, n) {
 	let r = e[t];
 	e[t] = e[n], e[n] = r;
 }
-function ka(e) {
+function Oa(e) {
 	return e[0];
 }
-function Aa(e) {
+function ka(e) {
 	return e[1];
 }
 //#endregion
 //#region node_modules/d3-delaunay/src/path.js
-var ja = 1e-6, Ma = class {
+var Aa = 1e-6, ja = class {
 	constructor() {
 		this._x0 = this._y0 = this._x1 = this._y1 = null, this._ = "";
 	}
@@ -8950,7 +8962,7 @@ var ja = 1e-6, Ma = class {
 		e = +e, t = +t, n = +n;
 		let r = e + n, i = t;
 		if (n < 0) throw Error("negative radius");
-		this._x1 === null ? this._ += `M${r},${i}` : (Math.abs(this._x1 - r) > ja || Math.abs(this._y1 - i) > ja) && (this._ += "L" + r + "," + i), n && (this._ += `A${n},${n},0,1,1,${e - n},${t}A${n},${n},0,1,1,${this._x1 = r},${this._y1 = i}`);
+		this._x1 === null ? this._ += `M${r},${i}` : (Math.abs(this._x1 - r) > Aa || Math.abs(this._y1 - i) > Aa) && (this._ += "L" + r + "," + i), n && (this._ += `A${n},${n},0,1,1,${e - n},${t}A${n},${n},0,1,1,${this._x1 = r},${this._y1 = i}`);
 	}
 	rect(e, t, n, r) {
 		this._ += `M${this._x0 = this._x1 = +e},${this._y0 = this._y1 = +t}h${+n}v${+r}h${-n}Z`;
@@ -8958,7 +8970,7 @@ var ja = 1e-6, Ma = class {
 	value() {
 		return this._ || null;
 	}
-}, Na = class {
+}, Ma = class {
 	constructor() {
 		this._ = [];
 	}
@@ -8974,7 +8986,7 @@ var ja = 1e-6, Ma = class {
 	value() {
 		return this._.length ? this._ : null;
 	}
-}, Pa = class {
+}, Na = class {
 	constructor(e, [t, n, r, i] = [
 		0,
 		0,
@@ -9010,7 +9022,7 @@ var ja = 1e-6, Ma = class {
 		for (let n = 0; n < t.length; ++n) s = t[n], c = l, u = d, f = p, l = s * 4, d = e[2 * s], p = e[2 * s + 1], r[c + 2] = r[l] = f - p, r[c + 3] = r[l + 1] = d - u;
 	}
 	render(e) {
-		let t = e == null ? e = new Ma() : void 0, { delaunay: { halfedges: n, inedges: r, hull: i }, circumcenters: a, vectors: o } = this;
+		let t = e == null ? e = new ja() : void 0, { delaunay: { halfedges: n, inedges: r, hull: i }, circumcenters: a, vectors: o } = this;
 		if (i.length <= 1) return null;
 		for (let t = 0, r = n.length; t < r; ++t) {
 			let r = n[t];
@@ -9027,11 +9039,11 @@ var ja = 1e-6, Ma = class {
 		return t && t.value();
 	}
 	renderBounds(e) {
-		let t = e == null ? e = new Ma() : void 0;
+		let t = e == null ? e = new ja() : void 0;
 		return e.rect(this.xmin, this.ymin, this.xmax - this.xmin, this.ymax - this.ymin), t && t.value();
 	}
 	renderCell(e, t) {
-		let n = t == null ? t = new Ma() : void 0, r = this._clip(e);
+		let n = t == null ? t = new ja() : void 0, r = this._clip(e);
 		if (r === null || !r.length) return;
 		t.moveTo(r[0], r[1]);
 		let i = r.length;
@@ -9047,7 +9059,7 @@ var ja = 1e-6, Ma = class {
 		}
 	}
 	cellPolygon(e) {
-		let t = new Na();
+		let t = new Ma();
 		return this.renderCell(e, t), t.value();
 	}
 	_renderSegment(e, t, n, r, i) {
@@ -9231,14 +9243,14 @@ var ja = 1e-6, Ma = class {
 		}
 		return e;
 	}
-}, Fa = 2 * Math.PI, Ia = Math.pow;
-function La(e) {
+}, Pa = 2 * Math.PI, Fa = Math.pow;
+function Ia(e) {
 	return e[0];
 }
-function Ra(e) {
+function La(e) {
 	return e[1];
 }
-function za(e) {
+function Ra(e) {
 	let { triangles: t, coords: n } = e;
 	for (let e = 0; e < t.length; e += 3) {
 		let r = 2 * t[e], i = 2 * t[e + 1], a = 2 * t[e + 2];
@@ -9246,22 +9258,22 @@ function za(e) {
 	}
 	return !0;
 }
-function Ba(e, t, n) {
+function za(e, t, n) {
 	return [e + Math.sin(e + t) * n, t + Math.cos(e - t) * n];
 }
-var Va = class e {
-	static from(t, n = La, r = Ra, i) {
-		return new e("length" in t ? Ha(t, n, r, i) : Float64Array.from(Ua(t, n, r, i)));
+var Ba = class e {
+	static from(t, n = Ia, r = La, i) {
+		return new e("length" in t ? Va(t, n, r, i) : Float64Array.from(Ha(t, n, r, i)));
 	}
 	constructor(e) {
-		this._delaunator = new xa(e), this.inedges = new Int32Array(e.length / 2), this._hullIndex = new Int32Array(e.length / 2), this.points = this._delaunator.coords, this._init();
+		this._delaunator = new ba(e), this.inedges = new Int32Array(e.length / 2), this._hullIndex = new Int32Array(e.length / 2), this.points = this._delaunator.coords, this._init();
 	}
 	update() {
 		return this._delaunator.update(), this._init(), this;
 	}
 	_init() {
 		let e = this._delaunator, t = this.points;
-		if (e.hull && e.hull.length > 2 && za(e)) {
+		if (e.hull && e.hull.length > 2 && Ra(e)) {
 			this.collinear = Int32Array.from({ length: t.length / 2 }, (e, t) => t).sort((e, n) => t[2 * e] - t[2 * n] || t[2 * e + 1] - t[2 * n + 1]);
 			let e = this.collinear[0], n = this.collinear[this.collinear.length - 1], r = [
 				t[2 * e],
@@ -9270,10 +9282,10 @@ var Va = class e {
 				t[2 * n + 1]
 			], i = 1e-8 * Math.hypot(r[3] - r[1], r[2] - r[0]);
 			for (let e = 0, n = t.length / 2; e < n; ++e) {
-				let n = Ba(t[2 * e], t[2 * e + 1], i);
+				let n = za(t[2 * e], t[2 * e + 1], i);
 				t[2 * e] = n[0], t[2 * e + 1] = n[1];
 			}
-			this._delaunator = new xa(t);
+			this._delaunator = new ba(t);
 		} else delete this.collinear;
 		let n = this.halfedges = this._delaunator.halfedges, r = this.hull = this._delaunator.hull, i = this.triangles = this._delaunator.triangles, a = this.inedges.fill(-1), o = this._hullIndex.fill(-1);
 		for (let e = 0, t = n.length; e < t; ++e) {
@@ -9284,7 +9296,7 @@ var Va = class e {
 		r.length <= 2 && r.length > 0 && (this.triangles = new Int32Array(3).fill(-1), this.halfedges = new Int32Array(3).fill(-1), this.triangles[0] = r[0], a[r[0]] = 1, r.length === 2 && (a[r[1]] = 0, this.triangles[1] = r[1], this.triangles[2] = r[1]));
 	}
 	voronoi(e) {
-		return new Pa(this, e);
+		return new Na(this, e);
 	}
 	*neighbors(e) {
 		let { inedges: t, hull: n, _hullIndex: r, halfedges: i, triangles: a, collinear: o } = this;
@@ -9314,19 +9326,19 @@ var Va = class e {
 	_step(e, t, n) {
 		let { inedges: r, hull: i, _hullIndex: a, halfedges: o, triangles: s, points: c } = this;
 		if (r[e] === -1 || !c.length) return (e + 1) % (c.length >> 1);
-		let l = e, u = Ia(t - c[e * 2], 2) + Ia(n - c[e * 2 + 1], 2), d = r[e], f = d;
+		let l = e, u = Fa(t - c[e * 2], 2) + Fa(n - c[e * 2 + 1], 2), d = r[e], f = d;
 		do {
-			let r = s[f], d = Ia(t - c[r * 2], 2) + Ia(n - c[r * 2 + 1], 2);
+			let r = s[f], d = Fa(t - c[r * 2], 2) + Fa(n - c[r * 2 + 1], 2);
 			if (d < u && (u = d, l = r), f = f % 3 == 2 ? f - 2 : f + 1, s[f] !== e) break;
 			if (f = o[f], f === -1) {
-				if (f = i[(a[e] + 1) % i.length], f !== r && Ia(t - c[f * 2], 2) + Ia(n - c[f * 2 + 1], 2) < u) return f;
+				if (f = i[(a[e] + 1) % i.length], f !== r && Fa(t - c[f * 2], 2) + Fa(n - c[f * 2 + 1], 2) < u) return f;
 				break;
 			}
 		} while (f !== d);
 		return l;
 	}
 	render(e) {
-		let t = e == null ? e = new Ma() : void 0, { points: n, halfedges: r, triangles: i } = this;
+		let t = e == null ? e = new ja() : void 0, { points: n, halfedges: r, triangles: i } = this;
 		for (let t = 0, a = r.length; t < a; ++t) {
 			let a = r[t];
 			if (a < t) continue;
@@ -9337,15 +9349,15 @@ var Va = class e {
 	}
 	renderPoints(e, t) {
 		t === void 0 && (!e || typeof e.moveTo != "function") && (t = e, e = null), t = t == null ? 2 : +t;
-		let n = e == null ? e = new Ma() : void 0, { points: r } = this;
+		let n = e == null ? e = new ja() : void 0, { points: r } = this;
 		for (let n = 0, i = r.length; n < i; n += 2) {
 			let i = r[n], a = r[n + 1];
-			e.moveTo(i + t, a), e.arc(i, a, t, 0, Fa);
+			e.moveTo(i + t, a), e.arc(i, a, t, 0, Pa);
 		}
 		return n && n.value();
 	}
 	renderHull(e) {
-		let t = e == null ? e = new Ma() : void 0, { hull: n, points: r } = this, i = n[0] * 2, a = n.length;
+		let t = e == null ? e = new ja() : void 0, { hull: n, points: r } = this, i = n[0] * 2, a = n.length;
 		e.moveTo(r[i], r[i + 1]);
 		for (let t = 1; t < a; ++t) {
 			let i = 2 * n[t];
@@ -9354,11 +9366,11 @@ var Va = class e {
 		return e.closePath(), t && t.value();
 	}
 	hullPolygon() {
-		let e = new Na();
+		let e = new Ma();
 		return this.renderHull(e), e.value();
 	}
 	renderTriangle(e, t) {
-		let n = t == null ? t = new Ma() : void 0, { points: r, triangles: i } = this, a = i[e *= 3] * 2, o = i[e + 1] * 2, s = i[e + 2] * 2;
+		let n = t == null ? t = new ja() : void 0, { points: r, triangles: i } = this, a = i[e *= 3] * 2, o = i[e + 1] * 2, s = i[e + 2] * 2;
 		return t.moveTo(r[a], r[a + 1]), t.lineTo(r[o], r[o + 1]), t.lineTo(r[s], r[s + 1]), t.closePath(), n && n.value();
 	}
 	*trianglePolygons() {
@@ -9366,11 +9378,11 @@ var Va = class e {
 		for (let t = 0, n = e.length / 3; t < n; ++t) yield this.trianglePolygon(t);
 	}
 	trianglePolygon(e) {
-		let t = new Na();
+		let t = new Ma();
 		return this.renderTriangle(e, t), t.value();
 	}
 };
-function Ha(e, t, n, r) {
+function Va(e, t, n, r) {
 	let i = e.length, a = new Float64Array(i * 2);
 	for (let o = 0; o < i; ++o) {
 		let i = e[o];
@@ -9378,25 +9390,25 @@ function Ha(e, t, n, r) {
 	}
 	return a;
 }
-function* Ua(e, t, n, r) {
+function* Ha(e, t, n, r) {
 	let i = 0;
 	for (let a of e) yield t.call(r, a, i, e), yield n.call(r, a, i, e), ++i;
 }
 //#endregion
 //#region node_modules/d3-array/src/ascending.js
-function Wa(e, t) {
+function Ua(e, t) {
 	return e == null || t == null ? NaN : e < t ? -1 : e > t ? 1 : e >= t ? 0 : NaN;
 }
 //#endregion
 //#region node_modules/d3-array/src/descending.js
-function Ga(e, t) {
+function Wa(e, t) {
 	return e == null || t == null ? NaN : t < e ? -1 : t > e ? 1 : t >= e ? 0 : NaN;
 }
 //#endregion
 //#region node_modules/d3-array/src/bisector.js
-function Ka(e) {
+function Ga(e) {
 	let t, n, r;
-	e.length === 2 ? (t = e === Wa || e === Ga ? e : qa, n = e, r = e) : (t = Wa, n = (t, n) => Wa(e(t), n), r = (t, n) => e(t) - n);
+	e.length === 2 ? (t = e === Ua || e === Wa ? e : Ka, n = e, r = e) : (t = Ua, n = (t, n) => Ua(e(t), n), r = (t, n) => e(t) - n);
 	function i(e, r, i = 0, a = e.length) {
 		if (i < a) {
 			if (t(r, r) !== 0) return a;
@@ -9427,33 +9439,33 @@ function Ka(e) {
 		right: a
 	};
 }
-function qa() {
+function Ka() {
 	return 0;
 }
 //#endregion
 //#region node_modules/d3-array/src/number.js
-function Ja(e) {
+function qa(e) {
 	return e === null ? NaN : +e;
 }
 //#endregion
 //#region node_modules/d3-array/src/bisect.js
-var Ya = Ka(Wa), Xa = Ya.right;
-Ya.left, Ka(Ja).center;
+var Ja = Ga(Ua), Ya = Ja.right;
+Ja.left, Ga(qa).center;
 //#endregion
 //#region node_modules/d3-array/src/ticks.js
-var Za = Math.sqrt(50), Qa = Math.sqrt(10), $a = Math.sqrt(2);
-function eo(e, t, n) {
-	let r = (t - e) / Math.max(0, n), i = Math.floor(Math.log10(r)), a = r / 10 ** i, o = a >= Za ? 10 : a >= Qa ? 5 : a >= $a ? 2 : 1, s, c, l;
-	return i < 0 ? (l = 10 ** -i / o, s = Math.round(e * l), c = Math.round(t * l), s / l < e && ++s, c / l > t && --c, l = -l) : (l = 10 ** i * o, s = Math.round(e / l), c = Math.round(t / l), s * l < e && ++s, c * l > t && --c), c < s && .5 <= n && n < 2 ? eo(e, t, n * 2) : [
+var Xa = Math.sqrt(50), Za = Math.sqrt(10), Qa = Math.sqrt(2);
+function $a(e, t, n) {
+	let r = (t - e) / Math.max(0, n), i = Math.floor(Math.log10(r)), a = r / 10 ** i, o = a >= Xa ? 10 : a >= Za ? 5 : a >= Qa ? 2 : 1, s, c, l;
+	return i < 0 ? (l = 10 ** -i / o, s = Math.round(e * l), c = Math.round(t * l), s / l < e && ++s, c / l > t && --c, l = -l) : (l = 10 ** i * o, s = Math.round(e / l), c = Math.round(t / l), s * l < e && ++s, c * l > t && --c), c < s && .5 <= n && n < 2 ? $a(e, t, n * 2) : [
 		s,
 		c,
 		l
 	];
 }
-function to(e, t, n) {
+function eo(e, t, n) {
 	if (t = +t, e = +e, n = +n, !(n > 0)) return [];
 	if (e === t) return [e];
-	let r = t < e, [i, a, o] = r ? eo(t, e, n) : eo(e, t, n);
+	let r = t < e, [i, a, o] = r ? $a(t, e, n) : $a(e, t, n);
 	if (!(a >= i)) return [];
 	let s = a - i + 1, c = Array(s);
 	if (r) if (o < 0) for (let e = 0; e < s; ++e) c[e] = (a - e) / -o;
@@ -9462,17 +9474,17 @@ function to(e, t, n) {
 	else for (let e = 0; e < s; ++e) c[e] = (i + e) * o;
 	return c;
 }
-function no(e, t, n) {
-	return t = +t, e = +e, n = +n, eo(e, t, n)[2];
+function to(e, t, n) {
+	return t = +t, e = +e, n = +n, $a(e, t, n)[2];
 }
-function ro(e, t, n) {
+function no(e, t, n) {
 	t = +t, e = +e, n = +n;
-	let r = t < e, i = r ? no(t, e, n) : no(e, t, n);
+	let r = t < e, i = r ? to(t, e, n) : to(e, t, n);
 	return (r ? -1 : 1) * (i < 0 ? 1 / -i : i);
 }
 //#endregion
 //#region node_modules/d3-scale/src/init.js
-function io(e, t) {
+function ro(e, t) {
 	switch (arguments.length) {
 		case 0: break;
 		case 1:
@@ -9486,18 +9498,18 @@ function io(e, t) {
 }
 //#endregion
 //#region node_modules/d3-color/src/define.js
-function ao(e, t, n) {
+function io(e, t, n) {
 	e.prototype = t.prototype = n, n.constructor = e;
 }
-function oo(e, t) {
+function ao(e, t) {
 	var n = Object.create(e.prototype);
 	for (var r in t) n[r] = t[r];
 	return n;
 }
 //#endregion
 //#region node_modules/d3-color/src/color.js
-function so() {}
-var co = .7, lo = 1 / co, uo = "\\s*([+-]?\\d+)\\s*", fo = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)\\s*", po = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)%\\s*", mo = /^#([0-9a-f]{3,8})$/, ho = RegExp(`^rgb\\(${uo},${uo},${uo}\\)$`), go = RegExp(`^rgb\\(${po},${po},${po}\\)$`), _o = RegExp(`^rgba\\(${uo},${uo},${uo},${fo}\\)$`), vo = RegExp(`^rgba\\(${po},${po},${po},${fo}\\)$`), yo = RegExp(`^hsl\\(${fo},${po},${po}\\)$`), bo = RegExp(`^hsla\\(${fo},${po},${po},${fo}\\)$`), xo = {
+function oo() {}
+var so = .7, co = 1 / so, lo = "\\s*([+-]?\\d+)\\s*", uo = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)\\s*", fo = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)%\\s*", po = /^#([0-9a-f]{3,8})$/, mo = RegExp(`^rgb\\(${lo},${lo},${lo}\\)$`), ho = RegExp(`^rgb\\(${fo},${fo},${fo}\\)$`), go = RegExp(`^rgba\\(${lo},${lo},${lo},${uo}\\)$`), _o = RegExp(`^rgba\\(${fo},${fo},${fo},${uo}\\)$`), vo = RegExp(`^hsl\\(${uo},${fo},${fo}\\)$`), yo = RegExp(`^hsla\\(${uo},${fo},${fo},${uo}\\)$`), bo = {
 	aliceblue: 15792383,
 	antiquewhite: 16444375,
 	aqua: 65535,
@@ -9647,128 +9659,128 @@ var co = .7, lo = 1 / co, uo = "\\s*([+-]?\\d+)\\s*", fo = "\\s*([+-]?(?:\\d*\\.
 	yellow: 16776960,
 	yellowgreen: 10145074
 };
-ao(so, Eo, {
+io(oo, To, {
 	copy(e) {
 		return Object.assign(new this.constructor(), this, e);
 	},
 	displayable() {
 		return this.rgb().displayable();
 	},
-	hex: So,
-	formatHex: So,
-	formatHex8: Co,
-	formatHsl: wo,
-	formatRgb: To,
-	toString: To
+	hex: xo,
+	formatHex: xo,
+	formatHex8: So,
+	formatHsl: Co,
+	formatRgb: wo,
+	toString: wo
 });
-function So() {
+function xo() {
 	return this.rgb().formatHex();
 }
-function Co() {
+function So() {
 	return this.rgb().formatHex8();
 }
-function wo() {
-	return Ro(this).formatHsl();
+function Co() {
+	return Lo(this).formatHsl();
 }
-function To() {
+function wo() {
 	return this.rgb().formatRgb();
 }
-function Eo(e) {
+function To(e) {
 	var t, n;
-	return e = (e + "").trim().toLowerCase(), (t = mo.exec(e)) ? (n = t[1].length, t = parseInt(t[1], 16), n === 6 ? Do(t) : n === 3 ? new Q(t >> 8 & 15 | t >> 4 & 240, t >> 4 & 15 | t & 240, (t & 15) << 4 | t & 15, 1) : n === 8 ? Oo(t >> 24 & 255, t >> 16 & 255, t >> 8 & 255, (t & 255) / 255) : n === 4 ? Oo(t >> 12 & 15 | t >> 8 & 240, t >> 8 & 15 | t >> 4 & 240, t >> 4 & 15 | t & 240, ((t & 15) << 4 | t & 15) / 255) : null) : (t = ho.exec(e)) ? new Q(t[1], t[2], t[3], 1) : (t = go.exec(e)) ? new Q(t[1] * 255 / 100, t[2] * 255 / 100, t[3] * 255 / 100, 1) : (t = _o.exec(e)) ? Oo(t[1], t[2], t[3], t[4]) : (t = vo.exec(e)) ? Oo(t[1] * 255 / 100, t[2] * 255 / 100, t[3] * 255 / 100, t[4]) : (t = yo.exec(e)) ? Lo(t[1], t[2] / 100, t[3] / 100, 1) : (t = bo.exec(e)) ? Lo(t[1], t[2] / 100, t[3] / 100, t[4]) : xo.hasOwnProperty(e) ? Do(xo[e]) : e === "transparent" ? new Q(NaN, NaN, NaN, 0) : null;
+	return e = (e + "").trim().toLowerCase(), (t = po.exec(e)) ? (n = t[1].length, t = parseInt(t[1], 16), n === 6 ? Eo(t) : n === 3 ? new $(t >> 8 & 15 | t >> 4 & 240, t >> 4 & 15 | t & 240, (t & 15) << 4 | t & 15, 1) : n === 8 ? Do(t >> 24 & 255, t >> 16 & 255, t >> 8 & 255, (t & 255) / 255) : n === 4 ? Do(t >> 12 & 15 | t >> 8 & 240, t >> 8 & 15 | t >> 4 & 240, t >> 4 & 15 | t & 240, ((t & 15) << 4 | t & 15) / 255) : null) : (t = mo.exec(e)) ? new $(t[1], t[2], t[3], 1) : (t = ho.exec(e)) ? new $(t[1] * 255 / 100, t[2] * 255 / 100, t[3] * 255 / 100, 1) : (t = go.exec(e)) ? Do(t[1], t[2], t[3], t[4]) : (t = _o.exec(e)) ? Do(t[1] * 255 / 100, t[2] * 255 / 100, t[3] * 255 / 100, t[4]) : (t = vo.exec(e)) ? Io(t[1], t[2] / 100, t[3] / 100, 1) : (t = yo.exec(e)) ? Io(t[1], t[2] / 100, t[3] / 100, t[4]) : bo.hasOwnProperty(e) ? Eo(bo[e]) : e === "transparent" ? new $(NaN, NaN, NaN, 0) : null;
 }
-function Do(e) {
-	return new Q(e >> 16 & 255, e >> 8 & 255, e & 255, 1);
+function Eo(e) {
+	return new $(e >> 16 & 255, e >> 8 & 255, e & 255, 1);
 }
-function Oo(e, t, n, r) {
-	return r <= 0 && (e = t = n = NaN), new Q(e, t, n, r);
+function Do(e, t, n, r) {
+	return r <= 0 && (e = t = n = NaN), new $(e, t, n, r);
 }
-function ko(e) {
-	return e instanceof so || (e = Eo(e)), e ? (e = e.rgb(), new Q(e.r, e.g, e.b, e.opacity)) : new Q();
+function Oo(e) {
+	return e instanceof oo || (e = To(e)), e ? (e = e.rgb(), new $(e.r, e.g, e.b, e.opacity)) : new $();
 }
-function Ao(e, t, n, r) {
-	return arguments.length === 1 ? ko(e) : new Q(e, t, n, r ?? 1);
+function ko(e, t, n, r) {
+	return arguments.length === 1 ? Oo(e) : new $(e, t, n, r ?? 1);
 }
-function Q(e, t, n, r) {
+function $(e, t, n, r) {
 	this.r = +e, this.g = +t, this.b = +n, this.opacity = +r;
 }
-ao(Q, Ao, oo(so, {
+io($, ko, ao(oo, {
 	brighter(e) {
-		return e = e == null ? lo : lo ** +e, new Q(this.r * e, this.g * e, this.b * e, this.opacity);
+		return e = e == null ? co : co ** +e, new $(this.r * e, this.g * e, this.b * e, this.opacity);
 	},
 	darker(e) {
-		return e = e == null ? co : co ** +e, new Q(this.r * e, this.g * e, this.b * e, this.opacity);
+		return e = e == null ? so : so ** +e, new $(this.r * e, this.g * e, this.b * e, this.opacity);
 	},
 	rgb() {
 		return this;
 	},
 	clamp() {
-		return new Q(Fo(this.r), Fo(this.g), Fo(this.b), Po(this.opacity));
+		return new $(Po(this.r), Po(this.g), Po(this.b), No(this.opacity));
 	},
 	displayable() {
 		return -.5 <= this.r && this.r < 255.5 && -.5 <= this.g && this.g < 255.5 && -.5 <= this.b && this.b < 255.5 && 0 <= this.opacity && this.opacity <= 1;
 	},
-	hex: jo,
-	formatHex: jo,
-	formatHex8: Mo,
-	formatRgb: No,
-	toString: No
+	hex: Ao,
+	formatHex: Ao,
+	formatHex8: jo,
+	formatRgb: Mo,
+	toString: Mo
 }));
+function Ao() {
+	return `#${Fo(this.r)}${Fo(this.g)}${Fo(this.b)}`;
+}
 function jo() {
-	return `#${Io(this.r)}${Io(this.g)}${Io(this.b)}`;
+	return `#${Fo(this.r)}${Fo(this.g)}${Fo(this.b)}${Fo((isNaN(this.opacity) ? 1 : this.opacity) * 255)}`;
 }
 function Mo() {
-	return `#${Io(this.r)}${Io(this.g)}${Io(this.b)}${Io((isNaN(this.opacity) ? 1 : this.opacity) * 255)}`;
+	let e = No(this.opacity);
+	return `${e === 1 ? "rgb(" : "rgba("}${Po(this.r)}, ${Po(this.g)}, ${Po(this.b)}${e === 1 ? ")" : `, ${e})`}`;
 }
-function No() {
-	let e = Po(this.opacity);
-	return `${e === 1 ? "rgb(" : "rgba("}${Fo(this.r)}, ${Fo(this.g)}, ${Fo(this.b)}${e === 1 ? ")" : `, ${e})`}`;
-}
-function Po(e) {
+function No(e) {
 	return isNaN(e) ? 1 : Math.max(0, Math.min(1, e));
 }
-function Fo(e) {
+function Po(e) {
 	return Math.max(0, Math.min(255, Math.round(e) || 0));
 }
-function Io(e) {
-	return e = Fo(e), (e < 16 ? "0" : "") + e.toString(16);
+function Fo(e) {
+	return e = Po(e), (e < 16 ? "0" : "") + e.toString(16);
 }
-function Lo(e, t, n, r) {
-	return r <= 0 ? e = t = n = NaN : n <= 0 || n >= 1 ? e = t = NaN : t <= 0 && (e = NaN), new $(e, t, n, r);
+function Io(e, t, n, r) {
+	return r <= 0 ? e = t = n = NaN : n <= 0 || n >= 1 ? e = t = NaN : t <= 0 && (e = NaN), new zo(e, t, n, r);
 }
-function Ro(e) {
-	if (e instanceof $) return new $(e.h, e.s, e.l, e.opacity);
-	if (e instanceof so || (e = Eo(e)), !e) return new $();
-	if (e instanceof $) return e;
+function Lo(e) {
+	if (e instanceof zo) return new zo(e.h, e.s, e.l, e.opacity);
+	if (e instanceof oo || (e = To(e)), !e) return new zo();
+	if (e instanceof zo) return e;
 	e = e.rgb();
 	var t = e.r / 255, n = e.g / 255, r = e.b / 255, i = Math.min(t, n, r), a = Math.max(t, n, r), o = NaN, s = a - i, c = (a + i) / 2;
-	return s ? (o = t === a ? (n - r) / s + (n < r) * 6 : n === a ? (r - t) / s + 2 : (t - n) / s + 4, s /= c < .5 ? a + i : 2 - a - i, o *= 60) : s = c > 0 && c < 1 ? 0 : o, new $(o, s, c, e.opacity);
+	return s ? (o = t === a ? (n - r) / s + (n < r) * 6 : n === a ? (r - t) / s + 2 : (t - n) / s + 4, s /= c < .5 ? a + i : 2 - a - i, o *= 60) : s = c > 0 && c < 1 ? 0 : o, new zo(o, s, c, e.opacity);
+}
+function Ro(e, t, n, r) {
+	return arguments.length === 1 ? Lo(e) : new zo(e, t, n, r ?? 1);
 }
 function zo(e, t, n, r) {
-	return arguments.length === 1 ? Ro(e) : new $(e, t, n, r ?? 1);
-}
-function $(e, t, n, r) {
 	this.h = +e, this.s = +t, this.l = +n, this.opacity = +r;
 }
-ao($, zo, oo(so, {
+io(zo, Ro, ao(oo, {
 	brighter(e) {
-		return e = e == null ? lo : lo ** +e, new $(this.h, this.s, this.l * e, this.opacity);
+		return e = e == null ? co : co ** +e, new zo(this.h, this.s, this.l * e, this.opacity);
 	},
 	darker(e) {
-		return e = e == null ? co : co ** +e, new $(this.h, this.s, this.l * e, this.opacity);
+		return e = e == null ? so : so ** +e, new zo(this.h, this.s, this.l * e, this.opacity);
 	},
 	rgb() {
 		var e = this.h % 360 + (this.h < 0) * 360, t = isNaN(e) || isNaN(this.s) ? 0 : this.s, n = this.l, r = n + (n < .5 ? n : 1 - n) * t, i = 2 * n - r;
-		return new Q(Ho(e >= 240 ? e - 240 : e + 120, i, r), Ho(e, i, r), Ho(e < 120 ? e + 240 : e - 120, i, r), this.opacity);
+		return new $(Ho(e >= 240 ? e - 240 : e + 120, i, r), Ho(e, i, r), Ho(e < 120 ? e + 240 : e - 120, i, r), this.opacity);
 	},
 	clamp() {
-		return new $(Bo(this.h), Vo(this.s), Vo(this.l), Po(this.opacity));
+		return new zo(Bo(this.h), Vo(this.s), Vo(this.l), No(this.opacity));
 	},
 	displayable() {
 		return (0 <= this.s && this.s <= 1 || isNaN(this.s)) && 0 <= this.l && this.l <= 1 && 0 <= this.opacity && this.opacity <= 1;
 	},
 	formatHsl() {
-		let e = Po(this.opacity);
+		let e = No(this.opacity);
 		return `${e === 1 ? "hsl(" : "hsla("}${Bo(this.h)}, ${Vo(this.s) * 100}%, ${Vo(this.l) * 100}%${e === 1 ? ")" : `, ${e})`}`;
 	}
 }));
@@ -9810,7 +9822,7 @@ function qo(e, t) {
 var Jo = (function e(t) {
 	var n = Ko(t);
 	function r(e, t) {
-		var r = n((e = Ao(e)).r, (t = Ao(t)).r), i = n(e.g, t.g), a = n(e.b, t.b), o = qo(e.opacity, t.opacity);
+		var r = n((e = ko(e)).r, (t = ko(t)).r), i = n(e.g, t.g), a = n(e.b, t.b), o = qo(e.opacity, t.opacity);
 		return function(t) {
 			return e.r = r(t), e.g = i(t), e.b = a(t), e.opacity = o(t), e + "";
 		};
@@ -9894,7 +9906,7 @@ function as(e, t) {
 //#region node_modules/d3-interpolate/src/value.js
 function os(e, t) {
 	var n = typeof t, r;
-	return t == null || n === "boolean" ? Uo(t) : (n === "number" ? $o : n === "string" ? (r = Eo(t)) ? (t = r, Jo) : as : t instanceof Eo ? Jo : t instanceof Date ? Qo : Xo(t) ? Yo : Array.isArray(t) ? Zo : typeof t.valueOf != "function" && typeof t.toString != "function" || isNaN(t) ? es : $o)(e, t);
+	return t == null || n === "boolean" ? Uo(t) : (n === "number" ? $o : n === "string" ? (r = To(t)) ? (t = r, Jo) : as : t instanceof To ? Jo : t instanceof Date ? Qo : Xo(t) ? Yo : Array.isArray(t) ? Zo : typeof t.valueOf != "function" && typeof t.toString != "function" || isNaN(t) ? es : $o)(e, t);
 }
 //#endregion
 //#region node_modules/d3-interpolate/src/round.js
@@ -9942,7 +9954,7 @@ function hs(e, t, n) {
 	var r = Math.min(e.length, t.length) - 1, i = Array(r), a = Array(r), o = -1;
 	for (e[r] < e[0] && (e = e.slice().reverse(), t = t.slice().reverse()); ++o < r;) i[o] = fs(e[o], e[o + 1]), a[o] = n(t[o], t[o + 1]);
 	return function(t) {
-		var n = Xa(e, t, 1, r) - 1;
+		var n = Ya(e, t, 1, r) - 1;
 		return a[n](i[n](t));
 	};
 }
@@ -10197,7 +10209,7 @@ function Hs(e, t) {
 //#endregion
 //#region node_modules/d3-scale/src/tickFormat.js
 function Us(e, t, n, r) {
-	var i = ro(e, t, n), a;
+	var i = no(e, t, n), a;
 	switch (r = Ts(r ?? ",f"), r.type) {
 		case "s":
 			var o = Math.max(Math.abs(e), Math.abs(t));
@@ -10222,7 +10234,7 @@ function Ws(e) {
 	var t = e.domain;
 	return e.ticks = function(e) {
 		var n = t();
-		return to(n[0], n[n.length - 1], e ?? 10);
+		return eo(n[0], n[n.length - 1], e ?? 10);
 	}, e.tickFormat = function(e, n) {
 		var r = t();
 		return Us(r[0], r[r.length - 1], e ?? 10, n);
@@ -10230,7 +10242,7 @@ function Ws(e) {
 		n ?? (n = 10);
 		var r = t(), i = 0, a = r.length - 1, o = r[i], s = r[a], c, l, u = 10;
 		for (s < o && (l = o, o = s, s = l, l = i, i = a, a = l); u-- > 0;) {
-			if (l = no(o, s, n), l === c) return r[i] = o, r[a] = s, t(r);
+			if (l = to(o, s, n), l === c) return r[i] = o, r[a] = s, t(r);
 			if (l > 0) o = Math.floor(o / l) * l, s = Math.ceil(s / l) * l;
 			else if (l < 0) o = Math.ceil(o * l) / l, s = Math.floor(s * l) / l;
 			else break;
@@ -10243,7 +10255,7 @@ function Gs() {
 	var e = vs();
 	return e.copy = function() {
 		return gs(e, Gs());
-	}, io.apply(e, arguments), Ws(e);
+	}, ro.apply(e, arguments), Ws(e);
 }
 //#endregion
 //#region node_modules/d3-tricontour/src/extent.js
@@ -10311,7 +10323,7 @@ function tc(e) {
 //#endregion
 //#region node_modules/d3-tricontour/src/tricontour.js
 function nc() {
-	let e = (e) => e[0], t = (e) => e[1], n = (e) => isFinite(+e[2]) ? +e[2] : 0, r = Va.from, i = (e, t, n) => {
+	let e = (e) => e[0], t = (e) => e[1], n = (e) => isFinite(+e[2]) ? +e[2] : 0, r = Ba.from, i = (e, t, n) => {
 		let { points: r } = c, i = [r[2 * e], r[2 * e + 1]], a = [r[2 * t], r[2 * t + 1]];
 		return [n * a[0] + (1 - n) * i[0], n * a[1] + (1 - n) * i[1]];
 	}, a = tc, o, s, c;
@@ -10738,7 +10750,7 @@ async function hc({ point: e, direction: t = "from", mode: n = "car", costField:
 	let c, l, u = an(e, i, [o], o);
 	if (!u || !u.segmentSnap) throw Error("Point did not project to any graph segment within snapMaxDistM");
 	c = nn(i, u.segmentSnap), c.mode = n, l = c._lastAddedNodeId ?? c.nodes.size - 1;
-	let d = mi(c, r, s), { distances: f, reachable: p } = oa(d, l, a, {
+	let d = pi(c, r, s), { distances: f, reachable: p } = aa(d, l, a, {
 		outputUnscaled: !0,
 		direction: t,
 		mode: n
@@ -10763,7 +10775,7 @@ async function hc({ point: e, direction: t = "from", mode: n = "car", costField:
 }
 //#endregion
 //#region src/ui/MapLibreRoutingControl.isoline.worker.js?worker&inline.js
-var gc = "(function(){var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=Object.getOwnPropertyNames,i=Object.getPrototypeOf,a=Object.prototype.hasOwnProperty,o=(e,t)=>()=>(e&&(t=e(e=0)),t),s=(e,t)=>()=>(t||(e((t={exports:{}}).exports,t),e=null),t.exports),c=(e,n)=>{let r={};for(var i in e)t(r,i,{get:e[i],enumerable:!0});return n||t(r,Symbol.toStringTag,{value:`Module`}),r},l=(e,i,o,s)=>{if(i&&typeof i==`object`||typeof i==`function`)for(var c=r(i),l=0,u=c.length,d;l<u;l++)d=c[l],!a.call(e,d)&&d!==o&&t(e,d,{get:(e=>i[e]).bind(null,d),enumerable:!(s=n(i,d))||s.enumerable});return e},u=(n,r,a)=>(a=n==null?{}:e(i(n)),l(r||!n||!n.__esModule?t(a,`default`,{value:n,enumerable:!0}):a,n));let d=[Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array];var f=class e{static from(t){if(!(t instanceof ArrayBuffer))throw Error(`Data must be an instance of ArrayBuffer.`);let[n,r]=new Uint8Array(t,0,2);if(n!==219)throw Error(`Data does not appear to be in a KDBush format.`);let i=r>>4;if(i!==1)throw Error(`Got v${i} data when expected v1.`);let a=d[r&15];if(!a)throw Error(`Unrecognized array type.`);let[o]=new Uint16Array(t,2,1),[s]=new Uint32Array(t,4,1);return new e(s,o,a,t)}constructor(e,t=64,n=Float64Array,r){if(isNaN(e)||e<0)throw Error(`Unpexpected numItems value: ${e}.`);this.numItems=+e,this.nodeSize=Math.min(Math.max(+t,2),65535),this.ArrayType=n,this.IndexArrayType=e<65536?Uint16Array:Uint32Array;let i=d.indexOf(this.ArrayType),a=e*2*this.ArrayType.BYTES_PER_ELEMENT,o=e*this.IndexArrayType.BYTES_PER_ELEMENT,s=(8-o%8)%8;if(i<0)throw Error(`Unexpected typed array class: ${n}.`);r&&r instanceof ArrayBuffer?(this.data=r,this.ids=new this.IndexArrayType(this.data,8,e),this.coords=new this.ArrayType(this.data,8+o+s,e*2),this._pos=e*2,this._finished=!0):(this.data=new ArrayBuffer(8+a+o+s),this.ids=new this.IndexArrayType(this.data,8,e),this.coords=new this.ArrayType(this.data,8+o+s,e*2),this._pos=0,this._finished=!1,new Uint8Array(this.data,0,2).set([219,16+i]),new Uint16Array(this.data,2,1)[0]=t,new Uint32Array(this.data,4,1)[0]=e)}add(e,t){let n=this._pos>>1;return this.ids[n]=n,this.coords[this._pos++]=e,this.coords[this._pos++]=t,n}finish(){let e=this._pos>>1;if(e!==this.numItems)throw Error(`Added ${e} items when expected ${this.numItems}.`);return p(this.ids,this.coords,this.nodeSize,0,this.numItems-1,0),this._finished=!0,this}range(e,t,n,r){if(!this._finished)throw Error(`Data not yet indexed - call index.finish().`);let{ids:i,coords:a,nodeSize:o}=this,s=[0,i.length-1,0],c=[];for(;s.length;){let l=s.pop()||0,u=s.pop()||0,d=s.pop()||0;if(u-d<=o){for(let o=d;o<=u;o++){let s=a[2*o],l=a[2*o+1];s>=e&&s<=n&&l>=t&&l<=r&&c.push(i[o])}continue}let f=d+u>>1,p=a[2*f],m=a[2*f+1];p>=e&&p<=n&&m>=t&&m<=r&&c.push(i[f]),(l===0?e<=p:t<=m)&&(s.push(d),s.push(f-1),s.push(1-l)),(l===0?n>=p:r>=m)&&(s.push(f+1),s.push(u),s.push(1-l))}return c}within(e,t,n){if(!this._finished)throw Error(`Data not yet indexed - call index.finish().`);let{ids:r,coords:i,nodeSize:a}=this,o=[0,r.length-1,0],s=[],c=n*n;for(;o.length;){let l=o.pop()||0,u=o.pop()||0,d=o.pop()||0;if(u-d<=a){for(let n=d;n<=u;n++)_(i[2*n],i[2*n+1],e,t)<=c&&s.push(r[n]);continue}let f=d+u>>1,p=i[2*f],m=i[2*f+1];_(p,m,e,t)<=c&&s.push(r[f]),(l===0?e-n<=p:t-n<=m)&&(o.push(d),o.push(f-1),o.push(1-l)),(l===0?e+n>=p:t+n>=m)&&(o.push(f+1),o.push(u),o.push(1-l))}return s}};function p(e,t,n,r,i,a){if(i-r<=n)return;let o=r+i>>1;m(e,t,o,r,i,a),p(e,t,n,r,o-1,1-a),p(e,t,n,o+1,i,1-a)}function m(e,t,n,r,i,a){for(;i>r;){if(i-r>600){let o=i-r+1,s=n-r+1,c=Math.log(o),l=.5*Math.exp(2*c/3),u=.5*Math.sqrt(c*l*(o-l)/o)*(s-o/2<0?-1:1);m(e,t,n,Math.max(r,Math.floor(n-s*l/o+u)),Math.min(i,Math.floor(n+(o-s)*l/o+u)),a)}let o=t[2*n+a],s=r,c=i;for(h(e,t,r,n),t[2*i+a]>o&&h(e,t,r,i);s<c;){for(h(e,t,s,c),s++,c--;t[2*s+a]<o;)s++;for(;t[2*c+a]>o;)c--}t[2*r+a]===o?h(e,t,r,c):(c++,h(e,t,c,i)),c<=n&&(r=c+1),n<=c&&(i=c-1)}}function h(e,t,n,r){g(e,n,r),g(t,2*n,2*r),g(t,2*n+1,2*r+1)}function g(e,t,n){let r=e[t];e[t]=e[n],e[n]=r}function _(e,t,n,r){let i=e-n,a=t-r;return i*i+a*a}var v=class{constructor(e=[],t=(e,t)=>e<t?-1:+(e>t)){if(this.data=e,this.length=this.data.length,this.compare=t,this.length>0)for(let e=(this.length>>1)-1;e>=0;e--)this._down(e)}push(e){this.data.push(e),this._up(this.length++)}pop(){if(this.length===0)return;let e=this.data[0],t=this.data.pop();return--this.length>0&&(this.data[0]=t,this._down(0)),e}peek(){return this.data[0]}_up(e){let{data:t,compare:n}=this,r=t[e];for(;e>0;){let i=e-1>>1,a=t[i];if(n(r,a)>=0)break;t[e]=a,e=i}t[e]=r}_down(e){let{data:t,compare:n}=this,r=this.length>>1,i=t[e];for(;e<r;){let r=(e<<1)+1,a=r+1;if(a<this.length&&n(t[a],t[r])<0&&(r=a),n(t[r],i)>=0)break;t[e]=t[r],e=r}t[e]=i}};let y=Math.PI/180;function b(e,t,n,r=1/0,i=1/0,a){let o=1,s=[];r===void 0&&(r=1/0),i!==void 0&&(o=C(i/6371));let c=new v([],S),l={left:0,right:e.ids.length-1,axis:0,dist:0,minLng:-180,minLat:-90,maxLng:180,maxLat:90},u=Math.cos(n*y);for(;l;){let i=l.right,d=l.left;if(i-d<=e.nodeSize)for(let r=d;r<=i;r++){let i=e.ids[r];if(!a||a(i)){let a=T(t,n,e.coords[2*r],e.coords[2*r+1],u);c.push({id:i,dist:a})}}else{let r=d+i>>1,o=e.coords[2*r],s=e.coords[2*r+1],f=e.ids[r];if(!a||a(f)){let e=T(t,n,o,s,u);c.push({id:f,dist:e})}let p=(l.axis+1)%2,m={left:d,right:r-1,axis:p,minLng:l.minLng,minLat:l.minLat,maxLng:l.axis===0?o:l.maxLng,maxLat:l.axis===1?s:l.maxLat,dist:0},h={left:r+1,right:i,axis:p,minLng:l.axis===0?o:l.minLng,minLat:l.axis===1?s:l.minLat,maxLng:l.maxLng,maxLat:l.maxLat,dist:0};m.dist=x(t,n,u,m),h.dist=x(t,n,u,h),c.push(m),c.push(h)}let f;for(;(f=c.pop())&&`id`in f;)if(f.dist>o||(s.push(f.id),s.length===r))return s;l=f}return s}function x(e,t,n,r){let i=r.minLng,a=r.maxLng,o=r.minLat,s=r.maxLat;if(e>=i&&e<=a)return t<o?C((t-o)*y):t>s?C((t-s)*y):0;let c=Math.min(C((e-i)*y),C((e-a)*y)),l=E(t,c);return l>o&&l<s?w(c,n,t,l):Math.min(w(c,n,t,o),w(c,n,t,s))}function S(e,t){return e.dist-t.dist}function C(e){let t=Math.sin(e/2);return t*t}function w(e,t,n,r){return t*Math.cos(r*y)*e+C((n-r)*y)}function T(e,t,n,r,i){return w(C((e-n)*y),i,t,r)}function E(e,t){let n=1-2*t;return n<=0?e>0?90:-90:Math.atan(Math.tan(e*y)/n)/y}function D(e){if(!e._geoJsonFlag)throw Error(`Cannot use Coordinate Lookup on a non-GeoJson network.`);let t=new Set;Object.keys(e._nodeToIndexLookup).forEach(e=>{t.add(e)});let n=[];t.forEach(e=>{n.push(e.split(`,`).map(e=>Number(e)))}),this.coordinate_list=n,this.index=new f(n.length);for(let e of n)this.index.add(e[0],e[1]);this.index.finish()}D.prototype.getClosestNetworkPt=function(e,t){let n=b(this.index,e,t,1)[0];return this.coordinate_list[n]};function O(e,t,n,r){if(e.length===0)return[n[r]];let i=[],a=r;i.push(n[a]);for(let r of e){let e=t[r];a=a===e._start_index?e._end_index:a===e._end_index?e._start_index:e._end_index,i.push(n[a])}return i}function k(e,t,n,r,i,a,o,s){let c=[],l=[a],u=r[a],d=i[a];if(u)for(;u.attrs!=null;)c.push({id:u.attrs,direction:`f`}),l.push(u.prev),u=r[u.prev];if(c.reverse(),l.reverse(),d)for(;d.attrs!=null;)c.push({id:d.attrs,direction:`b`}),l.push(d.prev),d=i[d.prev];let f=s,p=c.map(e=>{let n=e.direction===`f`?t[e.id]._start_index:t[e.id]._end_index,r=e.direction===`f`?t[e.id]._end_index:t[e.id]._start_index,i=[...t[e.id]._ordered];return f===n?f=r:(i.reverse(),f=n),i}),m=[].concat(...p),h=m.map(e=>t[e]._id),g,_,v,y;return e.nodes&&(y=O(m,t,o,s)),(e.properties||e.path)&&(_=m.map(e=>{let{_start_index:n,_end_index:r,_ordered:i,...a}=t[e];return a})),e.path&&(v={type:`FeatureCollection`,features:m.map((e,t)=>({type:`Feature`,properties:_[t],geometry:{type:`LineString`,coordinates:n[e]}}))}),e.properties&&(g=_),{ids:h,path:v,properties:g,nodes:y}}function A(e){if(!(this instanceof A))return new A(e);if(e=e||{},!e.compare)throw Error(`Please supply a comparison function to NodeHeap`);if(this.data=[],this.length=this.data.length,this.compare=e.compare,this.setNodeId=function(e,t){e.heapIndex=t},this.length>0)for(var t=this.length>>1;t>=0;t--)this._down(t);if(e.setNodeId)for(var t=0;t<this.length;++t)this.setNodeId(this.data[t],t)}A.prototype={push:function(e){this.data.push(e),this.setNodeId(e,this.length),this.length++,this._up(this.length-1)},pop:function(){if(this.length!==0){var e=this.data[0];return this.length--,this.length>0&&(this.data[0]=this.data[this.length],this.setNodeId(this.data[0],0),this._down(0)),this.data.pop(),e}},peek:function(){return this.data[0]},updateItem:function(e){this._down(e),this._up(e)},_up:function(e){for(var t=this.data,n=this.compare,r=this.setNodeId,i=t[e];e>0;){var a=e-1>>1,o=t[a];if(n(i,o)>=0)break;t[e]=o,r(o,e),e=a}t[e]=i,r(i,e)},_down:function(e){for(var t=this.data,n=this.compare,r=this.length>>1,i=t[e],a=this.setNodeId;e<r;){var o=(e<<1)+1,s=o+1,c=t[o];if(s<this.length&&n(t[s],c)<0&&(o=s,c=t[s]),n(c,i)>=0)break;t[e]=c,a(c,e),e=o}t[e]=i,a(i,e)}};let ee=function(e){let t=this.adjacency_list,n=this.reverse_adjacency_list,r=this._edgeProperties,i=this._edgeGeometry,a=this._createNodePool(),o=this._nodeToIndexLookup,s=this._indexToNodeLookup;return e||(e={}),{queryContractionHierarchy:c};function c(c,l){a.reset();let u=o[String(c)],d=o[String(l)],f=[],p=[],m={},h={},g=a.createNewState({id:u,dist:0});f[u]=g,g.opened=1,m[g.id]=0;let _=a.createNewState({id:d,dist:0});p[d]=_,_.opened=1,h[_.id]=0;let v=O(t,g,f,m,p,h),y=O(n,_,p,h,f,m),b=!1,x=!1,S,C,w=1/0,T=null;if(u!==d)do b||(S=v.next(),S.done&&(b=!0)),x||(C=y.next(),C.done&&(x=!0));while(m[S.value.id]<w||h[C.value.id]<w);else w=0;let E={total_cost:w===1/0?0:w},D;if(e.ids||e.path||e.nodes||e.properties)if(T!=null)D=k(e,r,i,f,p,T,s,u);else{let t,n,r,i;e.ids&&(t=[]),e.path&&(n={}),e.properties&&(r=[]),e.nodes&&(i=[]),D={ids:t,path:n,properties:r,nodes:i}}return Object.assign(E,{...D});function*O(e,t,n,r,i,o){var s=new A({compare(e,t){return e.dist-t.dist}});do{if((e[t.id]||[]).forEach(e=>{let i=n[e.end];if(i===void 0&&(i=a.createNewState({id:e.end}),i.attrs=e.attrs,n[e.end]=i),i.visited===!0)return;i.opened||(s.push(i),i.opened=!0);let c=t.dist+e.cost;if(c>=i.dist)return;i.dist=c,r[i.id]=c,i.attrs=e.attrs,i.prev=t.id,s.updateItem(i.heapIndex);let l=o[e.end];if(l>=0){let t=c+l;w>t&&(w=t,T=e.end)}}),t.visited=!0,t=s.pop(),!t)return``;yield t}while(!0)}}};var j;try{j=Map}catch{}var te;try{te=Set}catch{}function ne(e,t,n){if(!e||typeof e!=`object`||typeof e==`function`)return e;if(e.nodeType&&`cloneNode`in e)return e.cloneNode(!0);if(e instanceof Date)return new Date(e.getTime());if(e instanceof RegExp)return new RegExp(e);if(Array.isArray(e))return e.map(M);if(j&&e instanceof j)return new Map(Array.from(e.entries()));if(te&&e instanceof te)return new Set(Array.from(e.values()));if(e instanceof Object){t.push(e);var r=Object.create(e);for(var i in n.push(r),e){var a=t.findIndex(function(t){return t===e[i]});r[i]=a>-1?n[a]:ne(e[i],t,n)}return r}return e}function M(e){return ne(e,[],[])}let re=function(e){if(this._locked)throw Error(`Cannot add GeoJSON to a contracted network`);if(this._geoJsonFlag)throw Error(`Cannot load more than one GeoJSON file.`);if(this._manualAdd)throw Error(`Cannot load GeoJSON file after adding Edges manually via the API.`);let t=M(e);this._cleanseGeoJsonNetwork(t).forEach((e,t)=>{let n=e.geometry.coordinates,r=e.properties;if(!r||!n||!r._cost){this.debugMode&&console.log(`invalid feature detected.  skipping...`);return}let i=n[0],a=n[n.length-1];this._addEdge(i,a,r,M(n)),this._addEdge(a,i,r,M(n).reverse())}),this._geoJsonFlag=!0},ie=function(e){let t={},n=e.features;return n.forEach(e=>{let n=e.geometry.coordinates[0].join(`,`),r=e.geometry.coordinates[e.geometry.coordinates.length-1].join(`,`),i=`${n}|${r}`,a=`${r}|${n}`;if(!t[i])t[i]=e;else{this.debugMode&&console.log(`Duplicate feature found, choosing shortest.`);let n=t[i].properties._cost;e.properties._cost<n?(t[i].properties.__markDelete=!0,t[i]=e):e.properties.__markDelete=!0}if(!t[a])t[a]=e;else{let n=t[a].properties._cost;e.properties._cost<n?(t[a].properties.__markDelete=!0,t[a]=e):e.properties.__markDelete=!0}}),n.filter(e=>!e.properties.__markDelete)},ae=function(e,t,n,r,i){if(this._locked)throw Error(`Graph has been contracted.  No additional edges can be added.`);if(this._geoJsonFlag)throw Error(`Can not add additional edges manually to a GeoJSON network.`);this._manualAdd=!0,this._addEdge(e,t,n,r,i)},oe=function(e,t,n,r,i){let a=String(e),o=String(t);if(a===o){this.debugMode&&console.log(`Start and End Nodes are the same.  Ignoring.`);return}this._nodeToIndexLookup[a]??(this._currentNodeIndex++,this._nodeToIndexLookup[a]=this._currentNodeIndex,this._indexToNodeLookup[this._currentNodeIndex]=a),this._nodeToIndexLookup[o]??(this._currentNodeIndex++,this._nodeToIndexLookup[o]=this._currentNodeIndex,this._indexToNodeLookup[this._currentNodeIndex]=o);let s=this._nodeToIndexLookup[a],c=this._nodeToIndexLookup[o];this._currentEdgeIndex++,this._edgeProperties[this._currentEdgeIndex]=JSON.parse(JSON.stringify(n)),this._edgeProperties[this._currentEdgeIndex]._start_index=s,this._edgeProperties[this._currentEdgeIndex]._end_index=c,r&&(this._edgeGeometry[this._currentEdgeIndex]=JSON.parse(JSON.stringify(r)));let l={end:c,cost:n._cost,attrs:this._currentEdgeIndex};this.adjacency_list[s]?this.adjacency_list[s].push(l):this.adjacency_list[s]=[l];let u={end:s,cost:n._cost,attrs:this._currentEdgeIndex};this.reverse_adjacency_list[c]?this.reverse_adjacency_list[c].push(u):this.reverse_adjacency_list[c]=[u],i&&(this.adjacency_list[c]?this.adjacency_list[c].push(u):this.adjacency_list[c]=[u],this.reverse_adjacency_list[s]?this.reverse_adjacency_list[s].push(l):this.reverse_adjacency_list[s]=[l])},se=function(e,t,n){this._currentEdgeIndex++,this._edgeProperties[this._currentEdgeIndex]=n,this._edgeProperties[this._currentEdgeIndex]._start_index=e,this._edgeProperties[this._currentEdgeIndex]._end_index=t;let r={end:t,cost:n._cost,attrs:this._currentEdgeIndex};this.adjacency_list[e]?this.adjacency_list[e].push(r):this.adjacency_list[e]=[r];let i={end:e,cost:n._cost,attrs:this._currentEdgeIndex};this.reverse_adjacency_list[t]?this.reverse_adjacency_list[t].push(i):this.reverse_adjacency_list[t]=[i]};var N={};N.read=function(e,t){return e.readFields(N._readField,{_locked:!1,_geoJsonFlag:!1,adjacency_list:[],reverse_adjacency_list:[],_nodeToIndexLookup:{},_edgeProperties:[],_edgeGeometry:[]},t)},N._readField=function(e,t,n){if(e===1)t._locked=n.readBoolean();else if(e===2)t._geoJsonFlag=n.readBoolean();else if(e===3)t.adjacency_list.push(N.AdjList.read(n,n.readVarint()+n.pos));else if(e===4)t.reverse_adjacency_list.push(N.AdjList.read(n,n.readVarint()+n.pos));else if(e===5){var r=N._FieldEntry5.read(n,n.readVarint()+n.pos);t._nodeToIndexLookup[r.key]=r.value}else e===6?t._edgeProperties.push(n.readString()):e===7&&t._edgeGeometry.push(N.GeometryArray.read(n,n.readVarint()+n.pos))},N.write=function(e,t){if(e._locked&&t.writeBooleanField(1,e._locked),e._geoJsonFlag&&t.writeBooleanField(2,e._geoJsonFlag),e.adjacency_list)for(var n=0;n<e.adjacency_list.length;n++)t.writeMessage(3,N.AdjList.write,e.adjacency_list[n]);if(e.reverse_adjacency_list)for(n=0;n<e.reverse_adjacency_list.length;n++)t.writeMessage(4,N.AdjList.write,e.reverse_adjacency_list[n]);if(e._nodeToIndexLookup)for(n in e._nodeToIndexLookup)Object.prototype.hasOwnProperty.call(e._nodeToIndexLookup,n)&&t.writeMessage(5,N._FieldEntry5.write,{key:n,value:e._nodeToIndexLookup[n]});if(e._edgeProperties)for(n=0;n<e._edgeProperties.length;n++)t.writeStringField(6,e._edgeProperties[n]);if(e._edgeGeometry)for(n=0;n<e._edgeGeometry.length;n++)t.writeMessage(7,N.GeometryArray.write,e._edgeGeometry[n])},N.EdgeAttrs={},N.EdgeAttrs.read=function(e,t){return e.readFields(N.EdgeAttrs._readField,{end:0,cost:0,attrs:0},t)},N.EdgeAttrs._readField=function(e,t,n){e===1?t.end=n.readVarint():e===2?t.cost=n.readDouble():e===3&&(t.attrs=n.readVarint())},N.EdgeAttrs.write=function(e,t){e.end&&t.writeVarintField(1,e.end),e.cost&&t.writeDoubleField(2,e.cost),e.attrs&&t.writeVarintField(3,e.attrs)},N.AdjList={},N.AdjList.read=function(e,t){return e.readFields(N.AdjList._readField,{edges:[]},t)},N.AdjList._readField=function(e,t,n){e===1&&t.edges.push(N.EdgeAttrs.read(n,n.readVarint()+n.pos))},N.AdjList.write=function(e,t){if(e.edges)for(var n=0;n<e.edges.length;n++)t.writeMessage(1,N.EdgeAttrs.write,e.edges[n])},N.LineStringAray={},N.LineStringAray.read=function(e,t){return e.readFields(N.LineStringAray._readField,{coords:[]},t)},N.LineStringAray._readField=function(e,t,n){e===1&&n.readPackedDouble(t.coords)},N.LineStringAray.write=function(e,t){e.coords&&t.writePackedDouble(1,e.coords)},N.GeometryArray={},N.GeometryArray.read=function(e,t){return e.readFields(N.GeometryArray._readField,{linestrings:[]},t)},N.GeometryArray._readField=function(e,t,n){e===1&&t.linestrings.push(N.LineStringAray.read(n,n.readVarint()+n.pos))},N.GeometryArray.write=function(e,t){if(e.linestrings)for(var n=0;n<e.linestrings.length;n++)t.writeMessage(1,N.LineStringAray.write,e.linestrings[n])},N._FieldEntry5={},N._FieldEntry5.read=function(e,t){return e.readFields(N._FieldEntry5._readField,{key:``,value:0},t)},N._FieldEntry5._readField=function(e,t,n){e===1?t.key=n.readString():e===2&&(t.value=n.readVarint())},N._FieldEntry5.write=function(e,t){e.key&&t.writeStringField(1,e.key),e.value&&t.writeVarintField(2,e.value)};var ce=s((e=>{\n/*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */\ne.read=function(e,t,n,r,i){var a,o,s=i*8-r-1,c=(1<<s)-1,l=c>>1,u=-7,d=n?i-1:0,f=n?-1:1,p=e[t+d];for(d+=f,a=p&(1<<-u)-1,p>>=-u,u+=s;u>0;a=a*256+e[t+d],d+=f,u-=8);for(o=a&(1<<-u)-1,a>>=-u,u+=r;u>0;o=o*256+e[t+d],d+=f,u-=8);if(a===0)a=1-l;else if(a===c)return o?NaN:(p?-1:1)*(1/0);else o+=2**r,a-=l;return(p?-1:1)*o*2**(a-r)},e.write=function(e,t,n,r,i,a){var o,s,c,l=a*8-i-1,u=(1<<l)-1,d=u>>1,f=i===23?2**-24-2**-77:0,p=r?0:a-1,m=r?1:-1,h=+(t<0||t===0&&1/t<0);for(t=Math.abs(t),isNaN(t)||t===1/0?(s=+!!isNaN(t),o=u):(o=Math.floor(Math.log(t)/Math.LN2),t*(c=2**-o)<1&&(o--,c*=2),o+d>=1?t+=f/c:t+=f*2**(1-d),t*c>=2&&(o++,c/=2),o+d>=u?(s=0,o=u):o+d>=1?(s=(t*c-1)*2**i,o+=d):(s=t*2**(d-1)*2**i,o=0));i>=8;e[n+p]=s&255,p+=m,s/=256,i-=8);for(o=o<<i|s,l+=i;l>0;e[n+p]=o&255,p+=m,o/=256,l-=8);e[n+p-m]|=h*128}})),le=s(((e,t)=>{t.exports=r;var n=ce();function r(e){this.buf=ArrayBuffer.isView&&ArrayBuffer.isView(e)?e:new Uint8Array(e||0),this.pos=0,this.type=0,this.length=this.buf.length}r.Varint=0,r.Fixed64=1,r.Bytes=2,r.Fixed32=5;var i=65536*65536,a=1/i,o=12,s=typeof TextDecoder>`u`?null:new TextDecoder(`utf-8`);r.prototype={destroy:function(){this.buf=null},readFields:function(e,t,n){for(n=n||this.length;this.pos<n;){var r=this.readVarint(),i=r>>3,a=this.pos;this.type=r&7,e(i,t,this),this.pos===a&&this.skip(r)}return t},readMessage:function(e,t){return this.readFields(e,t,this.readVarint()+this.pos)},readFixed32:function(){var e=w(this.buf,this.pos);return this.pos+=4,e},readSFixed32:function(){var e=E(this.buf,this.pos);return this.pos+=4,e},readFixed64:function(){var e=w(this.buf,this.pos)+w(this.buf,this.pos+4)*i;return this.pos+=8,e},readSFixed64:function(){var e=w(this.buf,this.pos)+E(this.buf,this.pos+4)*i;return this.pos+=8,e},readFloat:function(){var e=n.read(this.buf,this.pos,!0,23,4);return this.pos+=4,e},readDouble:function(){var e=n.read(this.buf,this.pos,!0,52,8);return this.pos+=8,e},readVarint:function(e){var t=this.buf,n,r=t[this.pos++];return n=r&127,r<128||(r=t[this.pos++],n|=(r&127)<<7,r<128)||(r=t[this.pos++],n|=(r&127)<<14,r<128)||(r=t[this.pos++],n|=(r&127)<<21,r<128)?n:(r=t[this.pos],n|=(r&15)<<28,c(n,e,this))},readVarint64:function(){return this.readVarint(!0)},readSVarint:function(){var e=this.readVarint();return e%2==1?(e+1)/-2:e/2},readBoolean:function(){return!!this.readVarint()},readString:function(){var e=this.readVarint()+this.pos,t=this.pos;return this.pos=e,e-t>=o&&s?O(this.buf,t,e):D(this.buf,t,e)},readBytes:function(){var e=this.readVarint()+this.pos,t=this.buf.subarray(this.pos,e);return this.pos=e,t},readPackedVarint:function(e,t){if(this.type!==r.Bytes)return e.push(this.readVarint(t));var n=l(this);for(e=e||[];this.pos<n;)e.push(this.readVarint(t));return e},readPackedSVarint:function(e){if(this.type!==r.Bytes)return e.push(this.readSVarint());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readSVarint());return e},readPackedBoolean:function(e){if(this.type!==r.Bytes)return e.push(this.readBoolean());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readBoolean());return e},readPackedFloat:function(e){if(this.type!==r.Bytes)return e.push(this.readFloat());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readFloat());return e},readPackedDouble:function(e){if(this.type!==r.Bytes)return e.push(this.readDouble());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readDouble());return e},readPackedFixed32:function(e){if(this.type!==r.Bytes)return e.push(this.readFixed32());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readFixed32());return e},readPackedSFixed32:function(e){if(this.type!==r.Bytes)return e.push(this.readSFixed32());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readSFixed32());return e},readPackedFixed64:function(e){if(this.type!==r.Bytes)return e.push(this.readFixed64());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readFixed64());return e},readPackedSFixed64:function(e){if(this.type!==r.Bytes)return e.push(this.readSFixed64());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readSFixed64());return e},skip:function(e){var t=e&7;if(t===r.Varint)for(;this.buf[this.pos++]>127;);else if(t===r.Bytes)this.pos=this.readVarint()+this.pos;else if(t===r.Fixed32)this.pos+=4;else if(t===r.Fixed64)this.pos+=8;else throw Error(`Unimplemented type: `+t)},writeTag:function(e,t){this.writeVarint(e<<3|t)},realloc:function(e){for(var t=this.length||16;t<this.pos+e;)t*=2;if(t!==this.length){var n=new Uint8Array(t);n.set(this.buf),this.buf=n,this.length=t}},finish:function(){return this.length=this.pos,this.pos=0,this.buf.subarray(0,this.length)},writeFixed32:function(e){this.realloc(4),T(this.buf,e,this.pos),this.pos+=4},writeSFixed32:function(e){this.realloc(4),T(this.buf,e,this.pos),this.pos+=4},writeFixed64:function(e){this.realloc(8),T(this.buf,e&-1,this.pos),T(this.buf,Math.floor(e*a),this.pos+4),this.pos+=8},writeSFixed64:function(e){this.realloc(8),T(this.buf,e&-1,this.pos),T(this.buf,Math.floor(e*a),this.pos+4),this.pos+=8},writeVarint:function(e){if(e=+e||0,e>268435455||e<0){d(e,this);return}this.realloc(4),this.buf[this.pos++]=e&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=(e>>>=7)&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=(e>>>=7)&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=e>>>7&127)))},writeSVarint:function(e){this.writeVarint(e<0?-e*2-1:e*2)},writeBoolean:function(e){this.writeVarint(!!e)},writeString:function(e){e=String(e),this.realloc(e.length*4),this.pos++;var t=this.pos;this.pos=k(this.buf,e,this.pos);var n=this.pos-t;n>=128&&m(t,n,this),this.pos=t-1,this.writeVarint(n),this.pos+=n},writeFloat:function(e){this.realloc(4),n.write(this.buf,e,this.pos,!0,23,4),this.pos+=4},writeDouble:function(e){this.realloc(8),n.write(this.buf,e,this.pos,!0,52,8),this.pos+=8},writeBytes:function(e){var t=e.length;this.writeVarint(t),this.realloc(t);for(var n=0;n<t;n++)this.buf[this.pos++]=e[n]},writeRawMessage:function(e,t){this.pos++;var n=this.pos;e(t,this);var r=this.pos-n;r>=128&&m(n,r,this),this.pos=n-1,this.writeVarint(r),this.pos+=r},writeMessage:function(e,t,n){this.writeTag(e,r.Bytes),this.writeRawMessage(t,n)},writePackedVarint:function(e,t){t.length&&this.writeMessage(e,h,t)},writePackedSVarint:function(e,t){t.length&&this.writeMessage(e,g,t)},writePackedBoolean:function(e,t){t.length&&this.writeMessage(e,y,t)},writePackedFloat:function(e,t){t.length&&this.writeMessage(e,_,t)},writePackedDouble:function(e,t){t.length&&this.writeMessage(e,v,t)},writePackedFixed32:function(e,t){t.length&&this.writeMessage(e,b,t)},writePackedSFixed32:function(e,t){t.length&&this.writeMessage(e,x,t)},writePackedFixed64:function(e,t){t.length&&this.writeMessage(e,S,t)},writePackedSFixed64:function(e,t){t.length&&this.writeMessage(e,C,t)},writeBytesField:function(e,t){this.writeTag(e,r.Bytes),this.writeBytes(t)},writeFixed32Field:function(e,t){this.writeTag(e,r.Fixed32),this.writeFixed32(t)},writeSFixed32Field:function(e,t){this.writeTag(e,r.Fixed32),this.writeSFixed32(t)},writeFixed64Field:function(e,t){this.writeTag(e,r.Fixed64),this.writeFixed64(t)},writeSFixed64Field:function(e,t){this.writeTag(e,r.Fixed64),this.writeSFixed64(t)},writeVarintField:function(e,t){this.writeTag(e,r.Varint),this.writeVarint(t)},writeSVarintField:function(e,t){this.writeTag(e,r.Varint),this.writeSVarint(t)},writeStringField:function(e,t){this.writeTag(e,r.Bytes),this.writeString(t)},writeFloatField:function(e,t){this.writeTag(e,r.Fixed32),this.writeFloat(t)},writeDoubleField:function(e,t){this.writeTag(e,r.Fixed64),this.writeDouble(t)},writeBooleanField:function(e,t){this.writeVarintField(e,!!t)}};function c(e,t,n){var r=n.buf,i,a=r[n.pos++];if(i=(a&112)>>4,a<128||(a=r[n.pos++],i|=(a&127)<<3,a<128)||(a=r[n.pos++],i|=(a&127)<<10,a<128)||(a=r[n.pos++],i|=(a&127)<<17,a<128)||(a=r[n.pos++],i|=(a&127)<<24,a<128)||(a=r[n.pos++],i|=(a&1)<<31,a<128))return u(e,i,t);throw Error(`Expected varint not more than 10 bytes`)}function l(e){return e.type===r.Bytes?e.readVarint()+e.pos:e.pos+1}function u(e,t,n){return n?t*4294967296+(e>>>0):(t>>>0)*4294967296+(e>>>0)}function d(e,t){var n,r;if(e>=0?(n=e%4294967296|0,r=e/4294967296|0):(n=~(-e%4294967296),r=~(-e/4294967296),n^4294967295?n=n+1|0:(n=0,r=r+1|0)),e>=0x10000000000000000||e<-0x10000000000000000)throw Error(`Given varint doesn't fit into 10 bytes`);t.realloc(10),f(n,r,t),p(r,t)}function f(e,t,n){n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos]=e&127}function p(e,t){var n=(e&7)<<4;t.buf[t.pos++]|=n|((e>>>=3)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127)))))}function m(e,t,n){var r=t<=16383?1:t<=2097151?2:t<=268435455?3:Math.floor(Math.log(t)/(Math.LN2*7));n.realloc(r);for(var i=n.pos-1;i>=e;i--)n.buf[i+r]=n.buf[i]}function h(e,t){for(var n=0;n<e.length;n++)t.writeVarint(e[n])}function g(e,t){for(var n=0;n<e.length;n++)t.writeSVarint(e[n])}function _(e,t){for(var n=0;n<e.length;n++)t.writeFloat(e[n])}function v(e,t){for(var n=0;n<e.length;n++)t.writeDouble(e[n])}function y(e,t){for(var n=0;n<e.length;n++)t.writeBoolean(e[n])}function b(e,t){for(var n=0;n<e.length;n++)t.writeFixed32(e[n])}function x(e,t){for(var n=0;n<e.length;n++)t.writeSFixed32(e[n])}function S(e,t){for(var n=0;n<e.length;n++)t.writeFixed64(e[n])}function C(e,t){for(var n=0;n<e.length;n++)t.writeSFixed64(e[n])}function w(e,t){return(e[t]|e[t+1]<<8|e[t+2]<<16)+e[t+3]*16777216}function T(e,t,n){e[n]=t,e[n+1]=t>>>8,e[n+2]=t>>>16,e[n+3]=t>>>24}function E(e,t){return(e[t]|e[t+1]<<8|e[t+2]<<16)+(e[t+3]<<24)}function D(e,t,n){for(var r=``,i=t;i<n;){var a=e[i],o=null,s=a>239?4:a>223?3:a>191?2:1;if(i+s>n)break;var c,l,u;s===1?a<128&&(o=a):s===2?(c=e[i+1],(c&192)==128&&(o=(a&31)<<6|c&63,o<=127&&(o=null))):s===3?(c=e[i+1],l=e[i+2],(c&192)==128&&(l&192)==128&&(o=(a&15)<<12|(c&63)<<6|l&63,(o<=2047||o>=55296&&o<=57343)&&(o=null))):s===4&&(c=e[i+1],l=e[i+2],u=e[i+3],(c&192)==128&&(l&192)==128&&(u&192)==128&&(o=(a&15)<<18|(c&63)<<12|(l&63)<<6|u&63,(o<=65535||o>=1114112)&&(o=null))),o===null?(o=65533,s=1):o>65535&&(o-=65536,r+=String.fromCharCode(o>>>10&1023|55296),o=56320|o&1023),r+=String.fromCharCode(o),i+=s}return r}function O(e,t,n){return s.decode(e.subarray(t,n))}function k(e,t,n){for(var r=0,i,a;r<t.length;r++){if(i=t.charCodeAt(r),i>55295&&i<57344)if(a)if(i<56320){e[n++]=239,e[n++]=191,e[n++]=189,a=i;continue}else i=a-55296<<10|i-56320|65536,a=null;else{i>56319||r+1===t.length?(e[n++]=239,e[n++]=191,e[n++]=189):a=i;continue}else a&&(e[n++]=239,e[n++]=191,e[n++]=189,a=null);i<128?e[n++]=i:(i<2048?e[n++]=i>>6|192:(i<65536?e[n++]=i>>12|224:(e[n++]=i>>18|240,e[n++]=i>>12&63|128),e[n++]=i>>6&63|128),e[n++]=i&63|128)}return n}})),ue=c({default:()=>fe,writeFileSync:()=>de});function de(){throw Error(`fs is not available in browser builds`)}var fe,pe=o((()=>{fe={writeFileSync:de}})),me=u(le(),1);let he=function(e){let t=typeof e==`object`?e:JSON.parse(e);this._locked=t._locked,this._geoJsonFlag=t._geoJsonFlag,this.adjacency_list=t.adjacency_list,this.reverse_adjacency_list=t.reverse_adjacency_list,this._nodeToIndexLookup=t._nodeToIndexLookup,this._edgeProperties=t._edgeProperties,this._edgeGeometry=t._edgeGeometry},ge=function(){if(!this._locked)throw Error(`No sense in saving network before it is contracted.`);return JSON.stringify({_locked:this._locked,_geoJsonFlag:this._geoJsonFlag,adjacency_list:this.adjacency_list,reverse_adjacency_list:this.reverse_adjacency_list,_nodeToIndexLookup:this._nodeToIndexLookup,_edgeProperties:this._edgeProperties,_edgeGeometry:this._edgeGeometry})},_e=function(e){var t=new me.default(e),n=N.read(t);n.adjacency_list=n.adjacency_list.map(e=>e.edges),n.reverse_adjacency_list=n.reverse_adjacency_list.map(e=>e.edges),n._edgeGeometry=n._edgeGeometry.map(e=>e.linestrings.map(e=>e.coords)),n._edgeProperties=n._edgeProperties.map(e=>JSON.parse(e)),this._locked=n._locked,this._geoJsonFlag=n._geoJsonFlag,this.adjacency_list=n.adjacency_list,this.reverse_adjacency_list=n.reverse_adjacency_list,this._nodeToIndexLookup=n._nodeToIndexLookup,this._edgeProperties=n._edgeProperties,this._edgeGeometry=n._edgeGeometry,this._indexToNodeLookup={};for(let[e,t]of Object.entries(this._nodeToIndexLookup))this._indexToNodeLookup[t]=e;console.log(`done loading pbf`)},ve=async function(e){if(!this._locked)throw Error(`No sense in saving network before it is contracted.`);let t;try{t=await Promise.resolve().then(()=>(pe(),ue))}catch{console.log(`saving as PBF only works in NodeJS`);return}let n={_locked:this._locked,_geoJsonFlag:this._geoJsonFlag,adjacency_list:this.adjacency_list,reverse_adjacency_list:this.reverse_adjacency_list,_nodeToIndexLookup:this._nodeToIndexLookup,_edgeProperties:this._edgeProperties,_edgeGeometry:this._edgeGeometry};n.adjacency_list=n.adjacency_list.map(e=>({edges:e.map(e=>e)})),n.reverse_adjacency_list=n.reverse_adjacency_list.map(e=>({edges:e.map(e=>e)})),n._edgeGeometry=n._edgeGeometry.map(e=>({linestrings:e.map(e=>({coords:e}))})),n._edgeProperties=n._edgeProperties.map(e=>JSON.stringify(e));var r=new me.default;N.write(n,r);var i=r.finish();t.writeFileSync(e,i),console.log(`done saving ${e}`)};function ye(e){this.id=e.id,this.dist=e.dist===void 0?1/0:e.dist,this.prev=void 0,this.visited=void 0,this.opened=!1,this.heapIndex=-1}function be(){var e=0,t=[];return{createNewState:r,reset:n};function n(){e=0}function r(n){var r=t[e];return r?(r.id=n.id,r.dist=n.dist===void 0?1/0:n.dist,r.prev=void 0,r.visited=void 0,r.opened=!1,r.heapIndex=-1):(r=new ye(n),t[e]=r),e++,r}}let xe=function(){if(this._locked)throw Error(`Network has already been contracted`);this._locked=!0,this._maxUncontractedEdgeIndex=this._currentEdgeIndex;let e=this._createChShortcutter(),t=t=>this._contract(t,!0,e)-(this.adjacency_list[t]||[]).length+n(t),n=e=>(this.adjacency_list[e]||[]).reduce((e,t)=>e+(this.contracted_nodes[t.end]==null?0:1),0),r=new A({compare(e,t){return e.score-t.score}});this.contracted_nodes=[],Object.keys(this._nodeToIndexLookup).forEach(e=>{let n=this._nodeToIndexLookup[e],i=new Te(t(n),n);r.push(i)});let i=1,a=r.length;for(;r.length>0;){let n=r.length;n%50==0&&(this.debugMode&&console.log(n/a),this._cleanAdjList(this.adjacency_list),this._cleanAdjList(this.reverse_adjacency_list));let o=!1,s=r.peek(),c=s.score;do{let e=s.id,n=t(e);n>c&&(s.score=n,r.updateItem(s.heapIndex)),s=r.peek(),s.id===e&&(o=!0)}while(o===!1);let l=r.pop();this._contract(l.id,!1,e),this.contracted_nodes[l.id]=i,i++}this._cleanAdjList(this.adjacency_list),this._cleanAdjList(this.reverse_adjacency_list),this._arrangeContractedPaths(this.adjacency_list),this._arrangeContractedPaths(this.reverse_adjacency_list),this.debugMode&&console.log(`Contraction complete`)},Se=function(e){e.forEach((e,t)=>{e.forEach(e=>{let n=t,r=[],i=[];for(i=[e.attrs];i.length;){let e=i.pop();e<=this._maxUncontractedEdgeIndex?r.push(e):i.push(...this._edgeProperties[e]._id)}let a={};r.forEach(e=>{let t=this._edgeProperties[e],n=t._start_index,r=t._end_index;a[n]?a[n].push(e):a[n]=[e],a[r]?a[r].push(e):a[r]=[e]});let o=[],s=String(n),c=a[s][0];for(;c!=null;){o.push(c);let e=this._edgeProperties[c],t=String(e._start_index),n=String(e._end_index),r=t===s?n:t;s=r;let i=a[r];if(i.length===1)break;i.length>2&&(console.error(`too many edges in array. unexpected. unrecoverable.`),process.exit()),c=i[0]===c?i[1]:i[0]}this._edgeProperties[e.attrs]._ordered=o})})},Ce=function(e){e.forEach((t,n)=>{let r=this.contracted_nodes[n];r!=null&&(e[n]=e[n].filter(e=>{let t=this.contracted_nodes[e.end];return t==null?!0:r<t}))})},we=function(e,t,n){let r=(this.reverse_adjacency_list[e]||[]).filter(e=>!this.contracted_nodes[e.end]),i=(this.adjacency_list[e]||[]).filter(e=>!this.contracted_nodes[e.end]),a=0;return r.forEach(r=>{let o=0,s=r.cost;if(i.forEach(e=>{if(r.end===e.end)return;let t=s+e.cost;t>o&&(o=t)}),!i.length)return;let c=n.runDijkstra(r.end,null,e,o);i.forEach(e=>{if(r.end===e.end)return;let n=s+e.cost;if(n<(c.distances[e.end]||1/0)&&(a++,!t)){let t={_cost:n,_id:[r.attrs,e.attrs],_start_index:r.end,_end_index:e.end};this._addContractedEdge(r.end,e.end,t)}})}),a};function Te(e,t){this.score=e,this.id=t}let Ee=function(){let e=this._createNodePool(),t=this.adjacency_list;return{runDijkstra:n};function n(n,r,i,a){e.reset();let o=[],s={};var c=new A({compare(e,t){return e.dist-t.dist}});let l=e.createNewState({id:n,dist:0});for(o[n]=l,l.opened=1,s[l.id]=0,n===r&&(l=``);l;){(t[l.id]||[]).filter(e=>e.end!==i).forEach(t=>{let n=o[t.end];if(n===void 0&&(n=e.createNewState({id:t.end}),o[t.end]=n),n.visited===!0)return;n.opened||(c.push(n),n.opened=!0);let r=l.dist+t.cost;r>=n.dist||(n.dist=r,s[n.id]=r,n.prev=l.id,c.updateItem(n.heapIndex))}),l.visited=!0;let n=l.dist;l=c.pop(),l&&l.id===r&&(l=``),n>a&&(l=``)}return{distances:s,nodeState:o}}};function P(e,t){let n=t||{};this.debugMode=n.debugMode||!1,this.adjacency_list=[],this.reverse_adjacency_list=[],this._createNodePool=be,this._currentNodeIndex=-1,this._nodeToIndexLookup={},this._indexToNodeLookup={},this._currentEdgeIndex=-1,this._edgeProperties=[],this._edgeGeometry=[],this._maxUncontractedEdgeIndex=0,this._locked=!1,this._geoJsonFlag=!1,this._manualAdd=!1,e&&(this._loadFromGeoJson(e),this.debugMode&&(console.log(`Nodes: `,this._currentNodeIndex),console.log(`Edges: `,this._currentEdgeIndex)))}P.prototype.createPathfinder=ee,P.prototype._loadFromGeoJson=re,P.prototype._cleanseGeoJsonNetwork=ie,P.prototype._addContractedEdge=se,P.prototype.addEdge=ae,P.prototype._addEdge=oe,P.prototype.loadCH=he,P.prototype.saveCH=ge,P.prototype.loadPbfCH=_e,P.prototype.savePbfCH=ve,P.prototype.contractGraph=xe,P.prototype._arrangeContractedPaths=Se,P.prototype._cleanAdjList=Ce,P.prototype._contract=we,P.prototype._createChShortcutter=Ee;let De=6371e3;De*De;let Oe=Math.PI/180;function F([e,t],[n,r]){return ke(e,t,n,r)}function ke(e,t,n,r){let i=(r-t)*Oe,a=(n-e)*Oe,o=t*Oe,s=r*Oe,c=Math.sin(i/2),l=Math.sin(a/2),u=Math.hypot(c,Math.cos(o)*Math.cos(s)*l);return 2*De*Math.asin(u)}function Ae(e,t,n=5){if(e===t)return[e];let r=e>t,i=r?t:e,a=r?e:t,o=(a-i)/n,s=10**Math.floor(Math.log10(o)),c=o/s,l;l=c<1.5?1:c<3?2:c<7?5:10;let u=l*s,d=Math.floor(i/u)*u,f=Math.ceil(a/u)*u,p=[],m=d,h=Math.max(0,-Math.floor(Math.log10(u))),g=u/1e9;for(;m<=f+g;)p.push(Number(m.toFixed(h))),m+=u;return r?p.reverse():p}let je=e=>{let t=0;for(let n=0;n<e.length-1;n++)t+=e[n][0]*e[n+1][1]-e[n+1][0]*e[n][1];return t/2};function Me(e){let t=e.prototype._arrangeContractedPaths;return e.prototype._arrangeContractedPaths=function(e){let t=this;e.forEach((e,n)=>{e.forEach(e=>{let r=n,i=[],a=[e.attrs];for(;a.length;){let e=a.pop();if(e<=t._maxUncontractedEdgeIndex)i.push(e);else{let n=t._edgeProperties[e];n&&Array.isArray(n._id)?a.push(...n._id):i.push(e)}}let o={};if(i.forEach(e=>{let n=t._edgeProperties[e],r=String(n._start_index),i=String(n._end_index);o[r]||(o[r]=[]),o[r].push(e),o[i]||(o[i]=[]),o[i].push(e)}),Object.values(o).forEach(e=>e.sort((e,t)=>e-t)),i.length<=1){t._edgeProperties[e.attrs]._ordered=i;return}let s=i.length,c=new Set,l=null,u=(e,n)=>{if(n.length===s)return l=n.slice(),!0;let r=o[e]||[];for(let i of r){if(c.has(i))continue;c.add(i);let r=t._edgeProperties[i],a=String(r._start_index),o=String(r._end_index),s=e===a?o:a;if(n.push(i),u(s,n))return!0;n.pop(),c.delete(i)}return!1};if(u(String(r),[]),l){t._edgeProperties[e.attrs]._ordered=l;return}let d=[],f=String(r),p=o[f]||[],m=p.length?p[0]:null;for(;m!=null;){d.push(m);let e=t._edgeProperties[m],n=String(e._start_index),r=String(e._end_index),i=n===f?r:n;f=i;let a=o[i]||[];if(a.length===1)break;let s=null;for(let e of a)if(e!==m&&!d.includes(e)){s=e;break}if(s==null)break;m=s}for(let e of i)d.includes(e)||d.push(e);t._edgeProperties[e.attrs]._ordered=d})})},function(){t?e.prototype._arrangeContractedPaths=t:delete e.prototype._arrangeContractedPaths}}function Ne(e,t,n,r={}){if(!e||typeof e!=`object`)throw Error(`Invalid prepared graph for isoPHAST`);let{N:i}=e;if(!Number.isInteger(i))throw Error(\"Prepared graph missing node count `N`.\");let{direction:a=`from`,mode:o=`car`,outputUnscaled:s=!1}=r;if(a!==`from`&&a!==`to`)throw Error(`Invalid direction: expected \"from\" or \"to\".`);if(!Number.isInteger(t)||t<0||t>=i)throw Error(`Invalid startId ${t}: expected integer in range 0..${i-1}`);let c=new Float64Array(i).fill(1/0),l=o===`pedestrian`,u=e.distScale&&Number.isFinite(e.distScale)?e.distScale:10;if(!e._chGraph||e._chGraphMode!==o||e._chGraphIsUndirected!==l||e._chGraphCostField!==e.costField||e._chGraphPenaltyKey!==e.penaltyKey){let t=new P,n=0,r=e.edgeSrc||null,a=e.edgeTgt||null,s=e.edgeCostInt||null;if(r&&a&&s)for(let e=0;e<r.length;e++){let i=r[e],o=a[e],c=s[e]/u;t.addEdge(String(i),String(o),{_id:n++,_cost:c},null,l)}else{let{adjPtr:r,adjTo:a,adjCost:o}=e;for(let e=0;e<i;e++)for(let i=r[e];i<r[e+1];i++){let r=a[i],s=o[i]/u;t.addEdge(String(e),String(r),{_id:n++,_cost:s},null,l)}}let c=Me(P);try{t.contractGraph()}finally{c()}e._chGraph=t,e._chGraphMode=o,e._chGraphIsUndirected=l,e._chGraphCostField=e.costField,e._chGraphPenaltyKey=e.penaltyKey,e._chFinder=e._chGraph.createPathfinder({})}let d=e._chFinder||e._chGraph.createPathfinder({});e._chFinder=d;let f=s&&e.coordsArr&&e.coordsArr[t]&&e.costField===`distance`&&e.coordsAreGeographic===!0,p=f?e.coordsArr[t]:null;if(a===`from`)for(let r=0;r<i;r++){if(r===t){c[r]=0;continue}if(f){let t=e.coordsArr[r];if(!t){c[r]=1/0;continue}if(F(p,t)>n){c[r]=1/0;continue}}try{let e=d.queryContractionHierarchy(String(t),String(r));e&&Number.isFinite(e.total_cost)?c[r]=e.total_cost===0&&r!==t?1/0:e.total_cost:c[r]=1/0}catch{c[r]=1/0}}else for(let r=0;r<i;r++){if(r===t){c[r]=0;continue}if(f){let t=e.coordsArr[r];if(!t){c[r]=1/0;continue}if(F(p,t)>n){c[r]=1/0;continue}}try{let e=d.queryContractionHierarchy(String(r),String(t));e&&Number.isFinite(e.total_cost)?c[r]=e.total_cost===0&&r!==t?1/0:e.total_cost:c[r]=1/0}catch{c[r]=1/0}}let m=[];for(let e=0;e<i;e++){let t=c[e];Number.isFinite(t)&&t<=n&&m.push(e)}if(!s){let e=new Float64Array(i);for(let t=0;t<i;t++){let n=c[t];e[t]=Number.isFinite(n)?Math.round(n*u):1/0}return{distances:e,reachable:m}}return{distances:c,reachable:m}}function Pe(e,t=`ERR_ITEM`){return!e||typeof e!=`object`?{error:!0,code:t,message:e?String(e):void 0,stack:void 0}:{error:!0,code:e.code||t,message:e.message,stack:e.stack}}function Fe(e){return!e||!e.error?String(e):`${e.code||`ERR`}: ${e.message||``}`}let Ie=null;if(typeof process<`u`&&process?.hrtime&&typeof process.hrtime.bigint==`function`)try{let e=Number(process.hrtime.bigint()/1000000n);Ie=Date.now()-e}catch{Ie=null}let Le=()=>{let e=Date.now();if(typeof performance<`u`&&typeof performance?.now==`function`&&typeof performance?.timeOrigin==`number`)try{let t=performance.timeOrigin+performance.now();return Math.abs(t-e)<1e3?t:e}catch{}if(Ie!=null)try{let t=Number(process.hrtime.bigint()/1000000n)+Ie;return Math.abs(t-e)<1e3?t:e}catch{return e}return e},I=Object.freeze({error:`error`,warn:`warn`,info:`info`,log:`log`,debug:`debug`,table:`table`}),L=typeof globalThis<`u`&&globalThis?.console?globalThis.console:typeof self<`u`&&self?.console?self.console:typeof window<`u`&&window?.console?window.console:typeof global<`u`&&global?.console?global.console:null;function Re(e){try{return JSON.stringify(e)}catch{try{let t=typeof WeakSet==`function`?new WeakSet:new Set;return JSON.stringify(e,function(e,n){if(n&&typeof n==`object`){if(t.has(n))return`[Circular]`;t.add(n)}return typeof n==`function`?`[Function: ${n.name||`anonymous`}]`:typeof n==`symbol`?String(n):typeof n==`bigint`?n.toString()+`n`:n})}catch{try{return String(e)}catch{return`[Unserializable]`}}}}var ze=class{constructor(e=0,t={}){this._debugLevel=0,this._counters=Object.create(null),this._format=t?.format||`text`,this.name=t?.name||null,this._formatter=typeof t?.formatter==`function`?t.formatter:null,this._output=typeof t?.output==`function`?t.output:null,this.setDebugLevel(e)}setDebugLevel(e){let t=NaN;typeof e==`number`?t=e:typeof e==`string`||typeof e==`boolean`?t=Number(e):(e instanceof Number||e instanceof String||e instanceof Boolean)&&(t=Number(e.valueOf())),this._debugLevel=Number.isFinite(t)&&t>=0?Math.max(0,Math.min(3,Math.floor(t))):0}getDebugLevel(){return this._debugLevel}isDebugLevel(e=1){return Number(this._debugLevel)>=Number(e||1)}isDebug(){return this.isDebugLevel(1)}_resolveLogArgs(e){return e.map(e=>{if(typeof e==`function`)try{return e()}catch(e){return e}return e})}_emit(e,t,n,r,i={}){if(!this.isDebugLevel(e))return;let a=this._resolveLogArgs(r),o={level:n,msg:i.msgArray?a:a.length===1?a[0]:a,ts:Le(),format:this._format};if(this.name&&(o.name=this.name),this._formatter)try{let e=this._formatter(o);if(e!=null){if(typeof e==`string`){if(this._output){try{this._output(e)}catch{}return}typeof L?.[t]==`function`&&L[t](e);return}o=e}}catch{}if(this._output){try{this._output(o)}catch{}return}if(typeof L?.[t]==`function`)if(this._format===`json`)try{let e=typeof o==`string`?o:Re(o);L[t](e)}catch{try{L[t](...Array.isArray(a)?a:[a])}catch{}}else L[t](...a)}error(...e){let t=e.map(e=>{try{if(e?.error)return Fe(e);if(e instanceof Error||e&&typeof e==`object`)return Fe(Pe(e))}catch{}return e});this._emit(1,`error`,I.error,t)}warn(...e){this._emit(2,`warn`,I.warn,e)}info(...e){this._emit(3,`info`,I.info,e)}log(...e){this._emit(3,`log`,I.log,e)}debug(...e){this._emit(3,`debug`,I.debug,e)}table(...e){if(!this.isDebugLevel(3)||!L)return;if(this._format===`json`){this._emit(3,`log`,I.table,e,{msgArray:!0});return}let t=this._resolveLogArgs(e);typeof L.table==`function`?L.table(...t):typeof L.log==`function`&&L.log(...t)}incrementCounter(e){if(!this.isDebug())return;let t=String(e||``);t&&(this._counters[t]=(this._counters[t]||0)+1)}getDebugCounters(){return Object.assign({},this._counters)}resetDebugCounters(){this._counters=Object.create(null)}};function Be(e,t,n=0,r=e.length-1,i=He){for(;r>n;){if(r-n>600){let a=r-n+1,o=t-n+1,s=Math.log(a),c=.5*Math.exp(2*s/3),l=.5*Math.sqrt(s*c*(a-c)/a)*(o-a/2<0?-1:1);Be(e,t,Math.max(n,Math.floor(t-o*c/a+l)),Math.min(r,Math.floor(t+(a-o)*c/a+l)),i)}let a=e[t],o=n,s=r;for(Ve(e,n,t),i(e[r],a)>0&&Ve(e,n,r);o<s;){for(Ve(e,o,s),o++,s--;i(e[o],a)<0;)o++;for(;i(e[s],a)>0;)s--}i(e[n],a)===0?Ve(e,n,s):(s++,Ve(e,s,r)),s<=t&&(n=s+1),t<=s&&(r=s-1)}}function Ve(e,t,n){let r=e[t];e[t]=e[n],e[n]=r}function He(e,t){return e<t?-1:+(e>t)}var Ue=class{constructor(e=9){this._maxEntries=Math.max(4,e),this._minEntries=Math.max(2,Math.ceil(this._maxEntries*.4)),this.clear()}all(){return this._all(this.data,[])}search(e){let t=this.data,n=[];if(!et(e,t))return n;let r=this.toBBox,i=[];for(;t;){for(let a=0;a<t.children.length;a++){let o=t.children[a],s=t.leaf?r(o):o;et(e,s)&&(t.leaf?n.push(o):$e(e,s)?this._all(o,n):i.push(o))}t=i.pop()}return n}collides(e){let t=this.data;if(!et(e,t))return!1;let n=[];for(;t;){for(let r=0;r<t.children.length;r++){let i=t.children[r],a=t.leaf?this.toBBox(i):i;if(et(e,a)){if(t.leaf||$e(e,a))return!0;n.push(i)}}t=n.pop()}return!1}load(e){if(!(e&&e.length))return this;if(e.length<this._minEntries){for(let t=0;t<e.length;t++)this.insert(e[t]);return this}let t=this._build(e.slice(),0,e.length-1,0);if(!this.data.children.length)this.data=t;else if(this.data.height===t.height)this._splitRoot(this.data,t);else{if(this.data.height<t.height){let e=this.data;this.data=t,t=e}this._insert(t,this.data.height-t.height-1,!0)}return this}insert(e){return e&&this._insert(e,this.data.height-1),this}clear(){return this.data=z([]),this}remove(e,t){if(!e)return this;let n=this.data,r=this.toBBox(e),i=[],a=[],o,s,c;for(;n||i.length;){if(n||(n=i.pop(),s=i[i.length-1],o=a.pop(),c=!0),n.leaf){let r=We(e,n.children,t);if(r!==-1)return n.children.splice(r,1),i.push(n),this._condense(i),this}!c&&!n.leaf&&$e(n,r)?(i.push(n),a.push(o),o=0,s=n,n=n.children[0]):s?(o++,n=s.children[o],c=!1):n=null}return this}toBBox(e){return e}compareMinX(e,t){return e.minX-t.minX}compareMinY(e,t){return e.minY-t.minY}toJSON(){return this.data}fromJSON(e){return this.data=e,this}_all(e,t){let n=[];for(;e;)e.leaf?t.push(...e.children):n.push(...e.children),e=n.pop();return t}_build(e,t,n,r){let i=n-t+1,a=this._maxEntries,o;if(i<=a)return o=z(e.slice(t,n+1)),R(o,this.toBBox),o;r||(r=Math.ceil(Math.log(i)/Math.log(a)),a=Math.ceil(i/a**(r-1))),o=z([]),o.leaf=!1,o.height=r;let s=Math.ceil(i/a),c=s*Math.ceil(Math.sqrt(a));tt(e,t,n,c,this.compareMinX);for(let i=t;i<=n;i+=c){let t=Math.min(i+c-1,n);tt(e,i,t,s,this.compareMinY);for(let n=i;n<=t;n+=s){let i=Math.min(n+s-1,t);o.children.push(this._build(e,n,i,r-1))}}return R(o,this.toBBox),o}_chooseSubtree(e,t,n,r){for(;r.push(t),!(t.leaf||r.length-1===n);){let n=1/0,r=1/0,i;for(let a=0;a<t.children.length;a++){let o=t.children[a],s=Ye(o),c=Ze(e,o)-s;c<r?(r=c,n=s<n?s:n,i=o):c===r&&s<n&&(n=s,i=o)}t=i||t.children[0]}return t}_insert(e,t,n){let r=n?e:this.toBBox(e),i=[],a=this._chooseSubtree(r,this.data,t,i);for(a.children.push(e),Ke(a,r);t>=0&&i[t].children.length>this._maxEntries;)this._split(i,t),t--;this._adjustParentBBoxes(r,i,t)}_split(e,t){let n=e[t],r=n.children.length,i=this._minEntries;this._chooseSplitAxis(n,i,r);let a=this._chooseSplitIndex(n,i,r),o=z(n.children.splice(a,n.children.length-a));o.height=n.height,o.leaf=n.leaf,R(n,this.toBBox),R(o,this.toBBox),t?e[t-1].children.push(o):this._splitRoot(n,o)}_splitRoot(e,t){this.data=z([e,t]),this.data.height=e.height+1,this.data.leaf=!1,R(this.data,this.toBBox)}_chooseSplitIndex(e,t,n){let r,i=1/0,a=1/0;for(let o=t;o<=n-t;o++){let t=Ge(e,0,o,this.toBBox),s=Ge(e,o,n,this.toBBox),c=Qe(t,s),l=Ye(t)+Ye(s);c<i?(i=c,r=o,a=l<a?l:a):c===i&&l<a&&(a=l,r=o)}return r||n-t}_chooseSplitAxis(e,t,n){let r=e.leaf?this.compareMinX:qe,i=e.leaf?this.compareMinY:Je;this._allDistMargin(e,t,n,r)<this._allDistMargin(e,t,n,i)&&e.children.sort(r)}_allDistMargin(e,t,n,r){e.children.sort(r);let i=this.toBBox,a=Ge(e,0,t,i),o=Ge(e,n-t,n,i),s=Xe(a)+Xe(o);for(let r=t;r<n-t;r++){let t=e.children[r];Ke(a,e.leaf?i(t):t),s+=Xe(a)}for(let r=n-t-1;r>=t;r--){let t=e.children[r];Ke(o,e.leaf?i(t):t),s+=Xe(o)}return s}_adjustParentBBoxes(e,t,n){for(let r=n;r>=0;r--)Ke(t[r],e)}_condense(e){for(let t=e.length-1,n;t>=0;t--)e[t].children.length===0?t>0?(n=e[t-1].children,n.splice(n.indexOf(e[t]),1)):this.clear():R(e[t],this.toBBox)}};function We(e,t,n){if(!n)return t.indexOf(e);for(let r=0;r<t.length;r++)if(n(e,t[r]))return r;return-1}function R(e,t){Ge(e,0,e.children.length,t,e)}function Ge(e,t,n,r,i){i||(i=z(null)),i.minX=1/0,i.minY=1/0,i.maxX=-1/0,i.maxY=-1/0;for(let a=t;a<n;a++){let t=e.children[a];Ke(i,e.leaf?r(t):t)}return i}function Ke(e,t){return e.minX=Math.min(e.minX,t.minX),e.minY=Math.min(e.minY,t.minY),e.maxX=Math.max(e.maxX,t.maxX),e.maxY=Math.max(e.maxY,t.maxY),e}function qe(e,t){return e.minX-t.minX}function Je(e,t){return e.minY-t.minY}function Ye(e){return(e.maxX-e.minX)*(e.maxY-e.minY)}function Xe(e){return e.maxX-e.minX+(e.maxY-e.minY)}function Ze(e,t){return(Math.max(t.maxX,e.maxX)-Math.min(t.minX,e.minX))*(Math.max(t.maxY,e.maxY)-Math.min(t.minY,e.minY))}function Qe(e,t){let n=Math.max(e.minX,t.minX),r=Math.max(e.minY,t.minY),i=Math.min(e.maxX,t.maxX),a=Math.min(e.maxY,t.maxY);return Math.max(0,i-n)*Math.max(0,a-r)}function $e(e,t){return e.minX<=t.minX&&e.minY<=t.minY&&t.maxX<=e.maxX&&t.maxY<=e.maxY}function et(e,t){return t.minX<=e.maxX&&t.minY<=e.maxY&&t.maxX>=e.minX&&t.maxY>=e.minY}function z(e){return{children:e,height:1,leaf:!0,minX:1/0,minY:1/0,maxX:-1/0,maxY:-1/0}}function tt(e,t,n,r,i){let a=[t,n];for(;a.length;){if(n=a.pop(),t=a.pop(),n-t<=r)continue;let o=t+Math.ceil((n-t)/r/2)*r;Be(e,o,t,n,i),a.push(t,o,o,n)}}let nt=Math.PI/180,rt=111320;function it(e){return Math.max(Math.cos(e*nt),1e-6)}function at(e){return Array.isArray(e)&&e.length===2&&Number.isFinite(e[0])&&Number.isFinite(e[1])}function ot(e){let{nodes:t}=e,n=t.size,r=new f(n),i=Array(n),a=Array(n),o=0;for(let[e,n]of t)r.add(n.coords[0],n.coords[1]),a[o]=e,i[o]=n.coords,o+=1;return r.finish(),{index:r,coordsArr:i,nodeIds:a}}function st(e,t,n){e._spatialIndex||(e._spatialIndex=ot(e));let{index:r,nodeIds:i}=e._spatialIndex,[a,o]=t,s=n/(rt*it(o));return r.within(a,o,s).map(e=>i[e])}function ct(e,t,n=500){if(!t||typeof t!=`object`||!t.nodes||typeof t.nodes!=`object`||typeof t.nodes.get!=`function`||typeof t.nodes.has!=`function`||typeof t.nodes.size!=`number`)throw Error(`Invalid graph: expected object with nodes Map.`);if(!at(e))return-1;t._spatialIndex||(t._spatialIndex=ot(t));let{index:r,coordsArr:i,nodeIds:a}=t._spatialIndex,[o,s]=e,c=n/(rt*it(s)),l=r.within(o,s,c);if(l.length===0)return-1;let u=-1,d=n;for(let t of l){let n=a[t],r=F(e,i[t]);r<d&&(d=r,u=n)}return u}function lt(e){if(e._incidentEdgeIndex)return e._incidentEdgeIndex;let t=e.nodes.size,n=Array.from({length:t},()=>[]);for(let r=0;r<e.edges.length;r++){let i=e.edges[r];i.source>=0&&i.source<t&&n[i.source].push(r),i.target>=0&&i.target<t&&n[i.target].push(r)}return e._incidentEdgeIndex=n,n}function ut(e){if(e._edgeSpatialIndex)return e._edgeSpatialIndex;let t=new Ue,n=[];for(let t=0;t<e.edges.length;t+=1){let r=e.edges[t],i=e.nodes.get(r.source),a=e.nodes.get(r.target);if(!i||!a)continue;let[o,s]=i.coords,[c,l]=a.coords,u=Math.min(o,c),d=Math.min(s,l),f=Math.max(o,c),p=Math.max(s,l);n.push({minX:u,minY:d,maxX:f,maxY:p,edgeIndex:t})}return t.load(n),e._edgeSpatialIndex={tree:t},e._edgeSpatialIndex}function dt(e,t,n){let{tree:r}=ut(e),[i,a]=t,o=n/(rt*it(a)),s=n/rt;return r.search({minX:i-o,minY:a-s,maxX:i+o,maxY:a+s}).map(e=>e.edgeIndex)}function ft(e,t,n,r){let i=e[0]*r,a=e[1],o=t[0]*r,s=t[1],c=n[0]*r,l=n[1],u=c-o,d=l-s,f=u*u+d*d;if(f===0)return null;let p=((i-o)*u+(a-s)*d)/f;return{t:p,projected:[o+u*p,s+d*p]}}function pt(e,t,n,r=60){let i=st(t,e,n+250),a=lt(t),o=new Set;for(let e of i){let t=a[e];if(t)for(let e of t)o.add(e)}for(let r of dt(t,e,n+250))o.add(r);if(o.size===0)return null;let s=it(e[1]),c=null,l=i=>{let a=t.edges[i];if(!a)return;let o=t.nodes.get(a.source)?.coords,l=t.nodes.get(a.target)?.coords;if(!o||!l||a.cost===-1&&a.reverseCost===-1)return;let u=ft(e,o,l,s);if(!u)return;let{t:d,projected:f}=u,p=Math.max(0,Math.min(1,d)),m=p===d?[f[0]/s,f[1]]:[(o[0]*s+(l[0]*s-o[0]*s)*p)/s,o[1]+(l[1]-o[1])*p],h=F(e,m);h>n||h>r||(!c||h<c.distanceM)&&(c={edge:a,edgeIndex:i,projectedCoords:m,distanceM:h,source:a.source,target:a.target,t:p})};for(let e of o)l(e);return c}function mt(e,t,n){let r={id:t,coords:n};return{size:e.size+1,get(n){return n===t?r:e.get(n)},has(n){return n===t||e.has(n)},keys(){return(function*(){for(let t of e.keys())yield t;yield t})()},values(){return(function*(){for(let t of e.values())yield t;yield r})()},entries(){return(function*(){for(let t of e.entries())yield t;yield[t,r]})()},[Symbol.iterator](){return this.entries()}}}function ht(e,t,n){let r=e.length+n.length-1,i=Array(r),a=0;for(let n=0;n<t;n+=1)i[a++]=e[n];for(let e=0;e<n.length;e+=1)i[a++]=n[e];for(let n=t+1;n<e.length;n+=1)i[a++]=e[n];return i}function gt(e){let t=-1;for(let n of e.nodes.keys())n>t&&(t=n);return t+1}function _t(e,t){let n=gt(e),r=mt(e.nodes,n,t.projectedCoords),i=e.nodes.get(t.edge.source).coords,a=e.nodes.get(t.edge.target).coords,o=F(i,t.projectedCoords),s=F(t.projectedCoords,a),c=o/(t.edge.speed/3.6),l=s/(t.edge.speed/3.6),u=t.edge.properties,d=t.edge.fibonacciScore,f=Number.isFinite(t.edge.id)?t.edge.id:e.edges.length,p=-(f*2+1),m=-(f*2+2),h=t.edge.cost===-1?-1:o,g=t.edge.cost===-1?-1:s,_=t.edge.reverseCost===-1?-1:o,v=t.edge.reverseCost===-1?-1:s,y=[{id:p,source:t.edge.source,target:n,cost:h,reverseCost:_,length:o,speed:t.edge.speed,travelTime:c,properties:u,fibonacciScore:d},{id:m,source:n,target:t.edge.target,cost:g,reverseCost:v,length:s,speed:t.edge.speed,travelTime:l,properties:u,fibonacciScore:d}],b=ht(e.edges,t.edgeIndex,y),x={...e,nodes:r,edges:b,nodeIndex:e.nodeIndex&&new Map(e.nodeIndex),_lastAddedNodeId:n};return delete x._spatialIndex,delete x._incidentEdgeIndex,delete x._edgeSpatialIndex,delete x._prepared,x}function vt(e,t,n,r=60){let i={type:`none`,nodeId:-1,nodeSnapDistanceM:1/0,segmentSnap:null,segmentSnapDistanceM:1/0,snapDistanceM:1/0};if(!at(e))return i;let a=ct(e,t,n);i.nodeId=a,a!==-1&&(i.nodeSnapDistanceM=F(e,t.nodes.get(a)?.coords??[NaN,NaN]));let o=pt(e,t,n,r);return o?(i.segmentSnap=o,i.segmentSnapDistanceM=o.distanceM,o.t===0||o.t===1?(i.nodeId=o.t===0?o.source:o.target,i.nodeSnapDistanceM=o.distanceM,i.type=`node`,i.snapDistanceM=o.distanceM):(i.type=`segment`,i.snapDistanceM=i.segmentSnapDistanceM)):i.nodeId!==-1&&(i.type=`node`,i.snapDistanceM=i.nodeSnapDistanceM),i}function yt(e,t,n,r=60){let i=Array.isArray(n)&&n.length>0?n:[250,500,800],a={type:`none`,nodeId:-1,nodeSnapDistanceM:1/0,segmentSnap:null,segmentSnapDistanceM:1/0,snapDistanceM:1/0};for(let n of i)if(a=vt(e,t,n,r),a.type!==`none`)return a;return a}let bt=Object.freeze({generatedAt:`2026-05-14T12:09:50.023890+00:00`,featureOrder:`safeN.safeE.safeBeelineKm.avgOutDegree.logAvgOutDegree.edgesPerKm.nodesPerKm.sizeRatioEN.beelinePerNode.relativeDensity.logRelativeDensity.globalCoverage.logGlobalCoverage.emptyRatio.logEmptyRatio.sourceDegree.logSourceDegree.targetDegree.logTargetDegree.sourceCentrality.logSourceCentrality.targetCentrality.logTargetCentrality.sourceTargetDegreeRatio.logSourceTargetDegreeRatio.sourceTargetCentralityRatio.logSourceTargetCentralityRatio.graphDensity.logGraphDensity.avgBranchFactor.logAvgBranchFactor.logN.logE.logBeelineKm.logEdgesPerKm.logNodesPerKm.logEoverN.logBeelinePerNode.densityBySize.logDensityBySize.coverageDensity.logCoverageDensity.degreeProduct.logDegreeProduct.centralityProduct.logCentralityProduct.coverageEmptyContrast.logCoverageEmptyContrast.safeBeelineKmOverSizeRatioEN.globalCoverageTimesEmptyRatio.avgOutDegreeTimesLogRelativeDensity.beelinePerNodeTimesSourceTargetDegreeRatio.coverageEmptyContrastTimesLogAvgBranchFactor.densityBySizeTimesSourceCentrality`.split(`.`),engines:[`bidirectional-astar`,`adaptive-barrier`,`delta-stepping`,`ultra-dijkstra`],profiles:{sabOff:{modelType:`runtime-linear`,runtimeFeatureOrder:[`logCoverageEmptyContrast`,`coverageEmptyContrast`,`logBeelineKm`,`logGlobalCoverage`,`coverageEmptyContrastTimesLogAvgBranchFactor`,`globalCoverageTimesEmptyRatio`,`globalCoverage`,`logN`,`logCoverageDensity`,`coverageDensity`,`logBeelinePerNode`,`emptyRatio`,`logEmptyRatio`,`nodesPerKm`,`safeE`,`logNodesPerKm`,`safeN`,`logDegreeProduct`,`logAvgOutDegree`],runtimeScalerMean:[.06556720195803181,.0731442078931785,1.4236504914043746,.1274378465216673,.07819653195448278,.08118231694255597,.1543265248357349,10.303111752925552,.17318584189179753,.22518520180606383,.11077072259443911,.6113882096815391,.4697981181917068,25886.454095149275,96300.95706156234,9.542876204745204,50236.53543714433,1.1404662599176258,1.0376200671227167],runtimeScalerScale:[.09791359830930801,.11283372783744608,1.205813794351115,.1729715667652156,.12223918904340954,.12812009435995403,.22270626147508962,.9370328405825591,.23384438099017318,.32774938612525195,.10830298254262768,.1901375656668161,.12239682271807398,30122.03214494164,136140.6064161884,1.134891872441802,66804.89900976988,.37873500296185686,.07307932080003535],scaler_mean:[50236.53543714433,96300.95706156234,8.811713398861887,1.8301021595600395,1.0376200671227167,46691.66932353172,25886.454095149275,1.8301021595600395,.12412093189152984,1.563824666516969,.9006241416831274,.1543265248357349,.1274378465216673,.6113882096815391,.4697981181917068,1.5266425245732023,.9038794415086874,1.5100879461976202,.8968495332975497,240.40972581479565,1.6462850154099467,207.89136057941025,1.482679392704691,1.1176064838765305,.7227498584196084,156.3625135791239,1.21825247223386,1.563824666516969,.9006241416831274,1.8301021595600395,1.0376200671227167,10.303111752925552,10.901041114441284,1.4236504914043746,10.140768612397107,9.542876204745204,1.0376200671227167,.11077072259443911,72692.83279130736,10.631200021584998,.22518520180606383,.17318584189179753,2.3652353854112778,1.1404662599176258,68542.94257630626,1.0976159650899078,.0731442078931785,.06556720195803181,4.5708167763977245,.08118231694255597,1.6403681905025316,.139011921267347,.07819653195448278,24210719.982673805],scaler_scale:[66804.89900976988,136140.6064161884,16.37643321707155,.20992740583687178,.07307932080003535,55197.995514594644,30122.03214494164,.20992740583687178,.13408686935044067,.9260257453699001,.26763322218916585,.22270626147508962,.1729715667652156,.1901375656668161,.12239682271807398,.5448711670791195,.21396681826804373,.5435285860691879,.2170080148348037,563.1941228557155,2.7802864215256413,520.7104021530203,2.6817953680212856,.5197638498576193,.23037605747236584,460.25801622388303,2.399787688983799,.9260257453699001,.26763322218916585,.20992740583687178,.07307932080003535,.9370328405825591,.9801404944225173,1.205813794351115,1.1183207232048495,1.134891872441802,.07307932080003535,.10830298254262768,95420.60613838973,1.0812307532601826,.32774938612525195,.23384438099017318,1.325101645292458,.37873500296185686,398239.3546235395,3.4815632581316156,.11283372783744608,.09791359830930801,8.23936595992181,.12812009435995403,.49209809077367217,.1721760789948754,.12223918904340954,94662765.256157],classes:[`bidirectional-astar`,`adaptive-barrier`,`delta-stepping`,`ultra-dijkstra`],fallbackEngine:`ultra-dijkstra`,minConfidence:.38,minMargin:.12886761708647598,regressors:{\"bidirectional-astar\":{coefficients:[-.060064834640561754,.06054298387122733,0,0,-.14163470000905695,0,.09788596715152553,0,0,0,0,-1.1526636021160117,.5343256306566045,.37499750037648033,-.35976433021502024,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.24675822265458403,0,1.2196683029182918,0,-.03983659930268524,0,-.2695451542733109,0,0,.671854724977891,-.7422207555216168,0,.05015013812114926,0,0,-2.694169422480982,2.21552840832821,0,.36908947060756964,0,0,1.0083142901944306,0],intercept:1.6000045151393378},\"adaptive-barrier\":{coefficients:[-.36694436137423125,.5430937632996549,0,0,.0981459127646973,0,.05429129876772165,0,0,0,0,.08103412798635481,-1.5546001821621578,.3914634806647806,-.3904112993709444,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.5755721848471492,0,.856625041652958,0,.11797480512599912,0,-.1346232110649061,0,0,-.035450419464435445,.015164980021515683,0,-.004704384110935086,0,0,-.6693120604092808,1.6180383214594944,0,.7303130942967913,0,0,-.048527134966310656,0],intercept:2.0856753210827215},\"delta-stepping\":{coefficients:[.09046410581749657,-.08565840535321591,0,0,-.037973691758273156,0,.016573474978267232,0,0,0,0,-.3096217110684022,-1.1221739804013025,.20862569890677668,-.17297112009761137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.4170935891136975,0,.6332863801937848,0,.2091579984962251,0,.008125901232422413,0,0,-.15322247533451325,.3901073650784493,0,.020519031402166977,0,0,-1.3083496653601456,1.1325190095747204,0,.6140432279497015,0,0,.8430406793837071,0],intercept:2.464112411396266},\"ultra-dijkstra\":{coefficients:[.16140464728320866,-.14084546769446807,0,0,.04004212149033014,0,-.005418953083769061,0,0,0,0,-.8200856809277366,-.7105944052895973,.09807636851082269,-.09658220559030377,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.5404675517751019,0,.4580313217503341,0,.11390117436384688,0,-.0820528025939607,0,0,.3750794784063655,-.21972942705859694,0,.011454437972059951,0,0,-2.3813989278487337,1.9768855366732156,0,.6717439823546598,0,0,1.2176941802834327,0],intercept:1.5935040890283059}},runtimeRegressors:{\"bidirectional-astar\":{coefficients:[2.21552840832821,-2.694169422480982,1.2196683029182918,.5343256306566045,1.0083142901944306,.36908947060756964,-1.1526636021160117,.24675822265458403,-.7422207555216168,.671854724977891,-.2695451542733109,.37499750037648033,-.35976433021502024,.09788596715152553,.06054298387122733,-.03983659930268524,-.060064834640561754,.05015013812114926,-.14163470000905695],intercept:1.6000045151393378},\"adaptive-barrier\":{coefficients:[1.6180383214594944,-.6693120604092808,.856625041652958,-1.5546001821621578,-.048527134966310656,.7303130942967913,.08103412798635481,.5755721848471492,.015164980021515683,-.035450419464435445,-.1346232110649061,.3914634806647806,-.3904112993709444,.05429129876772165,.5430937632996549,.11797480512599912,-.36694436137423125,-.004704384110935086,.0981459127646973],intercept:2.0856753210827215},\"delta-stepping\":{coefficients:[1.1325190095747204,-1.3083496653601456,.6332863801937848,-1.1221739804013025,.8430406793837071,.6140432279497015,-.3096217110684022,.4170935891136975,.3901073650784493,-.15322247533451325,.008125901232422413,.20862569890677668,-.17297112009761137,.016573474978267232,-.08565840535321591,.2091579984962251,.09046410581749657,.020519031402166977,-.037973691758273156],intercept:2.464112411396266},\"ultra-dijkstra\":{coefficients:[1.9768855366732156,-2.3813989278487337,.4580313217503341,-.7105944052895973,1.2176941802834327,.6717439823546598,-.8200856809277366,.5404675517751019,-.21972942705859694,.3750794784063655,-.0820528025939607,.09807636851082269,-.09658220559030377,-.005418953083769061,-.14084546769446807,.11390117436384688,.16140464728320866,.011454437972059951,.04004212149033014],intercept:1.5935040890283059}}},sabOn:{modelType:`runtime-linear`,runtimeFeatureOrder:[`logBeelineKm`,`coverageEmptyContrast`,`logCoverageEmptyContrast`,`coverageEmptyContrastTimesLogAvgBranchFactor`,`logGlobalCoverage`,`emptyRatio`,`logEmptyRatio`,`safeN`,`logN`,`safeE`,`globalCoverageTimesEmptyRatio`,`logCoverageDensity`,`coverageDensity`,`logDegreeProduct`,`globalCoverage`,`logSourceDegree`,`logE`,`safeBeelineKm`],runtimeScalerMean:[1.4236504914043746,.0731442078931785,.06556720195803181,.07819653195448278,.1274378465216673,.6113882096815391,.4697981181917068,50236.53543714433,10.303111752925552,96300.95706156234,.08118231694255597,.17318584189179753,.22518520180606383,1.1404662599176258,.1543265248357349,.9038794415086874,10.901041114441284,8.811713398861887],runtimeScalerScale:[1.205813794351115,.11283372783744608,.09791359830930801,.12223918904340954,.1729715667652156,.1901375656668161,.12239682271807398,66804.89900976988,.9370328405825591,136140.6064161884,.12812009435995403,.23384438099017318,.32774938612525195,.37873500296185686,.22270626147508962,.21396681826804373,.9801404944225173,16.37643321707155],scaler_mean:[50236.53543714433,96300.95706156234,8.811713398861887,1.8301021595600395,1.0376200671227167,46691.66932353172,25886.454095149275,1.8301021595600395,.12412093189152984,1.563824666516969,.9006241416831274,.1543265248357349,.1274378465216673,.6113882096815391,.4697981181917068,1.5266425245732023,.9038794415086874,1.5100879461976202,.8968495332975497,240.40972581479565,1.6462850154099467,207.89136057941025,1.482679392704691,1.1176064838765305,.7227498584196084,156.3625135791239,1.21825247223386,1.563824666516969,.9006241416831274,1.8301021595600395,1.0376200671227167,10.303111752925552,10.901041114441284,1.4236504914043746,10.140768612397107,9.542876204745204,1.0376200671227167,.11077072259443911,72692.83279130736,10.631200021584998,.22518520180606383,.17318584189179753,2.3652353854112778,1.1404662599176258,68542.94257630626,1.0976159650899078,.0731442078931785,.06556720195803181,4.5708167763977245,.08118231694255597,1.6403681905025316,.139011921267347,.07819653195448278,24210719.982673805],scaler_scale:[66804.89900976988,136140.6064161884,16.37643321707155,.20992740583687178,.07307932080003535,55197.995514594644,30122.03214494164,.20992740583687178,.13408686935044067,.9260257453699001,.26763322218916585,.22270626147508962,.1729715667652156,.1901375656668161,.12239682271807398,.5448711670791195,.21396681826804373,.5435285860691879,.2170080148348037,563.1941228557155,2.7802864215256413,520.7104021530203,2.6817953680212856,.5197638498576193,.23037605747236584,460.25801622388303,2.399787688983799,.9260257453699001,.26763322218916585,.20992740583687178,.07307932080003535,.9370328405825591,.9801404944225173,1.205813794351115,1.1183207232048495,1.134891872441802,.07307932080003535,.10830298254262768,95420.60613838973,1.0812307532601826,.32774938612525195,.23384438099017318,1.325101645292458,.37873500296185686,398239.3546235395,3.4815632581316156,.11283372783744608,.09791359830930801,8.23936595992181,.12812009435995403,.49209809077367217,.1721760789948754,.12223918904340954,94662765.256157],classes:[`bidirectional-astar`,`adaptive-barrier`,`delta-stepping`,`ultra-dijkstra`],fallbackEngine:`ultra-dijkstra`,minConfidence:.4031064417572186,minMargin:.13592029146354787,regressors:{\"bidirectional-astar\":{coefficients:[.06396195345941952,.09843120066599517,-.043605193085689505,0,0,0,0,0,0,0,0,-.9224205241257682,.07116530021749333,.48182240214529687,-.48601106070768924,0,.013826821833020215,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1.645942252681823,-1.379134923092328,.7399021028741163,0,0,0,0,0,0,.784492571669958,-1.0238954503421347,0,.020726921315062014,0,0,-2.4553944652215693,2.442434467028444,0,.559026160140828,0,0,.8563954584186991,0],intercept:1.5506585409325215},\"adaptive-barrier\":{coefficients:[-.3580628543870847,.6324701367752412,.08771553813509221,0,0,0,0,0,0,0,0,-.005775223059395949,-1.0147493895976376,.5601828661916017,-.5709491704018335,0,.016037577783091072,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-.0074619458877428725,.7273014841881951,.3288672484055958,0,0,0,0,0,0,.2831014929057221,-.5412888656534994,0,-.02258574661952856,0,0,-.6647723315449283,1.85839767299336,0,.5754176373604867,0,0,-.3223512647983622,0],intercept:2.025635093222053},\"delta-stepping\":{coefficients:[.4636955292282326,-.3376687669738135,.16100812199475653,0,0,0,0,0,0,0,0,-.0957981960545135,-1.145733977045978,.41585700916357704,-.41578613196208664,0,.005557420425558764,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1.126294501726203,-.33815078831666534,.30841022744146873,0,0,0,0,0,0,-.0606321100308792,.23448331170112233,0,.02217706174664163,0,0,-.8352633546539048,.9939206323348815,0,.5690834080211844,0,0,.46288386474685134,0],intercept:3.346688787775706},\"ultra-dijkstra\":{coefficients:[.13171127092823096,.02108969020153371,.01973159956300433,0,0,0,0,0,0,0,0,-.4086688745404235,-.7936697037397609,.2769349407142573,-.27025383182918133,0,.01166791242574731,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.38919012209920906,.22336051159135661,.0818547042850731,0,0,0,0,0,0,.2822318466354596,-.24470429748021025,0,.0030028169135182295,0,0,-1.4337485443127604,1.4682394700156614,0,.552310518974865,0,0,.7110037869807747,0],intercept:1.5361624944689642}},runtimeRegressors:{\"bidirectional-astar\":{coefficients:[.7399021028741163,-2.4553944652215693,2.442434467028444,.8563954584186991,.07116530021749333,.48182240214529687,-.48601106070768924,.06396195345941952,1.645942252681823,.09843120066599517,.559026160140828,-1.0238954503421347,.784492571669958,.020726921315062014,-.9224205241257682,.013826821833020215,-1.379134923092328,-.043605193085689505],intercept:1.5506585409325215},\"adaptive-barrier\":{coefficients:[.3288672484055958,-.6647723315449283,1.85839767299336,-.3223512647983622,-1.0147493895976376,.5601828661916017,-.5709491704018335,-.3580628543870847,-.0074619458877428725,.6324701367752412,.5754176373604867,-.5412888656534994,.2831014929057221,-.02258574661952856,-.005775223059395949,.016037577783091072,.7273014841881951,.08771553813509221],intercept:2.025635093222053},\"delta-stepping\":{coefficients:[.30841022744146873,-.8352633546539048,.9939206323348815,.46288386474685134,-1.145733977045978,.41585700916357704,-.41578613196208664,.4636955292282326,1.126294501726203,-.3376687669738135,.5690834080211844,.23448331170112233,-.0606321100308792,.02217706174664163,-.0957981960545135,.005557420425558764,-.33815078831666534,.16100812199475653],intercept:3.346688787775706},\"ultra-dijkstra\":{coefficients:[.0818547042850731,-1.4337485443127604,1.4682394700156614,.7110037869807747,-.7936697037397609,.2769349407142573,-.27025383182918133,.13171127092823096,.38919012209920906,.02108969020153371,.552310518974865,-.24470429748021025,.2822318466354596,.0030028169135182295,-.4086688745404235,.01166791242574731,.22336051159135661,.01973159956300433],intercept:1.5361624944689642}}}}}),xt=Object.freeze({\"adaptive-barrier\":Object.freeze({fallbackUseParallel:!1,policy:Object.freeze({minNodesForParallel:13e3,minFrontierForParallel:256})}),\"delta-stepping\":Object.freeze({fallbackUseParallel:!0,policy:Object.freeze({minFrontierForParallel:256})})});Object.freeze({parallelization:xt}),typeof window<`u`&&typeof navigator<`u`&&typeof SharedArrayBuffer<`u`&&typeof Worker<`u`&&typeof crossOriginIsolated==`boolean`&&crossOriginIsolated,(()=>{let e=bt?.profiles??{},t=Array.isArray(bt?.featureOrder)?bt.featureOrder:[],n={};for(let r in e){let i=e[r];if(!i||typeof i!=`object`)continue;let a=Array.isArray(i.runtimeFeatureOrder)?i.runtimeFeatureOrder:t,o=Array.isArray(i.runtimeScalerMean)?i.runtimeScalerMean:Array.isArray(i.scaler_mean)?i.scaler_mean:null,s=Array.isArray(i.runtimeScalerScale)?i.runtimeScalerScale:Array.isArray(i.scaler_scale)?i.scaler_scale:null,c=Array.isArray(i.classes)?i.classes:null,l=i.runtimeRegressors||i.regressors,u=typeof i.fallbackEngine==`string`?i.fallbackEngine:null,d=i.modelType===`runtime-linear`,f=Array.isArray(o)&&Array.isArray(s)&&Array.isArray(c)&&c.length>0&&a.length===o.length&&a.length===s.length,p=d&&f&&l&&typeof l==`object`&&c.every(e=>{let t=l[e];return t&&Array.isArray(t.coefficients)&&t.coefficients.length===a.length});n[r]=Object.freeze({runtimeFeatureOrder:a,means:o,scales:s,classes:c,fallbackEngine:u,regressors:l,isRuntimeLinear:d,hasValidScaler:f,hasValidRegressors:p,minConfidence:Math.max(.36,Number.isFinite(i.minConfidence)?i.minConfidence:0),minMargin:Math.max(.04,Number.isFinite(i.minMargin)?i.minMargin:0)})}return Object.freeze(n)})();let St={car:{motorway:1,motorway_link:1,motorway_junction:1,trunk:1.05,trunk_link:1.05,primary:1.15,primary_link:1.15,secondary:1.5,secondary_link:1.5,tertiary:1.75,tertiary_link:1.75,residential:2.5,service:2.5,unclassified:3,living_street:3,road:5,minor:5},bicycle:{cycleway:1,path:1.1,pedestrian:1.1,footway:1.1,bridleway:1.3,track:2,living_street:2,service:2,residential:2.2,unclassified:2.3,tertiary_link:2.5,tertiary:2.5,secondary_link:3,secondary:3,primary_link:3.5,primary:3.5,road:4},pedestrian:{road:1,primary:1,primary_link:1,secondary:1,secondary_link:1,tertiary:1,tertiary_link:1,residential:1,living_street:1,service:1,track:1,pedestrian:1,path:1,cycleway:1,footway:1,bridleway:1,byway:1,steps:1,unclassified:1,minor:1}};function Ct(e={}){let{intersectionPenaltySec:t=0,turnPenaltySec:n=0,turnAngleThresholdDeg:r=25}=e,i=[[`intersectionPenaltySec`,t],[`turnPenaltySec`,n],[`turnAngleThresholdDeg`,r]];for(let[e,t]of i)if(!Number.isFinite(t)||t<0)throw Error(`Invalid penalties.${e}: expected a non-negative finite number`);return{intersectionPenaltySec:t,turnPenaltySec:n,turnAngleThresholdDeg:r}}new ze(0,{name:`omt-router`});let wt=Object.freeze({IDLE:`idle`,RUNNING:`running`,CANCELLING:`cancelling`,ERROR:`error`});Object.freeze({cpu:`bidirectional-astar`,bidirectionalAStar:`bidirectional-astar`,adaptiveBarrier:`adaptive-barrier`,deltaStepping:`delta-stepping`,ultraDijkstra:`ultra-dijkstra`});let Tt=typeof navigator<`u`?navigator.hardwareConcurrency??4:4;Math.max(1,Tt-1),Object.freeze({MISSING_RESULT:`missing_result`,ENDPOINT_MISMATCH:`endpoint_mismatch`,INVALID_PATH:`invalid_path`,COST_MISMATCH:`cost_mismatch`,NO_PATH:`no_path`,NO_NODE:`no_node`,POOR_SNAP:`poor_snap`,INCOMPLETE_PATH:`incomplete_path`,TILE_CORS:`tile_cors`,NO_ROUTE:`no_route`,INVALID_ROUTE:`invalid_route`}),Object.freeze({ENGINE_ERROR:`engine_error`,ENGINE_WORKER_FAILED:`engine_worker_failed`,ENGINE_WORKER_CRASHED:`engine_worker_crashed`,ENGINE_WORKER_UNAVAILABLE:`engine_worker_unavailable`,ENGINE_CANCELLED:`engine_cancelled`,ENGINE_SHUTDOWN:`engine_shutdown`,ENGINE_WORKER_BUSY:`engine_worker_busy`});function Et(e){return e===`travelTime`||e===`optimal`}function Dt(e,t){let n=e.properties?.class??``,r=St[t];return r?Number(r[n]??1):1}function Ot(e,t){let n=Dt(e,t);return e.travelTime*(1+.7*(n-1))}wt.IDLE;function kt(e,t={}){if(!Et(e))return`none`;let{intersectionPenaltySec:n}=Ct(t);return`i${n}`}function At(e,t=`distance`,n={}){let{nodes:r,edges:i}=e,a=r.size,o=Ct(n),s=Et(t)&&o.intersectionPenaltySec>0,c=null;if(s){let e=new Int32Array(a);for(let t of i)t.cost!==-1&&(e[t.source]++,e[t.target]++),t.reverseCost!==-1&&(e[t.target]++,e[t.source]++);c=new Uint8Array(a);for(let t=0;t<a;t++)c[t]=+(e[t]>=3)}let l=i.length*2,u=new Int32Array(l),d=new Int32Array(l),f=new Int32Array(l),p=new Int32Array(l*3),m=new Int32Array(l*3),h=0,g=0,_=0,v=new Map,y=(e,t,n)=>{let r=s&&c&&c[t]?o.intersectionPenaltySec:0,i=v.get(e);if(i||(i=new Set,v.set(e,i)),i.has(t))return;i.add(t);let a=Math.round((n+r)*10);u[h]=e,d[h]=t,f[h]=a,h++,p[g++]=e,p[g++]=t,p[g++]=a,m[_++]=t,m[_++]=e,m[_++]=a};for(let n of i){let r=Et(t),i=n.cost===-1?-1:r?t===`optimal`?Ot(n,e.mode):n.travelTime:n.length,a=n.reverseCost===-1?-1:r?t===`optimal`?Ot(n,e.mode):n.travelTime:n.length;i!==-1&&y(n.source,n.target,i),a!==-1&&y(n.target,n.source,a)}let b=h,x=u.subarray(0,b),S=d.subarray(0,b),C=f.subarray(0,b),w=new Int32Array(a+1),T=new Int32Array(b),E=new Int32Array(b);for(let e=0;e<g;e+=3)w[p[e]+1]++;for(let e=0;e<a;e++)w[e+1]+=w[e];let D=w.slice(0,a);for(let e=0;e<g;e+=3){let t=p[e],n=p[e+1],r=p[e+2],i=D[t]++;T[i]=n,E[i]=r}let O=new Int32Array(a+1),k=new Int32Array(b),A=new Int32Array(b);for(let e=0;e<_;e+=3)O[m[e]+1]++;for(let e=0;e<a;e++)O[e+1]+=O[e];let ee=O.slice(0,a);for(let e=0;e<_;e+=3){let t=m[e],n=m[e+1],r=m[e+2],i=ee[t]++;k[i]=n,A[i]=r}let j=Array(a);for(let e=0;e<a;e++)j[e]=r.get(e).coords;let te=Array(a);for(let e=0;e<a;e++){let t=w[e],n=w[e+1],r=n-t;if(r===0)continue;if(r===1){te[e]=[T[t],E[t]];continue}let i=new Map;for(let e=t;e<n;e++)i.set(T[e],E[e]);te[e]=i}let ne=x,M=S,re=C;if(e.mode===`pedestrian`){let e=new Map;for(let t=0;t<x.length;t++){let n=x[t],r=S[t],i=n<r?n:r,a=n<r?r:n,o=i+`:`+a,s=C[t],c=e.get(o);(c===void 0||s<c)&&e.set(o,s)}let t=Array.from(e.entries()),n=t.length,r=new Int32Array(n),i=new Int32Array(n),a=new Int32Array(n),o=0;for(let[e,n]of t){let[t,s]=e.split(`:`).map(Number);r[o]=t,i[o]=s,a[o]=n,o++}ne=r,M=i,re=a}return{edgeSrc:ne,edgeTgt:M,edgeCostInt:re,adjPtr:w,adjTo:T,adjCost:E,adjCostMap:te,revAdjPtr:O,revAdjFrom:k,revAdjCost:A,N:a,E:b,nodes:r,coordsArr:j,costField:t,penalties:o,penaltyKey:kt(t,o),distScale:10,coordsAreGeographic:e.coordsAreGeographic===!0}}let B=11102230246251565e-32,V=134217729;(3+8*B)*B;function jt(e,t,n,r,i){let a,o,s,c,l=t[0],u=r[0],d=0,f=0;u>l==u>-l?(a=l,l=t[++d]):(a=u,u=r[++f]);let p=0;if(d<e&&f<n)for(u>l==u>-l?(o=l+a,s=a-(o-l),l=t[++d]):(o=u+a,s=a-(o-u),u=r[++f]),a=o,s!==0&&(i[p++]=s);d<e&&f<n;)u>l==u>-l?(o=a+l,c=o-a,s=a-(o-c)+(l-c),l=t[++d]):(o=a+u,c=o-a,s=a-(o-c)+(u-c),u=r[++f]),a=o,s!==0&&(i[p++]=s);for(;d<e;)o=a+l,c=o-a,s=a-(o-c)+(l-c),l=t[++d],a=o,s!==0&&(i[p++]=s);for(;f<n;)o=a+u,c=o-a,s=a-(o-c)+(u-c),u=r[++f],a=o,s!==0&&(i[p++]=s);return(a!==0||p===0)&&(i[p++]=a),p}function Mt(e,t){let n=t[0];for(let r=1;r<e;r++)n+=t[r];return n}function H(e){return new Float64Array(e)}(3+16*B)*B,(2+12*B)*B,(9+64*B)*B*B;let U=H(4),Nt=H(8),Pt=H(12),Ft=H(16),W=H(4);function It(e,t,n,r,i,a,o){let s,c,l,u,d,f,p,m,h,g,_,v,y,b,x,S,C,w,T=e-i,E=n-i,D=t-a,O=r-a;b=T*O,f=V*T,p=f-(f-T),m=T-p,f=V*O,h=f-(f-O),g=O-h,x=m*g-(b-p*h-m*h-p*g),S=D*E,f=V*D,p=f-(f-D),m=D-p,f=V*E,h=f-(f-E),g=E-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,U[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,U[1]=y-(_+d)+(d-S),w=v+_,d=w-v,U[2]=v-(w-d)+(_-d),U[3]=w;let k=Mt(4,U),A=22204460492503146e-32*o;if(k>=A||-k>=A||(d=e-T,s=e-(T+d)+(d-i),d=n-E,l=n-(E+d)+(d-i),d=t-D,c=t-(D+d)+(d-a),d=r-O,u=r-(O+d)+(d-a),s===0&&c===0&&l===0&&u===0)||(A=11093356479670487e-47*o+33306690738754706e-32*Math.abs(k),k+=T*u+O*s-(D*l+E*c),k>=A||-k>=A))return k;b=s*O,f=V*s,p=f-(f-s),m=s-p,f=V*O,h=f-(f-O),g=O-h,x=m*g-(b-p*h-m*h-p*g),S=c*E,f=V*c,p=f-(f-c),m=c-p,f=V*E,h=f-(f-E),g=E-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,W[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,W[1]=y-(_+d)+(d-S),w=v+_,d=w-v,W[2]=v-(w-d)+(_-d),W[3]=w;let ee=jt(4,U,4,W,Nt);b=T*u,f=V*T,p=f-(f-T),m=T-p,f=V*u,h=f-(f-u),g=u-h,x=m*g-(b-p*h-m*h-p*g),S=D*l,f=V*D,p=f-(f-D),m=D-p,f=V*l,h=f-(f-l),g=l-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,W[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,W[1]=y-(_+d)+(d-S),w=v+_,d=w-v,W[2]=v-(w-d)+(_-d),W[3]=w;let j=jt(ee,Nt,4,W,Pt);return b=s*u,f=V*s,p=f-(f-s),m=s-p,f=V*u,h=f-(f-u),g=u-h,x=m*g-(b-p*h-m*h-p*g),S=c*l,f=V*c,p=f-(f-c),m=c-p,f=V*l,h=f-(f-l),g=l-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,W[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,W[1]=y-(_+d)+(d-S),w=v+_,d=w-v,W[2]=v-(w-d)+(_-d),W[3]=w,Ft[jt(j,Pt,4,W,Ft)-1]}function Lt(e,t,n,r,i,a){let o=(t-a)*(n-i),s=(e-i)*(r-a),c=o-s,l=Math.abs(o+s);return Math.abs(c)>=33306690738754716e-32*l?c:-It(e,t,n,r,i,a,l)}(7+56*B)*B,(3+28*B)*B,(26+288*B)*B*B,H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(8),H(8),H(8),H(4),H(8),H(8),H(16),H(12),H(192),H(192),(10+96*B)*B,(4+48*B)*B,(44+576*B)*B*B,H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(8),H(8),H(8),H(8),H(8),H(8),H(8),H(8),H(8),H(4),H(4),H(4),H(8),H(16),H(16),H(16),H(32),H(32),H(48),H(64),H(1152),H(1152),(16+224*B)*B,(5+72*B)*B,(71+1408*B)*B*B,H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(1152),H(1152),H(1152),H(1152),H(1152),H(2304),H(2304),H(3456),H(5760),H(8),H(8),H(8),H(16),H(24),H(48),H(48),H(96),H(192),H(384),H(384),H(384),H(768),H(96),H(96),H(96),H(1152);let Rt=2**-52,zt=new Uint32Array(512);var Bt=class e{static from(t,n=qt,r=Jt){let i=t.length,a=new Float64Array(i*2);for(let e=0;e<i;e++){let i=t[e];a[2*e]=n(i),a[2*e+1]=r(i)}return new e(a)}constructor(e){let t=e.length>>1;if(t>0&&typeof e[0]!=`number`)throw Error(`Expected coords to contain numbers.`);this.coords=e;let n=Math.max(2*t-5,0);this._triangles=new Uint32Array(n*3),this._halfedges=new Int32Array(n*3),this._hashSize=Math.ceil(Math.sqrt(t)),this._hullPrev=new Uint32Array(t),this._hullNext=new Uint32Array(t),this._hullTri=new Uint32Array(t),this._hullHash=new Int32Array(this._hashSize),this._ids=new Uint32Array(t),this._dists=new Float64Array(t),this.trianglesLen=0,this._cx=0,this._cy=0,this._hullStart=0,this.hull=this._triangles,this.triangles=this._triangles,this.halfedges=this._halfedges,this.update()}update(){let{coords:e,_hullPrev:t,_hullNext:n,_hullTri:r,_hullHash:i}=this,a=e.length>>1,o=1/0,s=1/0,c=-1/0,l=-1/0;for(let t=0;t<a;t++){let n=e[2*t],r=e[2*t+1];n<o&&(o=n),r<s&&(s=r),n>c&&(c=n),r>l&&(l=r),this._ids[t]=t}let u=(o+c)/2,d=(s+l)/2,f=0,p=0,m=0;for(let t=0,n=1/0;t<a;t++){let r=Ht(u,d,e[2*t],e[2*t+1]);r<n&&(f=t,n=r)}let h=e[2*f],g=e[2*f+1];for(let t=0,n=1/0;t<a;t++){if(t===f)continue;let r=Ht(h,g,e[2*t],e[2*t+1]);r<n&&r>0&&(p=t,n=r)}let _=e[2*p],v=e[2*p+1],y=1/0;for(let t=0;t<a;t++){if(t===f||t===p)continue;let n=Wt(h,g,_,v,e[2*t],e[2*t+1]);n<y&&(m=t,y=n)}let b=e[2*m],x=e[2*m+1];if(y===1/0){for(let t=0;t<a;t++)this._dists[t]=e[2*t]-e[0]||e[2*t+1]-e[1];G(this._ids,this._dists,0,a-1);let t=new Uint32Array(a),n=0;for(let e=0,r=-1/0;e<a;e++){let i=this._ids[e],a=this._dists[i];a>r&&(t[n++]=i,r=a)}this.hull=t.subarray(0,n),this.triangles=new Uint32Array,this.halfedges=new Int32Array;return}if(Lt(h,g,_,v,b,x)<0){let e=p,t=_,n=v;p=m,_=b,v=x,m=e,b=t,x=n}let S=Gt(h,g,_,v,b,x);this._cx=S.x,this._cy=S.y;for(let t=0;t<a;t++)this._dists[t]=Ht(e[2*t],e[2*t+1],S.x,S.y);G(this._ids,this._dists,0,a-1),this._hullStart=f;let C=3;n[f]=t[m]=p,n[p]=t[f]=m,n[m]=t[p]=f,r[f]=0,r[p]=1,r[m]=2,i.fill(-1),i[this._hashKey(h,g)]=f,i[this._hashKey(_,v)]=p,i[this._hashKey(b,x)]=m,this.trianglesLen=0,this._addTriangle(f,p,m,-1,-1,-1);for(let a=0,o=0,s=0;a<this._ids.length;a++){let c=this._ids[a],l=e[2*c],u=e[2*c+1];if(a>0&&Math.abs(l-o)<=Rt&&Math.abs(u-s)<=Rt||(o=l,s=u,c===f||c===p||c===m))continue;let d=0;for(let e=0,t=this._hashKey(l,u);e<this._hashSize&&(d=i[(t+e)%this._hashSize],!(d!==-1&&d!==n[d]));e++);d=t[d];let h=d,g;for(;g=n[h],Lt(l,u,e[2*h],e[2*h+1],e[2*g],e[2*g+1])>=0;)if(h=g,h===d){h=-1;break}if(h===-1)continue;let _=this._addTriangle(h,c,n[h],-1,-1,r[h]);r[c]=this._legalize(_+2),r[h]=_,C++;let v=n[h];for(;g=n[v],Lt(l,u,e[2*v],e[2*v+1],e[2*g],e[2*g+1])<0;)_=this._addTriangle(v,c,g,r[c],-1,r[v]),r[c]=this._legalize(_+2),n[v]=v,C--,v=g;if(h===d)for(;g=t[h],Lt(l,u,e[2*g],e[2*g+1],e[2*h],e[2*h+1])<0;)_=this._addTriangle(g,c,h,-1,r[h],r[g]),this._legalize(_+2),r[g]=_,n[h]=h,C--,h=g;this._hullStart=t[c]=h,n[h]=t[v]=c,n[c]=v,i[this._hashKey(l,u)]=c,i[this._hashKey(e[2*h],e[2*h+1])]=h}this.hull=new Uint32Array(C);for(let e=0,t=this._hullStart;e<C;e++)this.hull[e]=t,t=n[t];this.triangles=this._triangles.subarray(0,this.trianglesLen),this.halfedges=this._halfedges.subarray(0,this.trianglesLen)}_hashKey(e,t){return Math.floor(Vt(e-this._cx,t-this._cy)*this._hashSize)%this._hashSize}_legalize(e){let{_triangles:t,_halfedges:n,coords:r}=this,i=0,a=0;for(;;){let o=n[e],s=e-e%3;if(a=s+(e+2)%3,o===-1){if(i===0)break;e=zt[--i];continue}let c=o-o%3,l=s+(e+1)%3,u=c+(o+2)%3,d=t[a],f=t[e],p=t[l],m=t[u];if(Ut(r[2*d],r[2*d+1],r[2*f],r[2*f+1],r[2*p],r[2*p+1],r[2*m],r[2*m+1])){t[e]=m,t[o]=d;let r=n[u];if(r===-1){let t=this._hullStart;do{if(this._hullTri[t]===u){this._hullTri[t]=e;break}t=this._hullPrev[t]}while(t!==this._hullStart)}this._link(e,r),this._link(o,n[a]),this._link(a,u);let s=c+(o+1)%3;i<zt.length&&(zt[i++]=s)}else{if(i===0)break;e=zt[--i]}}return a}_link(e,t){this._halfedges[e]=t,t!==-1&&(this._halfedges[t]=e)}_addTriangle(e,t,n,r,i,a){let o=this.trianglesLen;return this._triangles[o]=e,this._triangles[o+1]=t,this._triangles[o+2]=n,this._link(o,r),this._link(o+1,i),this._link(o+2,a),this.trianglesLen+=3,o}};function Vt(e,t){let n=e/(Math.abs(e)+Math.abs(t));return(t>0?3-n:1+n)/4}function Ht(e,t,n,r){let i=e-n,a=t-r;return i*i+a*a}function Ut(e,t,n,r,i,a,o,s){let c=e-o,l=t-s,u=n-o,d=r-s,f=i-o,p=a-s,m=c*c+l*l,h=u*u+d*d,g=f*f+p*p;return c*(d*g-h*p)-l*(u*g-h*f)+m*(u*p-d*f)<0}function Wt(e,t,n,r,i,a){let o=n-e,s=r-t,c=i-e,l=a-t,u=o*o+s*s,d=c*c+l*l,f=.5/(o*l-s*c),p=(l*u-s*d)*f,m=(o*d-c*u)*f;return p*p+m*m}function Gt(e,t,n,r,i,a){let o=n-e,s=r-t,c=i-e,l=a-t,u=o*o+s*s,d=c*c+l*l,f=.5/(o*l-s*c);return{x:e+(l*u-s*d)*f,y:t+(o*d-c*u)*f}}function G(e,t,n,r){if(r-n<=20)for(let i=n+1;i<=r;i++){let r=e[i],a=t[r],o=i-1;for(;o>=n&&t[e[o]]>a;)e[o+1]=e[o--];e[o+1]=r}else{let i=n+r>>1,a=n+1,o=r;Kt(e,i,a),t[e[n]]>t[e[r]]&&Kt(e,n,r),t[e[a]]>t[e[r]]&&Kt(e,a,r),t[e[n]]>t[e[a]]&&Kt(e,n,a);let s=e[a],c=t[s];for(;;){do a++;while(t[e[a]]<c);do o--;while(t[e[o]]>c);if(o<a)break;Kt(e,a,o)}e[n+1]=e[o],e[o]=s,r-a+1>=o-n?(G(e,t,a,r),G(e,t,n,o-1)):(G(e,t,n,o-1),G(e,t,a,r))}}function Kt(e,t,n){let r=e[t];e[t]=e[n],e[n]=r}function qt(e){return e[0]}function Jt(e){return e[1]}let Yt=1e-6;var K=class{constructor(){this._x0=this._y0=this._x1=this._y1=null,this._=``}moveTo(e,t){this._+=`M${this._x0=this._x1=+e},${this._y0=this._y1=+t}`}closePath(){this._x1!==null&&(this._x1=this._x0,this._y1=this._y0,this._+=`Z`)}lineTo(e,t){this._+=`L${this._x1=+e},${this._y1=+t}`}arc(e,t,n){e=+e,t=+t,n=+n;let r=e+n,i=t;if(n<0)throw Error(`negative radius`);this._x1===null?this._+=`M${r},${i}`:(Math.abs(this._x1-r)>Yt||Math.abs(this._y1-i)>Yt)&&(this._+=`L`+r+`,`+i),n&&(this._+=`A${n},${n},0,1,1,${e-n},${t}A${n},${n},0,1,1,${this._x1=r},${this._y1=i}`)}rect(e,t,n,r){this._+=`M${this._x0=this._x1=+e},${this._y0=this._y1=+t}h${+n}v${+r}h${-n}Z`}value(){return this._||null}},Xt=class{constructor(){this._=[]}moveTo(e,t){this._.push([e,t])}closePath(){this._.push(this._[0].slice())}lineTo(e,t){this._.push([e,t])}value(){return this._.length?this._:null}},Zt=class{constructor(e,[t,n,r,i]=[0,0,960,500]){if(!((r=+r)>=(t=+t))||!((i=+i)>=(n=+n)))throw Error(`invalid bounds`);this.delaunay=e,this._circumcenters=new Float64Array(e.points.length*2),this.vectors=new Float64Array(e.points.length*2),this.xmax=r,this.xmin=t,this.ymax=i,this.ymin=n,this._init()}update(){return this.delaunay.update(),this._init(),this}_init(){let{delaunay:{points:e,hull:t,triangles:n},vectors:r}=this,i,a,o=this.circumcenters=this._circumcenters.subarray(0,n.length/3*2);for(let r=0,s=0,c=n.length,l,u;r<c;r+=3,s+=2){let c=n[r]*2,d=n[r+1]*2,f=n[r+2]*2,p=e[c],m=e[c+1],h=e[d],g=e[d+1],_=e[f],v=e[f+1],y=h-p,b=g-m,x=_-p,S=v-m,C=(y*S-b*x)*2;if(Math.abs(C)<1e-9){if(i===void 0){i=a=0;for(let n of t)i+=e[n*2],a+=e[n*2+1];i/=t.length,a/=t.length}let n=1e9*Math.sign((i-p)*S-(a-m)*x);l=(p+_)/2-n*S,u=(m+v)/2+n*x}else{let e=1/C,t=y*y+b*b,n=x*x+S*S;l=p+(S*t-b*n)*e,u=m+(y*n-x*t)*e}o[s]=l,o[s+1]=u}let s=t[t.length-1],c,l=s*4,u,d=e[2*s],f,p=e[2*s+1];r.fill(0);for(let n=0;n<t.length;++n)s=t[n],c=l,u=d,f=p,l=s*4,d=e[2*s],p=e[2*s+1],r[c+2]=r[l]=f-p,r[c+3]=r[l+1]=d-u}render(e){let t=e==null?e=new K:void 0,{delaunay:{halfedges:n,inedges:r,hull:i},circumcenters:a,vectors:o}=this;if(i.length<=1)return null;for(let t=0,r=n.length;t<r;++t){let r=n[t];if(r<t)continue;let i=Math.floor(t/3)*2,o=Math.floor(r/3)*2,s=a[i],c=a[i+1],l=a[o],u=a[o+1];this._renderSegment(s,c,l,u,e)}let s,c=i[i.length-1];for(let t=0;t<i.length;++t){s=c,c=i[t];let n=Math.floor(r[c]/3)*2,l=a[n],u=a[n+1],d=s*4,f=this._project(l,u,o[d+2],o[d+3]);f&&this._renderSegment(l,u,f[0],f[1],e)}return t&&t.value()}renderBounds(e){let t=e==null?e=new K:void 0;return e.rect(this.xmin,this.ymin,this.xmax-this.xmin,this.ymax-this.ymin),t&&t.value()}renderCell(e,t){let n=t==null?t=new K:void 0,r=this._clip(e);if(r===null||!r.length)return;t.moveTo(r[0],r[1]);let i=r.length;for(;r[0]===r[i-2]&&r[1]===r[i-1]&&i>1;)i-=2;for(let e=2;e<i;e+=2)(r[e]!==r[e-2]||r[e+1]!==r[e-1])&&t.lineTo(r[e],r[e+1]);return t.closePath(),n&&n.value()}*cellPolygons(){let{delaunay:{points:e}}=this;for(let t=0,n=e.length/2;t<n;++t){let e=this.cellPolygon(t);e&&(e.index=t,yield e)}}cellPolygon(e){let t=new Xt;return this.renderCell(e,t),t.value()}_renderSegment(e,t,n,r,i){let a,o=this._regioncode(e,t),s=this._regioncode(n,r);o===0&&s===0?(i.moveTo(e,t),i.lineTo(n,r)):(a=this._clipSegment(e,t,n,r,o,s))&&(i.moveTo(a[0],a[1]),i.lineTo(a[2],a[3]))}contains(e,t,n){return(t=+t,t!==t)||(n=+n,n!==n)?!1:this.delaunay._step(e,t,n)===e}*neighbors(e){let t=this._clip(e);if(t)for(let n of this.delaunay.neighbors(e)){let e=this._clip(n);if(e){loop:for(let r=0,i=t.length;r<i;r+=2)for(let a=0,o=e.length;a<o;a+=2)if(t[r]===e[a]&&t[r+1]===e[a+1]&&t[(r+2)%i]===e[(a+o-2)%o]&&t[(r+3)%i]===e[(a+o-1)%o]){yield n;break loop}}}}_cell(e){let{circumcenters:t,delaunay:{inedges:n,halfedges:r,triangles:i}}=this,a=n[e];if(a===-1)return null;let o=[],s=a;do{let n=Math.floor(s/3);if(o.push(t[n*2],t[n*2+1]),s=s%3==2?s-2:s+1,i[s]!==e)break;s=r[s]}while(s!==a&&s!==-1);return o}_clip(e){if(e===0&&this.delaunay.hull.length===1)return[this.xmax,this.ymin,this.xmax,this.ymax,this.xmin,this.ymax,this.xmin,this.ymin];let t=this._cell(e);if(t===null)return null;let{vectors:n}=this,r=e*4;return this._simplify(n[r]||n[r+1]?this._clipInfinite(e,t,n[r],n[r+1],n[r+2],n[r+3]):this._clipFinite(e,t))}_clipFinite(e,t){let n=t.length,r=null,i,a,o=t[n-2],s=t[n-1],c,l=this._regioncode(o,s),u,d=0;for(let f=0;f<n;f+=2)if(i=o,a=s,o=t[f],s=t[f+1],c=l,l=this._regioncode(o,s),c===0&&l===0)u=d,d=0,r?r.push(o,s):r=[o,s];else{let t,n,f,p,m;if(c===0){if((t=this._clipSegment(i,a,o,s,c,l))===null)continue;[n,f,p,m]=t}else{if((t=this._clipSegment(o,s,i,a,l,c))===null)continue;[p,m,n,f]=t,u=d,d=this._edgecode(n,f),u&&d&&this._edge(e,u,d,r,r.length),r?r.push(n,f):r=[n,f]}u=d,d=this._edgecode(p,m),u&&d&&this._edge(e,u,d,r,r.length),r?r.push(p,m):r=[p,m]}if(r)u=d,d=this._edgecode(r[0],r[1]),u&&d&&this._edge(e,u,d,r,r.length);else if(this.contains(e,(this.xmin+this.xmax)/2,(this.ymin+this.ymax)/2))return[this.xmax,this.ymin,this.xmax,this.ymax,this.xmin,this.ymax,this.xmin,this.ymin];return r}_clipSegment(e,t,n,r,i,a){let o=i<a;for(o&&([e,t,n,r,i,a]=[n,r,e,t,a,i]);;){if(i===0&&a===0)return o?[n,r,e,t]:[e,t,n,r];if(i&a)return null;let s,c,l=i||a;l&8?(s=e+(n-e)*(this.ymax-t)/(r-t),c=this.ymax):l&4?(s=e+(n-e)*(this.ymin-t)/(r-t),c=this.ymin):l&2?(c=t+(r-t)*(this.xmax-e)/(n-e),s=this.xmax):(c=t+(r-t)*(this.xmin-e)/(n-e),s=this.xmin),i?(e=s,t=c,i=this._regioncode(e,t)):(n=s,r=c,a=this._regioncode(n,r))}}_clipInfinite(e,t,n,r,i,a){let o=Array.from(t),s;if((s=this._project(o[0],o[1],n,r))&&o.unshift(s[0],s[1]),(s=this._project(o[o.length-2],o[o.length-1],i,a))&&o.push(s[0],s[1]),o=this._clipFinite(e,o))for(let t=0,n=o.length,r,i=this._edgecode(o[n-2],o[n-1]);t<n;t+=2)r=i,i=this._edgecode(o[t],o[t+1]),r&&i&&(t=this._edge(e,r,i,o,t),n=o.length);else this.contains(e,(this.xmin+this.xmax)/2,(this.ymin+this.ymax)/2)&&(o=[this.xmin,this.ymin,this.xmax,this.ymin,this.xmax,this.ymax,this.xmin,this.ymax]);return o}_edge(e,t,n,r,i){for(;t!==n;){let n,a;switch(t){case 5:t=4;continue;case 4:t=6,n=this.xmax,a=this.ymin;break;case 6:t=2;continue;case 2:t=10,n=this.xmax,a=this.ymax;break;case 10:t=8;continue;case 8:t=9,n=this.xmin,a=this.ymax;break;case 9:t=1;continue;case 1:t=5,n=this.xmin,a=this.ymin;break}(r[i]!==n||r[i+1]!==a)&&this.contains(e,n,a)&&(r.splice(i,0,n,a),i+=2)}return i}_project(e,t,n,r){let i=1/0,a,o,s;if(r<0){if(t<=this.ymin)return null;(a=(this.ymin-t)/r)<i&&(s=this.ymin,o=e+(i=a)*n)}else if(r>0){if(t>=this.ymax)return null;(a=(this.ymax-t)/r)<i&&(s=this.ymax,o=e+(i=a)*n)}if(n>0){if(e>=this.xmax)return null;(a=(this.xmax-e)/n)<i&&(o=this.xmax,s=t+(i=a)*r)}else if(n<0){if(e<=this.xmin)return null;(a=(this.xmin-e)/n)<i&&(o=this.xmin,s=t+(i=a)*r)}return[o,s]}_edgecode(e,t){return(e===this.xmin?1:e===this.xmax?2:0)|(t===this.ymin?4:t===this.ymax?8:0)}_regioncode(e,t){return(e<this.xmin?1:e>this.xmax?2:0)|(t<this.ymin?4:t>this.ymax?8:0)}_simplify(e){if(e&&e.length>4){for(let t=0;t<e.length;t+=2){let n=(t+2)%e.length,r=(t+4)%e.length;(e[t]===e[n]&&e[n]===e[r]||e[t+1]===e[n+1]&&e[n+1]===e[r+1])&&(e.splice(n,2),t-=2)}e.length||(e=null)}return e}};let Qt=2*Math.PI,q=Math.pow;function $t(e){return e[0]}function en(e){return e[1]}function tn(e){let{triangles:t,coords:n}=e;for(let e=0;e<t.length;e+=3){let r=2*t[e],i=2*t[e+1],a=2*t[e+2];if((n[a]-n[r])*(n[i+1]-n[r+1])-(n[i]-n[r])*(n[a+1]-n[r+1])>1e-10)return!1}return!0}function nn(e,t,n){return[e+Math.sin(e+t)*n,t+Math.cos(e-t)*n]}var rn=class e{static from(t,n=$t,r=en,i){return new e(`length`in t?an(t,n,r,i):Float64Array.from(on(t,n,r,i)))}constructor(e){this._delaunator=new Bt(e),this.inedges=new Int32Array(e.length/2),this._hullIndex=new Int32Array(e.length/2),this.points=this._delaunator.coords,this._init()}update(){return this._delaunator.update(),this._init(),this}_init(){let e=this._delaunator,t=this.points;if(e.hull&&e.hull.length>2&&tn(e)){this.collinear=Int32Array.from({length:t.length/2},(e,t)=>t).sort((e,n)=>t[2*e]-t[2*n]||t[2*e+1]-t[2*n+1]);let e=this.collinear[0],n=this.collinear[this.collinear.length-1],r=[t[2*e],t[2*e+1],t[2*n],t[2*n+1]],i=1e-8*Math.hypot(r[3]-r[1],r[2]-r[0]);for(let e=0,n=t.length/2;e<n;++e){let n=nn(t[2*e],t[2*e+1],i);t[2*e]=n[0],t[2*e+1]=n[1]}this._delaunator=new Bt(t)}else delete this.collinear;let n=this.halfedges=this._delaunator.halfedges,r=this.hull=this._delaunator.hull,i=this.triangles=this._delaunator.triangles,a=this.inedges.fill(-1),o=this._hullIndex.fill(-1);for(let e=0,t=n.length;e<t;++e){let t=i[e%3==2?e-2:e+1];(n[e]===-1||a[t]===-1)&&(a[t]=e)}for(let e=0,t=r.length;e<t;++e)o[r[e]]=e;r.length<=2&&r.length>0&&(this.triangles=new Int32Array(3).fill(-1),this.halfedges=new Int32Array(3).fill(-1),this.triangles[0]=r[0],a[r[0]]=1,r.length===2&&(a[r[1]]=0,this.triangles[1]=r[1],this.triangles[2]=r[1]))}voronoi(e){return new Zt(this,e)}*neighbors(e){let{inedges:t,hull:n,_hullIndex:r,halfedges:i,triangles:a,collinear:o}=this;if(o){let t=o.indexOf(e);t>0&&(yield o[t-1]),t<o.length-1&&(yield o[t+1]);return}let s=t[e];if(s===-1)return;let c=s,l=-1;do{if(yield l=a[c],c=c%3==2?c-2:c+1,a[c]!==e)return;if(c=i[c],c===-1){let t=n[(r[e]+1)%n.length];t!==l&&(yield t);return}}while(c!==s)}find(e,t,n=0){if((e=+e,e!==e)||(t=+t,t!==t))return-1;let r=n,i;for(;(i=this._step(n,e,t))>=0&&i!==n&&i!==r;)n=i;return i}_step(e,t,n){let{inedges:r,hull:i,_hullIndex:a,halfedges:o,triangles:s,points:c}=this;if(r[e]===-1||!c.length)return(e+1)%(c.length>>1);let l=e,u=q(t-c[e*2],2)+q(n-c[e*2+1],2),d=r[e],f=d;do{let r=s[f],d=q(t-c[r*2],2)+q(n-c[r*2+1],2);if(d<u&&(u=d,l=r),f=f%3==2?f-2:f+1,s[f]!==e)break;if(f=o[f],f===-1){if(f=i[(a[e]+1)%i.length],f!==r&&q(t-c[f*2],2)+q(n-c[f*2+1],2)<u)return f;break}}while(f!==d);return l}render(e){let t=e==null?e=new K:void 0,{points:n,halfedges:r,triangles:i}=this;for(let t=0,a=r.length;t<a;++t){let a=r[t];if(a<t)continue;let o=i[t]*2,s=i[a]*2;e.moveTo(n[o],n[o+1]),e.lineTo(n[s],n[s+1])}return this.renderHull(e),t&&t.value()}renderPoints(e,t){t===void 0&&(!e||typeof e.moveTo!=`function`)&&(t=e,e=null),t=t==null?2:+t;let n=e==null?e=new K:void 0,{points:r}=this;for(let n=0,i=r.length;n<i;n+=2){let i=r[n],a=r[n+1];e.moveTo(i+t,a),e.arc(i,a,t,0,Qt)}return n&&n.value()}renderHull(e){let t=e==null?e=new K:void 0,{hull:n,points:r}=this,i=n[0]*2,a=n.length;e.moveTo(r[i],r[i+1]);for(let t=1;t<a;++t){let i=2*n[t];e.lineTo(r[i],r[i+1])}return e.closePath(),t&&t.value()}hullPolygon(){let e=new Xt;return this.renderHull(e),e.value()}renderTriangle(e,t){let n=t==null?t=new K:void 0,{points:r,triangles:i}=this,a=i[e*=3]*2,o=i[e+1]*2,s=i[e+2]*2;return t.moveTo(r[a],r[a+1]),t.lineTo(r[o],r[o+1]),t.lineTo(r[s],r[s+1]),t.closePath(),n&&n.value()}*trianglePolygons(){let{triangles:e}=this;for(let t=0,n=e.length/3;t<n;++t)yield this.trianglePolygon(t)}trianglePolygon(e){let t=new Xt;return this.renderTriangle(e,t),t.value()}};function an(e,t,n,r){let i=e.length,a=new Float64Array(i*2);for(let o=0;o<i;++o){let i=e[o];a[o*2]=t.call(r,i,o,e),a[o*2+1]=n.call(r,i,o,e)}return a}function*on(e,t,n,r){let i=0;for(let a of e)yield t.call(r,a,i,e),yield n.call(r,a,i,e),++i}function sn(e,t){return e==null||t==null?NaN:e<t?-1:e>t?1:e>=t?0:NaN}function cn(e,t){return e==null||t==null?NaN:t<e?-1:t>e?1:t>=e?0:NaN}function ln(e){let t,n,r;e.length===2?(t=e===sn||e===cn?e:un,n=e,r=e):(t=sn,n=(t,n)=>sn(e(t),n),r=(t,n)=>e(t)-n);function i(e,r,i=0,a=e.length){if(i<a){if(t(r,r)!==0)return a;do{let t=i+a>>>1;n(e[t],r)<0?i=t+1:a=t}while(i<a)}return i}function a(e,r,i=0,a=e.length){if(i<a){if(t(r,r)!==0)return a;do{let t=i+a>>>1;n(e[t],r)<=0?i=t+1:a=t}while(i<a)}return i}function o(e,t,n=0,a=e.length){let o=i(e,t,n,a-1);return o>n&&r(e[o-1],t)>-r(e[o],t)?o-1:o}return{left:i,center:o,right:a}}function un(){return 0}function dn(e){return e===null?NaN:+e}let fn=ln(sn),pn=fn.right;fn.left,ln(dn).center;let mn=Math.sqrt(50),hn=Math.sqrt(10),gn=Math.sqrt(2);function _n(e,t,n){let r=(t-e)/Math.max(0,n),i=Math.floor(Math.log10(r)),a=r/10**i,o=a>=mn?10:a>=hn?5:a>=gn?2:1,s,c,l;return i<0?(l=10**-i/o,s=Math.round(e*l),c=Math.round(t*l),s/l<e&&++s,c/l>t&&--c,l=-l):(l=10**i*o,s=Math.round(e/l),c=Math.round(t/l),s*l<e&&++s,c*l>t&&--c),c<s&&.5<=n&&n<2?_n(e,t,n*2):[s,c,l]}function vn(e,t,n){if(t=+t,e=+e,n=+n,!(n>0))return[];if(e===t)return[e];let r=t<e,[i,a,o]=r?_n(t,e,n):_n(e,t,n);if(!(a>=i))return[];let s=a-i+1,c=Array(s);if(r)if(o<0)for(let e=0;e<s;++e)c[e]=(a-e)/-o;else for(let e=0;e<s;++e)c[e]=(a-e)*o;else if(o<0)for(let e=0;e<s;++e)c[e]=(i+e)/-o;else for(let e=0;e<s;++e)c[e]=(i+e)*o;return c}function yn(e,t,n){return t=+t,e=+e,n=+n,_n(e,t,n)[2]}function bn(e,t,n){t=+t,e=+e,n=+n;let r=t<e,i=r?yn(t,e,n):yn(e,t,n);return(r?-1:1)*(i<0?1/-i:i)}function xn(e,t){switch(arguments.length){case 0:break;case 1:this.range(e);break;default:this.range(t).domain(e);break}return this}function Sn(e,t,n){e.prototype=t.prototype=n,n.constructor=e}function Cn(e,t){var n=Object.create(e.prototype);for(var r in t)n[r]=t[r];return n}function wn(){}var Tn=.7,En=1/Tn,J=`\\\\s*([+-]?\\\\d+)\\\\s*`,Dn=`\\\\s*([+-]?(?:\\\\d*\\\\.)?\\\\d+(?:[eE][+-]?\\\\d+)?)\\\\s*`,Y=`\\\\s*([+-]?(?:\\\\d*\\\\.)?\\\\d+(?:[eE][+-]?\\\\d+)?)%\\\\s*`,On=/^#([0-9a-f]{3,8})$/,kn=RegExp(`^rgb\\\\(${J},${J},${J}\\\\)$`),An=RegExp(`^rgb\\\\(${Y},${Y},${Y}\\\\)$`),jn=RegExp(`^rgba\\\\(${J},${J},${J},${Dn}\\\\)$`),Mn=RegExp(`^rgba\\\\(${Y},${Y},${Y},${Dn}\\\\)$`),Nn=RegExp(`^hsl\\\\(${Dn},${Y},${Y}\\\\)$`),Pn=RegExp(`^hsla\\\\(${Dn},${Y},${Y},${Dn}\\\\)$`),Fn={aliceblue:15792383,antiquewhite:16444375,aqua:65535,aquamarine:8388564,azure:15794175,beige:16119260,bisque:16770244,black:0,blanchedalmond:16772045,blue:255,blueviolet:9055202,brown:10824234,burlywood:14596231,cadetblue:6266528,chartreuse:8388352,chocolate:13789470,coral:16744272,cornflowerblue:6591981,cornsilk:16775388,crimson:14423100,cyan:65535,darkblue:139,darkcyan:35723,darkgoldenrod:12092939,darkgray:11119017,darkgreen:25600,darkgrey:11119017,darkkhaki:12433259,darkmagenta:9109643,darkolivegreen:5597999,darkorange:16747520,darkorchid:10040012,darkred:9109504,darksalmon:15308410,darkseagreen:9419919,darkslateblue:4734347,darkslategray:3100495,darkslategrey:3100495,darkturquoise:52945,darkviolet:9699539,deeppink:16716947,deepskyblue:49151,dimgray:6908265,dimgrey:6908265,dodgerblue:2003199,firebrick:11674146,floralwhite:16775920,forestgreen:2263842,fuchsia:16711935,gainsboro:14474460,ghostwhite:16316671,gold:16766720,goldenrod:14329120,gray:8421504,green:32768,greenyellow:11403055,grey:8421504,honeydew:15794160,hotpink:16738740,indianred:13458524,indigo:4915330,ivory:16777200,khaki:15787660,lavender:15132410,lavenderblush:16773365,lawngreen:8190976,lemonchiffon:16775885,lightblue:11393254,lightcoral:15761536,lightcyan:14745599,lightgoldenrodyellow:16448210,lightgray:13882323,lightgreen:9498256,lightgrey:13882323,lightpink:16758465,lightsalmon:16752762,lightseagreen:2142890,lightskyblue:8900346,lightslategray:7833753,lightslategrey:7833753,lightsteelblue:11584734,lightyellow:16777184,lime:65280,limegreen:3329330,linen:16445670,magenta:16711935,maroon:8388608,mediumaquamarine:6737322,mediumblue:205,mediumorchid:12211667,mediumpurple:9662683,mediumseagreen:3978097,mediumslateblue:8087790,mediumspringgreen:64154,mediumturquoise:4772300,mediumvioletred:13047173,midnightblue:1644912,mintcream:16121850,mistyrose:16770273,moccasin:16770229,navajowhite:16768685,navy:128,oldlace:16643558,olive:8421376,olivedrab:7048739,orange:16753920,orangered:16729344,orchid:14315734,palegoldenrod:15657130,palegreen:10025880,paleturquoise:11529966,palevioletred:14381203,papayawhip:16773077,peachpuff:16767673,peru:13468991,pink:16761035,plum:14524637,powderblue:11591910,purple:8388736,rebeccapurple:6697881,red:16711680,rosybrown:12357519,royalblue:4286945,saddlebrown:9127187,salmon:16416882,sandybrown:16032864,seagreen:3050327,seashell:16774638,sienna:10506797,silver:12632256,skyblue:8900331,slateblue:6970061,slategray:7372944,slategrey:7372944,snow:16775930,springgreen:65407,steelblue:4620980,tan:13808780,teal:32896,thistle:14204888,tomato:16737095,turquoise:4251856,violet:15631086,wheat:16113331,white:16777215,whitesmoke:16119285,yellow:16776960,yellowgreen:10145074};Sn(wn,Bn,{copy(e){return Object.assign(new this.constructor,this,e)},displayable(){return this.rgb().displayable()},hex:In,formatHex:In,formatHex8:Ln,formatHsl:Rn,formatRgb:zn,toString:zn});function In(){return this.rgb().formatHex()}function Ln(){return this.rgb().formatHex8()}function Rn(){return Xn(this).formatHsl()}function zn(){return this.rgb().formatRgb()}function Bn(e){var t,n;return e=(e+``).trim().toLowerCase(),(t=On.exec(e))?(n=t[1].length,t=parseInt(t[1],16),n===6?Vn(t):n===3?new X(t>>8&15|t>>4&240,t>>4&15|t&240,(t&15)<<4|t&15,1):n===8?Hn(t>>24&255,t>>16&255,t>>8&255,(t&255)/255):n===4?Hn(t>>12&15|t>>8&240,t>>8&15|t>>4&240,t>>4&15|t&240,((t&15)<<4|t&15)/255):null):(t=kn.exec(e))?new X(t[1],t[2],t[3],1):(t=An.exec(e))?new X(t[1]*255/100,t[2]*255/100,t[3]*255/100,1):(t=jn.exec(e))?Hn(t[1],t[2],t[3],t[4]):(t=Mn.exec(e))?Hn(t[1]*255/100,t[2]*255/100,t[3]*255/100,t[4]):(t=Nn.exec(e))?Yn(t[1],t[2]/100,t[3]/100,1):(t=Pn.exec(e))?Yn(t[1],t[2]/100,t[3]/100,t[4]):Fn.hasOwnProperty(e)?Vn(Fn[e]):e===`transparent`?new X(NaN,NaN,NaN,0):null}function Vn(e){return new X(e>>16&255,e>>8&255,e&255,1)}function Hn(e,t,n,r){return r<=0&&(e=t=n=NaN),new X(e,t,n,r)}function Un(e){return e instanceof wn||(e=Bn(e)),e?(e=e.rgb(),new X(e.r,e.g,e.b,e.opacity)):new X}function Wn(e,t,n,r){return arguments.length===1?Un(e):new X(e,t,n,r??1)}function X(e,t,n,r){this.r=+e,this.g=+t,this.b=+n,this.opacity=+r}Sn(X,Wn,Cn(wn,{brighter(e){return e=e==null?En:En**+e,new X(this.r*e,this.g*e,this.b*e,this.opacity)},darker(e){return e=e==null?Tn:Tn**+e,new X(this.r*e,this.g*e,this.b*e,this.opacity)},rgb(){return this},clamp(){return new X(Z(this.r),Z(this.g),Z(this.b),Jn(this.opacity))},displayable(){return-.5<=this.r&&this.r<255.5&&-.5<=this.g&&this.g<255.5&&-.5<=this.b&&this.b<255.5&&0<=this.opacity&&this.opacity<=1},hex:Gn,formatHex:Gn,formatHex8:Kn,formatRgb:qn,toString:qn}));function Gn(){return`#${Q(this.r)}${Q(this.g)}${Q(this.b)}`}function Kn(){return`#${Q(this.r)}${Q(this.g)}${Q(this.b)}${Q((isNaN(this.opacity)?1:this.opacity)*255)}`}function qn(){let e=Jn(this.opacity);return`${e===1?`rgb(`:`rgba(`}${Z(this.r)}, ${Z(this.g)}, ${Z(this.b)}${e===1?`)`:`, ${e})`}`}function Jn(e){return isNaN(e)?1:Math.max(0,Math.min(1,e))}function Z(e){return Math.max(0,Math.min(255,Math.round(e)||0))}function Q(e){return e=Z(e),(e<16?`0`:``)+e.toString(16)}function Yn(e,t,n,r){return r<=0?e=t=n=NaN:n<=0||n>=1?e=t=NaN:t<=0&&(e=NaN),new $(e,t,n,r)}function Xn(e){if(e instanceof $)return new $(e.h,e.s,e.l,e.opacity);if(e instanceof wn||(e=Bn(e)),!e)return new $;if(e instanceof $)return e;e=e.rgb();var t=e.r/255,n=e.g/255,r=e.b/255,i=Math.min(t,n,r),a=Math.max(t,n,r),o=NaN,s=a-i,c=(a+i)/2;return s?(o=t===a?(n-r)/s+(n<r)*6:n===a?(r-t)/s+2:(t-n)/s+4,s/=c<.5?a+i:2-a-i,o*=60):s=c>0&&c<1?0:o,new $(o,s,c,e.opacity)}function Zn(e,t,n,r){return arguments.length===1?Xn(e):new $(e,t,n,r??1)}function $(e,t,n,r){this.h=+e,this.s=+t,this.l=+n,this.opacity=+r}Sn($,Zn,Cn(wn,{brighter(e){return e=e==null?En:En**+e,new $(this.h,this.s,this.l*e,this.opacity)},darker(e){return e=e==null?Tn:Tn**+e,new $(this.h,this.s,this.l*e,this.opacity)},rgb(){var e=this.h%360+(this.h<0)*360,t=isNaN(e)||isNaN(this.s)?0:this.s,n=this.l,r=n+(n<.5?n:1-n)*t,i=2*n-r;return new X(er(e>=240?e-240:e+120,i,r),er(e,i,r),er(e<120?e+240:e-120,i,r),this.opacity)},clamp(){return new $(Qn(this.h),$n(this.s),$n(this.l),Jn(this.opacity))},displayable(){return(0<=this.s&&this.s<=1||isNaN(this.s))&&0<=this.l&&this.l<=1&&0<=this.opacity&&this.opacity<=1},formatHsl(){let e=Jn(this.opacity);return`${e===1?`hsl(`:`hsla(`}${Qn(this.h)}, ${$n(this.s)*100}%, ${$n(this.l)*100}%${e===1?`)`:`, ${e})`}`}}));function Qn(e){return e=(e||0)%360,e<0?e+360:e}function $n(e){return Math.max(0,Math.min(1,e||0))}function er(e,t,n){return(e<60?t+(n-t)*e/60:e<180?n:e<240?t+(n-t)*(240-e)/60:t)*255}var tr=e=>()=>e;function nr(e,t){return function(n){return e+n*t}}function rr(e,t,n){return e**=+n,t=t**+n-e,n=1/n,function(r){return(e+r*t)**+n}}function ir(e){return(e=+e)==1?ar:function(t,n){return n-t?rr(t,n,e):tr(isNaN(t)?n:t)}}function ar(e,t){var n=t-e;return n?nr(e,n):tr(isNaN(e)?t:e)}var or=(function e(t){var n=ir(t);function r(e,t){var r=n((e=Wn(e)).r,(t=Wn(t)).r),i=n(e.g,t.g),a=n(e.b,t.b),o=ar(e.opacity,t.opacity);return function(t){return e.r=r(t),e.g=i(t),e.b=a(t),e.opacity=o(t),e+``}}return r.gamma=e,r})(1);function sr(e,t){t||(t=[]);var n=e?Math.min(t.length,e.length):0,r=t.slice(),i;return function(a){for(i=0;i<n;++i)r[i]=e[i]*(1-a)+t[i]*a;return r}}function cr(e){return ArrayBuffer.isView(e)&&!(e instanceof DataView)}function lr(e,t){var n=t?t.length:0,r=e?Math.min(n,e.length):0,i=Array(r),a=Array(n),o;for(o=0;o<r;++o)i[o]=vr(e[o],t[o]);for(;o<n;++o)a[o]=t[o];return function(e){for(o=0;o<r;++o)a[o]=i[o](e);return a}}function ur(e,t){var n=new Date;return e=+e,t=+t,function(r){return n.setTime(e*(1-r)+t*r),n}}function dr(e,t){return e=+e,t=+t,function(n){return e*(1-n)+t*n}}function fr(e,t){var n={},r={},i;for(i in(typeof e!=`object`||!e)&&(e={}),(typeof t!=`object`||!t)&&(t={}),t)i in e?n[i]=vr(e[i],t[i]):r[i]=t[i];return function(e){for(i in n)r[i]=n[i](e);return r}}var pr=/[-+]?(?:\\d+\\.?\\d*|\\.?\\d+)(?:[eE][-+]?\\d+)?/g,mr=new RegExp(pr.source,`g`);function hr(e){return function(){return e}}function gr(e){return function(t){return e(t)+``}}function _r(e,t){var n=pr.lastIndex=mr.lastIndex=0,r,i,a,o=-1,s=[],c=[];for(e+=``,t+=``;(r=pr.exec(e))&&(i=mr.exec(t));)(a=i.index)>n&&(a=t.slice(n,a),s[o]?s[o]+=a:s[++o]=a),(r=r[0])===(i=i[0])?s[o]?s[o]+=i:s[++o]=i:(s[++o]=null,c.push({i:o,x:dr(r,i)})),n=mr.lastIndex;return n<t.length&&(a=t.slice(n),s[o]?s[o]+=a:s[++o]=a),s.length<2?c[0]?gr(c[0].x):hr(t):(t=c.length,function(e){for(var n=0,r;n<t;++n)s[(r=c[n]).i]=r.x(e);return s.join(``)})}function vr(e,t){var n=typeof t,r;return t==null||n===`boolean`?tr(t):(n===`number`?dr:n===`string`?(r=Bn(t))?(t=r,or):_r:t instanceof Bn?or:t instanceof Date?ur:cr(t)?sr:Array.isArray(t)?lr:typeof t.valueOf!=`function`&&typeof t.toString!=`function`||isNaN(t)?fr:dr)(e,t)}function yr(e,t){return e=+e,t=+t,function(n){return Math.round(e*(1-n)+t*n)}}function br(e){return function(){return e}}function xr(e){return+e}var Sr=[0,1];function Cr(e){return e}function wr(e,t){return(t-=e=+e)?function(n){return(n-e)/t}:br(isNaN(t)?NaN:.5)}function Tr(e,t){var n;return e>t&&(n=e,e=t,t=n),function(n){return Math.max(e,Math.min(t,n))}}function Er(e,t,n){var r=e[0],i=e[1],a=t[0],o=t[1];return i<r?(r=wr(i,r),a=n(o,a)):(r=wr(r,i),a=n(a,o)),function(e){return a(r(e))}}function Dr(e,t,n){var r=Math.min(e.length,t.length)-1,i=Array(r),a=Array(r),o=-1;for(e[r]<e[0]&&(e=e.slice().reverse(),t=t.slice().reverse());++o<r;)i[o]=wr(e[o],e[o+1]),a[o]=n(t[o],t[o+1]);return function(t){var n=pn(e,t,1,r)-1;return a[n](i[n](t))}}function Or(e,t){return t.domain(e.domain()).range(e.range()).interpolate(e.interpolate()).clamp(e.clamp()).unknown(e.unknown())}function kr(){var e=Sr,t=Sr,n=vr,r,i,a,o=Cr,s,c,l;function u(){var n=Math.min(e.length,t.length);return o!==Cr&&(o=Tr(e[0],e[n-1])),s=n>2?Dr:Er,c=l=null,d}function d(i){return i==null||isNaN(i=+i)?a:(c||(c=s(e.map(r),t,n)))(r(o(i)))}return d.invert=function(n){return o(i((l||(l=s(t,e.map(r),dr)))(n)))},d.domain=function(t){return arguments.length?(e=Array.from(t,xr),u()):e.slice()},d.range=function(e){return arguments.length?(t=Array.from(e),u()):t.slice()},d.rangeRound=function(e){return t=Array.from(e),n=yr,u()},d.clamp=function(e){return arguments.length?(o=e?!0:Cr,u()):o!==Cr},d.interpolate=function(e){return arguments.length?(n=e,u()):n},d.unknown=function(e){return arguments.length?(a=e,d):a},function(e,t){return r=e,i=t,u()}}function Ar(){return kr()(Cr,Cr)}function jr(e){return Math.abs(e=Math.round(e))>=1e21?e.toLocaleString(`en`).replace(/,/g,``):e.toString(10)}function Mr(e,t){if(!isFinite(e)||e===0)return null;var n=(e=t?e.toExponential(t-1):e.toExponential()).indexOf(`e`),r=e.slice(0,n);return[r.length>1?r[0]+r.slice(2):r,+e.slice(n+1)]}function Nr(e){return e=Mr(Math.abs(e)),e?e[1]:NaN}function Pr(e,t){return function(n,r){for(var i=n.length,a=[],o=0,s=e[0],c=0;i>0&&s>0&&(c+s+1>r&&(s=Math.max(1,r-c)),a.push(n.substring(i-=s,i+s)),!((c+=s+1)>r));)s=e[o=(o+1)%e.length];return a.reverse().join(t)}}function Fr(e){return function(t){return t.replace(/[0-9]/g,function(t){return e[+t]})}}var Ir=/^(?:(.)?([<>=^]))?([+\\-( ])?([$#])?(0)?(\\d+)?(,)?(\\.\\d+)?(~)?([a-z%])?$/i;function Lr(e){if(!(t=Ir.exec(e)))throw Error(`invalid format: `+e);var t;return new Rr({fill:t[1],align:t[2],sign:t[3],symbol:t[4],zero:t[5],width:t[6],comma:t[7],precision:t[8]&&t[8].slice(1),trim:t[9],type:t[10]})}Lr.prototype=Rr.prototype;function Rr(e){this.fill=e.fill===void 0?` `:e.fill+``,this.align=e.align===void 0?`>`:e.align+``,this.sign=e.sign===void 0?`-`:e.sign+``,this.symbol=e.symbol===void 0?``:e.symbol+``,this.zero=!!e.zero,this.width=e.width===void 0?void 0:+e.width,this.comma=!!e.comma,this.precision=e.precision===void 0?void 0:+e.precision,this.trim=!!e.trim,this.type=e.type===void 0?``:e.type+``}Rr.prototype.toString=function(){return this.fill+this.align+this.sign+this.symbol+(this.zero?`0`:``)+(this.width===void 0?``:Math.max(1,this.width|0))+(this.comma?`,`:``)+(this.precision===void 0?``:`.`+Math.max(0,this.precision|0))+(this.trim?`~`:``)+this.type};function zr(e){out:for(var t=e.length,n=1,r=-1,i;n<t;++n)switch(e[n]){case`.`:r=i=n;break;case`0`:r===0&&(r=n),i=n;break;default:if(!+e[n])break out;r>0&&(r=0);break}return r>0?e.slice(0,r)+e.slice(i+1):e}var Br;function Vr(e,t){var n=Mr(e,t);if(!n)return Br=void 0,e.toPrecision(t);var r=n[0],i=n[1],a=i-(Br=Math.max(-8,Math.min(8,Math.floor(i/3)))*3)+1,o=r.length;return a===o?r:a>o?r+Array(a-o+1).join(`0`):a>0?r.slice(0,a)+`.`+r.slice(a):`0.`+Array(1-a).join(`0`)+Mr(e,Math.max(0,t+a-1))[0]}function Hr(e,t){var n=Mr(e,t);if(!n)return e+``;var r=n[0],i=n[1];return i<0?`0.`+Array(-i).join(`0`)+r:r.length>i+1?r.slice(0,i+1)+`.`+r.slice(i+1):r+Array(i-r.length+2).join(`0`)}var Ur={\"%\":(e,t)=>(e*100).toFixed(t),b:e=>Math.round(e).toString(2),c:e=>e+``,d:jr,e:(e,t)=>e.toExponential(t),f:(e,t)=>e.toFixed(t),g:(e,t)=>e.toPrecision(t),o:e=>Math.round(e).toString(8),p:(e,t)=>Hr(e*100,t),r:Hr,s:Vr,X:e=>Math.round(e).toString(16).toUpperCase(),x:e=>Math.round(e).toString(16)};function Wr(e){return e}var Gr=Array.prototype.map,Kr=[`y`,`z`,`a`,`f`,`p`,`n`,`µ`,`m`,``,`k`,`M`,`G`,`T`,`P`,`E`,`Z`,`Y`];function qr(e){var t=e.grouping===void 0||e.thousands===void 0?Wr:Pr(Gr.call(e.grouping,Number),e.thousands+``),n=e.currency===void 0?``:e.currency[0]+``,r=e.currency===void 0?``:e.currency[1]+``,i=e.decimal===void 0?`.`:e.decimal+``,a=e.numerals===void 0?Wr:Fr(Gr.call(e.numerals,String)),o=e.percent===void 0?`%`:e.percent+``,s=e.minus===void 0?`−`:e.minus+``,c=e.nan===void 0?`NaN`:e.nan+``;function l(e,l){e=Lr(e);var u=e.fill,d=e.align,f=e.sign,p=e.symbol,m=e.zero,h=e.width,g=e.comma,_=e.precision,v=e.trim,y=e.type;y===`n`?(g=!0,y=`g`):Ur[y]||(_===void 0&&(_=12),v=!0,y=`g`),(m||u===`0`&&d===`=`)&&(m=!0,u=`0`,d=`=`);var b=(l&&l.prefix!==void 0?l.prefix:``)+(p===`$`?n:p===`#`&&/[boxX]/.test(y)?`0`+y.toLowerCase():``),x=(p===`$`?r:/[%p]/.test(y)?o:``)+(l&&l.suffix!==void 0?l.suffix:``),S=Ur[y],C=/[defgprs%]/.test(y);_=_===void 0?6:/[gprs]/.test(y)?Math.max(1,Math.min(21,_)):Math.max(0,Math.min(20,_));function w(e){var n=b,r=x,o,l,p;if(y===`c`)r=S(e)+r,e=``;else{e=+e;var w=e<0||1/e<0;if(e=isNaN(e)?c:S(Math.abs(e),_),v&&(e=zr(e)),w&&+e==0&&f!==`+`&&(w=!1),n=(w?f===`(`?f:s:f===`-`||f===`(`?``:f)+n,r=(y===`s`&&!isNaN(e)&&Br!==void 0?Kr[8+Br/3]:``)+r+(w&&f===`(`?`)`:``),C){for(o=-1,l=e.length;++o<l;)if(p=e.charCodeAt(o),48>p||p>57){r=(p===46?i+e.slice(o+1):e.slice(o))+r,e=e.slice(0,o);break}}}g&&!m&&(e=t(e,1/0));var T=n.length+e.length+r.length,E=T<h?Array(h-T+1).join(u):``;switch(g&&m&&(e=t(E+e,E.length?h-r.length:1/0),E=``),d){case`<`:e=n+e+r+E;break;case`=`:e=n+E+e+r;break;case`^`:e=E.slice(0,T=E.length>>1)+n+e+r+E.slice(T);break;default:e=E+n+e+r;break}return a(e)}return w.toString=function(){return e+``},w}function u(e,t){var n=Math.max(-8,Math.min(8,Math.floor(Nr(t)/3)))*3,r=10**-n,i=l((e=Lr(e),e.type=`f`,e),{suffix:Kr[8+n/3]});return function(e){return i(r*e)}}return{format:l,formatPrefix:u}}var Jr,Yr,Xr;Zr({thousands:`,`,grouping:[3],currency:[`$`,``]});function Zr(e){return Jr=qr(e),Yr=Jr.format,Xr=Jr.formatPrefix,Jr}function Qr(e){return Math.max(0,-Nr(Math.abs(e)))}function $r(e,t){return Math.max(0,Math.max(-8,Math.min(8,Math.floor(Nr(t)/3)))*3-Nr(Math.abs(e)))}function ei(e,t){return e=Math.abs(e),t=Math.abs(t)-e,Math.max(0,Nr(t)-Nr(e))+1}function ti(e,t,n,r){var i=bn(e,t,n),a;switch(r=Lr(r??`,f`),r.type){case`s`:var o=Math.max(Math.abs(e),Math.abs(t));return r.precision==null&&!isNaN(a=$r(i,o))&&(r.precision=a),Xr(r,o);case``:case`e`:case`g`:case`p`:case`r`:r.precision==null&&!isNaN(a=ei(i,Math.max(Math.abs(e),Math.abs(t))))&&(r.precision=a-(r.type===`e`));break;case`f`:case`%`:r.precision==null&&!isNaN(a=Qr(i))&&(r.precision=a-(r.type===`%`)*2);break}return Yr(r)}function ni(e){var t=e.domain;return e.ticks=function(e){var n=t();return vn(n[0],n[n.length-1],e??10)},e.tickFormat=function(e,n){var r=t();return ti(r[0],r[r.length-1],e??10,n)},e.nice=function(n){n??(n=10);var r=t(),i=0,a=r.length-1,o=r[i],s=r[a],c,l,u=10;for(s<o&&(l=o,o=s,s=l,l=i,i=a,a=l);u-- >0;){if(l=yn(o,s,n),l===c)return r[i]=o,r[a]=s,t(r);if(l>0)o=Math.floor(o/l)*l,s=Math.ceil(s/l)*l;else if(l<0)o=Math.ceil(o*l)/l,s=Math.floor(s*l)/l;else break;c=l}return e},e}function ri(){var e=Ar();return e.copy=function(){return Or(e,ri())},xn.apply(e,arguments),ni(e)}function ii(e){let t,n;for(let r of e)r!=null&&(t===void 0?r>=r&&(t=n=r):(t>r&&(t=r),n<r&&(n=r)));return[t,n]}function*ai(e){for(let t of e)yield*t}function oi(e){return Array.from(ai(e))}function si(e,t){let n=t.length,r=-1;for(;++r<n;){let n=ci(e,t[r]);if(n)return n}return 0}function ci(e,t){let n=t[0],r=t[1],i=-1;for(let a=0,o=e.length,s=o-1;a<o;s=a++){let o=e[a],c=o[0],l=o[1],u=e[s],d=u[0],f=u[1];if(li(o,u,t))return 0;l>r!=f>r&&n<(d-c)*(r-l)/(f-l)+c&&(i=-i)}return i}function li(e,t,n){let r;return ui(e,t,n)&&di(e[r=+(e[0]===t[0])],n[r],t[r])}function ui(e,t,n){return(t[0]-e[0])*(n[1]-e[1])===(n[0]-e[0])*(t[1]-e[1])}function di(e,t,n){return e<=t&&t<=n||n<=t&&t<=e}function fi(e){let t=0,n=e.length,r=e[n-1][1]*e[0][0]-e[n-1][0]*e[0][1];for(;++t<n;)r+=e[t-1][1]*e[t][0]-e[t-1][0]*e[t][1];return r}function pi(e){let t=[],n=[];for(let r of e)fi(r)>0?t.push([r]):n.push(r);return n.forEach(function(e){for(let n=0,r=t.length,i;n<r;++n)if(si((i=t[n])[0],e)!==-1){i.push(e);return}}),t}function mi(){let e=e=>e[0],t=e=>e[1],n=e=>isFinite(+e[2])?+e[2]:0,r=rn.from,i=(e,t,n)=>{let{points:r}=c,i=[r[2*e],r[2*e+1]],a=[r[2*t],r[2*t+1]];return[n*a[0]+(1-n)*i[0],n*a[1]+(1-n)*i[1]]},a=pi,o,s,c;function l(i){c=r(i,e,t),s=Array.from(i,n),typeof o!=`object`&&(o=ri().domain(ii(s)).nice().ticks(o))}function*u(e){l(e);for(let e of o)yield{type:`MultiPolygon`,coordinates:g(c,s,e),value:e}}function d(e,t){return l(e),{type:`MultiPolygon`,coordinates:g(c,s,t),value:t}}function*f(e){l(e);let t,n,r;for(let e of o)n&&(t=n),n=oi(g(c,s,e)),t&&(yield{type:`MultiPolygon`,coordinates:a(t.concat(n.map(e=>e.slice().reverse()))),value:r,valueMax:e}),r=e}let p=function(e){return[...u(e)]};return p.x=t=>t?(e=t,p):e,p.y=e=>e?(t=e,p):t,p.value=e=>e?(n=e,p):n,p.thresholds=e=>e?(o=e,p):o,p.triangulate=e=>e?(r=e,p):r,p.pointInterpolate=e=>e?(i=e,p):i,p.ringsort=e=>e?(a=e,p):a,p.contours=u,p.contour=d,p.isobands=f,p._values=()=>s,p._triangulation=()=>c,p;function m(e){return e%3==2?e-2:e+1}function h(e){return e%3==0?e+2:e-1}function g(e,t,n=0){for(let e of t)if(!isFinite(e))throw[`Invalid value`,e];let{halfedges:r,inedges:o,triangles:s}=e,c=t.length,l=new Map;r.forEach((e,t)=>{e===-1&&l.set(s[t],s[t+(t%3==2?-2:1)])});function u(e){return d(s[e],s[m(e)])}function d(e,r){let i=t[e],a=t[r];if(i<=n&&a>=n&&i<a)return(n-i)/(a-i)}let f=[],p=new Uint8Array(r.length).fill(0),g,_,v,y,b;for(y=0;y<r.length;y++)if(!p[y]){for(_=y,g=[];(b=u(_))>0;){let[e,i]=[s[_],s[v=m(_)]];if(g.length&&e===g[0].ti&&i===g[0].tj||g.length>2*c)break;if(p[_]=1,g.push({ti:e,tj:i,a:b}),(v=r[_])>-1){if(u(v=m(v))>0){_=v;continue}if(u(v=m(v))>0){_=v;continue}}else{let e=s[_];for(;t[e]<n;)e=l.get(e);for(;t[e]>=n;)g.push({ti:e,tj:e,a:0}),e=l.get(e);if(v=o[e],g.push({ti:e,tj:s[v],a:d(e,s[v])}),u(_=m(v))>0||u(_=h(v))>0)continue}}g.length&&(g.push(g[0]),f.push(g.map(({ti:e,tj:t,a:n})=>i(e,t,n))))}do{let e=[],r=l.keys().next().value;do{let t=l.get(r);e.push(r),l.delete(r),r=t}while(l.has(r));e.every(e=>t[e]>=n)&&(e.push(e[0]),f.push(e.map(e=>i(e,e,0))))}while(l.size);return a(f)}}function hi(e,t=1e-12){let n=Array.isArray(e)?e.length:0;if(n===0)return{coords:new Float64Array,n:0,bbox:[0,0,0,0],eps:t};let r=n>1&&Math.abs(e[0][0]-e[n-1][0])<=t&&Math.abs(e[0][1]-e[n-1][1])<=t?n-1:n;if(r<3)return{coords:new Float64Array,n:0,bbox:[0,0,0,0],eps:t};let i=new Float64Array(2*r),a=1/0,o=1/0,s=-1/0,c=-1/0;for(let t=0;t<r;t++){let n=+e[t][0],r=+e[t][1];i[2*t]=n,i[2*t+1]=r,n<a&&(a=n),n>s&&(s=n),r<o&&(o=r),r>c&&(c=r)}return{coords:i,n:r,bbox:[a,o,s,c],eps:t}}function gi(e,t,n,r,i,a,o){let s=(i-e)*(r-t)-(a-t)*(n-e);return!(Math.abs(s)>o||i<Math.min(e,n)-o||i>Math.max(e,n)+o||a<Math.min(t,r)-o||a>Math.max(t,r)+o)}function _i(e,t,n,{inclusive:r=!0}={}){if(!n||n.n===0)return!1;let[i,a,o,s]=n.bbox;if(e<i||e>o||t<a||t>s)return!1;let c=n.coords,l=n.n,u=n.eps||1e-12,d=!1,f=l-1;for(let n=0;n<l;n++){let i=c[2*n],a=c[2*n+1],o=c[2*f],s=c[2*f+1];if(gi(i,a,o,s,e,t,u))return!!r;a>t!=s>t&&e<i+(t-a)*(o-i)/(s-a)&&(d=!d),f=n}return d}function vi(e,t,n){let r=hi(t,n&&n.eps);return _i(e[0],e[1],r,n)}function yi(e,{inclusive:t=!0,gridSize:n=3,eps:r}={}){let i=e&&e.coords?e:hi(e,r);if(!i||i.n===0)return null;let a=i.coords,o=i.n,[s,c,l,u]=i.bbox,d=(e,n)=>_i(e,n,i,{inclusive:t}),f=(s+l)/2,p=(c+u)/2;if(d(f,p))return[f,p];let m=0,h=0;for(let e=0;e<o;e++)m+=a[2*e],h+=a[2*e+1];let g=m/o,_=h/o;if(d(g,_))return[g,_];let v=0,y=0,b=0;for(let e=0;e<o;e++){let t=(e+1)%o,n=a[2*e],r=a[2*e+1],i=a[2*t],s=a[2*t+1],c=n*s-i*r;v+=c,y+=(n+i)*c,b+=(r+s)*c}if(Math.abs(v)>(i.eps||1e-12)){let e=y/(3*v),t=b/(3*v);if(d(e,t))return[e,t]}for(let e=0;e<o;e++){let t=e,n=(e+1)%o,r=(e+2)%o,s=a[2*t],c=a[2*t+1],l=a[2*n],u=a[2*n+1],f=a[2*r],p=a[2*r+1],m=(l-s)*(p-c)-(u-c)*(f-s);if(Math.abs(m)<=(i.eps||1e-12))continue;let h=(s+l+f)/3,g=(c+u+p)/3;if(d(h,g))return[h,g]}for(let e=1;e<o-1;e++){let t=a[0],n=a[1],r=a[2*e],o=a[2*e+1],s=a[2*(e+1)],c=a[2*(e+1)+1],l=(r-t)*(c-n)-(o-n)*(s-t);if(Math.abs(l)<=(i.eps||1e-12))continue;let u=(t+r+s)/3,f=(n+o+c)/3;if(d(u,f))return[u,f]}let x=l-s,S=u-c;if(x>0&&S>0){let e=n+1;for(let t=1;t<=n;t++){let r=c+t/e*S;for(let t=1;t<=n;t++){let n=s+t/e*x;if(d(n,r))return[n,r]}}}return null}function bi(e){let t=1/0,n=1/0,r=-1/0,i=-1/0;for(let a of e){let e=a[0],o=a[1];e<t&&(t=e),o<n&&(n=o),e>r&&(r=e),o>i&&(i=o)}return{minX:t,minY:n,maxX:r,maxY:i}}function xi(e,t){let n=Math.max(0,Math.min(e.maxX,t.maxX)-Math.max(e.minX,t.minX))*Math.max(0,Math.min(e.maxY,t.maxY)-Math.max(e.minY,t.minY)),r=(e.maxX-e.minX)*(e.maxY-e.minY)+(t.maxX-t.minX)*(t.maxY-t.minY)-n;return r===0?0:n/r}function Si(e){if(!Array.isArray(e)||e.length===0)return null;let t=e[0],n=e[e.length-1];return t[0]===n[0]&&t[1]===n[1]?e.slice():null}function Ci(e){let t=Array.from(new Map(e.map(e=>[`${e[0]},${e[1]}`,e])).values());if(t.length<=1)return t;t.sort((e,t)=>e[0]-t[0]||e[1]-t[1]);let n=(e,t,n)=>(t[0]-e[0])*(n[1]-e[1])-(t[1]-e[1])*(n[0]-e[0]),r=[];for(let e of t){for(;r.length>=2&&n(r[r.length-2],r[r.length-1],e)<=0;)r.pop();r.push(e)}let i=[];for(let e=t.length-1;e>=0;e--){let r=t[e];for(;i.length>=2&&n(i[i.length-2],i[i.length-1],r)<=0;)i.pop();i.push(r)}i.pop(),r.pop();let a=r.concat(i);return a.length===0?[]:(a.push(a[0]),a)}function wi(e){return Math.abs(je(e))}function Ti(e,t,n=1e-6){if(!t||t.length<3)return!1;let r=Si(e);if(!r||r.length<4)return!1;let i=Si(t);if(!i||i.length<4)return!1;let a=wi(i);if(a===0)return!1;if(r.length===i.length){let e=r.length-1,t=(e,t)=>Math.abs(e[0]-t[0])<=n&&Math.abs(e[1]-t[1])<=n;for(let n=0;n<e;n++){let a=!0;for(let o=0;o<e;o++)if(!t(r[(o+n)%e],i[o])){a=!1;break}if(a)return!0}let a=i.slice(0,-1).slice().reverse();for(let n=0;n<e;n++){let i=!0;for(let o=0;o<e;o++)if(!t(r[(o+n)%e],a[o])){i=!1;break}if(i)return!0}return!1}let o=wi(r);return!(Math.abs(o-a)/a>.02||xi(bi(r),bi(i))<.985)}function Ei(e,t=[],n=`distance`){let r=mi(),i=0;t.length>0&&(r.thresholds(t),i=t.at(-1));let a=Array.from(r.isobands(e)).filter(e=>Array.isArray(e.coordinates)&&e.coordinates.length>0&&(i>0?e.valueMax<=i:!0)),o=Ci(e.map(e=>[e[0],e[1]]));if(!a||a.length===0){let n=e.map(e=>[e[0],e[1]]),r=null;if(Array.isArray(o)&&o.length>=4)r=o.slice();else if(n.length>=2){let e=n[0],t=n[1],i=t[0]-e[0],a=t[1]-e[1],o=Math.hypot(i,a)||1,s=1e-6,c=-(a/o)*s,l=i/o*s;r=[e,t,[(e[0]+t[0])/2+c,(e[1]+t[1])/2+l],e]}else if(n.length===1){let e=n[0],t=1e-6;r=[[e[0]-t,e[1]-t],[e[0]+t,e[1]-t],[e[0]+t,e[1]+t],[e[0]-t,e[1]+t],[e[0]-t,e[1]-t]]}return{type:`FeatureCollection`,features:[{type:`Feature`,properties:{value:0,valueMin:0,valueMax:t&&t.length?t[t.length-1]:0,bandIndex:0},geometry:{type:`Polygon`,coordinates:r?[r]:[]}}]}}return{type:`FeatureCollection`,features:a.map((e,t)=>{let r=[];for(let t of e.coordinates)if(Array.isArray(t))for(let e of t){let t=Si(e);t&&t.length>=4&&r.push(t)}if(r.length===0)return{type:`Feature`,properties:{value:e.value,valueMin:e.value,valueMax:e.valueMax,bandIndex:t},geometry:{type:`MultiPolygon`,coordinates:[]}};let i=r.filter(e=>!Ti(e,o));if(i.length===0)return{type:`Feature`,properties:{label:n===`distance`?`${e.valueMax} m`:`${Math.round(e.valueMax/60)} min`,valueMin:e.value,valueMax:e.valueMax,bandIndex:t},geometry:{type:`MultiPolygon`,coordinates:[]}};let a=i.map(e=>({ring:e,area:Math.abs(je(e)),bbox:bi(e),parent:null,children:[]}));a.sort((e,t)=>t.area-e.area);function s(e,t){return e.minX<=t.minX&&e.minY<=t.minY&&e.maxX>=t.maxX&&e.maxY>=t.maxY}for(let e=0;e<a.length;e++){let t=a[e],n=yi(t.ring)||t.ring[0],r=null,i=1/0;for(let o=0;o<a.length;o++){if(e===o)continue;let c=a[o];c.area<=t.area||s(c.bbox,t.bbox)&&vi(n,c.ring)&&c.area<i&&(i=c.area,r=c)}t.parent=r,r&&r.children.push(t)}function c(e){let t=0,n=e.parent;for(;n;)t++,n=n.parent;return t}function l(e){return je(e)>0?e:e.slice().reverse()}function u(e){return je(e)<0?e:e.slice().reverse()}let d=[];for(let e of a)if(!(c(e)&1)){let t=[l(e.ring)];for(let n of e.children)(c(n)&1)==1&&t.push(u(n.ring));d.push(t)}return{type:`Feature`,properties:{label:n===`distance`?`${e.valueMax} m`:`${Math.round(e.valueMax/60)} min`,valueMin:e.value,valueMax:e.valueMax,bandIndex:t},geometry:d.length===1?{type:`Polygon`,coordinates:d[0]}:{type:`MultiPolygon`,coordinates:d}}})}}var Di={url:self.location.href};async function Oi({point:e,direction:t=`from`,mode:n=`car`,costField:r=`distance`,graph:i,maxCost:a=1e3,snapMaxDistM:o=800,penalties:s={}}={}){if(!i||!(i.nodes instanceof Map)||!Array.isArray(i.edges))throw Error(`Invalid graph: expected object with nodes Map and edges array.`);if(!Array.isArray(e)||e.length!==2)throw Error(`Invalid point: expected [lng, lat]`);let c,l,u=yt(e,i,[o],o);if(!u||!u.segmentSnap)throw Error(`Point did not project to any graph segment within snapMaxDistM`);c=_t(i,u.segmentSnap),c.mode=n,l=c._lastAddedNodeId??c.nodes.size-1;let d=At(c,r,s),{distances:f,reachable:p}=Ne(d,l,a,{outputUnscaled:!0,direction:t,mode:n}),m=typeof process<`u`?process.env?.DEBUG_ISOLINES:Di===void 0?!1:void 0;m&&console.error(`DEBUG_ISOLINES reachable`,p,Array.from(f).map((e,t)=>[t,e]));let h=d.coordsArr||[],g=[];for(let e=0;e<f.length;e++){let t=f[e];if(!Number.isFinite(t)||t>a*3)continue;let n=h[e];!n||n.length<2||g.push([n[0],n[1],t])}let _=r===`distance`?Ae(0,a,7):Ae(0,Math.round(a/60),7).map(e=>e*60);return _=_.filter(e=>e<a),_.push(a),_.sort((e,t)=>e-t),m&&(console.error(`DEBUG_ISOLINES isoline points`,g.length,g),console.error(`DEBUG_ISOLINES breaks`,_)),g.length===0?{type:`FeatureCollection`,features:[]}:Ei(g,_,r)}self.addEventListener(`message`,async e=>{let t=e.data;if(!t||typeof t!=`object`)return;let{type:n,id:r,payload:i}=t;if(n===`compute`){try{let e=await Oi(i);self.postMessage({type:`result`,id:r,result:e})}catch(e){let t={message:e?.message?String(e.message):String(e||`Error`),stack:e?.stack??null,code:e?.code??null};self.postMessage({type:`error`,id:r,error:t})}return}if(n===`dispose`)try{self.close()}catch{}})})();", _c = typeof self < "u" && self.Blob && new Blob(["(self.URL || self.webkitURL).revokeObjectURL(self.location.href);", gc], { type: "text/javascript;charset=utf-8" });
+var gc = "(function(){var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=Object.getOwnPropertyNames,i=Object.getPrototypeOf,a=Object.prototype.hasOwnProperty,o=(e,t)=>()=>(e&&(t=e(e=0)),t),s=(e,t)=>()=>(t||(e((t={exports:{}}).exports,t),e=null),t.exports),c=(e,n)=>{let r={};for(var i in e)t(r,i,{get:e[i],enumerable:!0});return n||t(r,Symbol.toStringTag,{value:`Module`}),r},l=(e,i,o,s)=>{if(i&&typeof i==`object`||typeof i==`function`)for(var c=r(i),l=0,u=c.length,d;l<u;l++)d=c[l],!a.call(e,d)&&d!==o&&t(e,d,{get:(e=>i[e]).bind(null,d),enumerable:!(s=n(i,d))||s.enumerable});return e},u=(n,r,a)=>(a=n==null?{}:e(i(n)),l(r||!n||!n.__esModule?t(a,`default`,{value:n,enumerable:!0}):a,n));let d=[Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array];var f=class e{static from(t){if(!(t instanceof ArrayBuffer))throw Error(`Data must be an instance of ArrayBuffer.`);let[n,r]=new Uint8Array(t,0,2);if(n!==219)throw Error(`Data does not appear to be in a KDBush format.`);let i=r>>4;if(i!==1)throw Error(`Got v${i} data when expected v1.`);let a=d[r&15];if(!a)throw Error(`Unrecognized array type.`);let[o]=new Uint16Array(t,2,1),[s]=new Uint32Array(t,4,1);return new e(s,o,a,t)}constructor(e,t=64,n=Float64Array,r){if(isNaN(e)||e<0)throw Error(`Unpexpected numItems value: ${e}.`);this.numItems=+e,this.nodeSize=Math.min(Math.max(+t,2),65535),this.ArrayType=n,this.IndexArrayType=e<65536?Uint16Array:Uint32Array;let i=d.indexOf(this.ArrayType),a=e*2*this.ArrayType.BYTES_PER_ELEMENT,o=e*this.IndexArrayType.BYTES_PER_ELEMENT,s=(8-o%8)%8;if(i<0)throw Error(`Unexpected typed array class: ${n}.`);r&&r instanceof ArrayBuffer?(this.data=r,this.ids=new this.IndexArrayType(this.data,8,e),this.coords=new this.ArrayType(this.data,8+o+s,e*2),this._pos=e*2,this._finished=!0):(this.data=new ArrayBuffer(8+a+o+s),this.ids=new this.IndexArrayType(this.data,8,e),this.coords=new this.ArrayType(this.data,8+o+s,e*2),this._pos=0,this._finished=!1,new Uint8Array(this.data,0,2).set([219,16+i]),new Uint16Array(this.data,2,1)[0]=t,new Uint32Array(this.data,4,1)[0]=e)}add(e,t){let n=this._pos>>1;return this.ids[n]=n,this.coords[this._pos++]=e,this.coords[this._pos++]=t,n}finish(){let e=this._pos>>1;if(e!==this.numItems)throw Error(`Added ${e} items when expected ${this.numItems}.`);return p(this.ids,this.coords,this.nodeSize,0,this.numItems-1,0),this._finished=!0,this}range(e,t,n,r){if(!this._finished)throw Error(`Data not yet indexed - call index.finish().`);let{ids:i,coords:a,nodeSize:o}=this,s=[0,i.length-1,0],c=[];for(;s.length;){let l=s.pop()||0,u=s.pop()||0,d=s.pop()||0;if(u-d<=o){for(let o=d;o<=u;o++){let s=a[2*o],l=a[2*o+1];s>=e&&s<=n&&l>=t&&l<=r&&c.push(i[o])}continue}let f=d+u>>1,p=a[2*f],m=a[2*f+1];p>=e&&p<=n&&m>=t&&m<=r&&c.push(i[f]),(l===0?e<=p:t<=m)&&(s.push(d),s.push(f-1),s.push(1-l)),(l===0?n>=p:r>=m)&&(s.push(f+1),s.push(u),s.push(1-l))}return c}within(e,t,n){if(!this._finished)throw Error(`Data not yet indexed - call index.finish().`);let{ids:r,coords:i,nodeSize:a}=this,o=[0,r.length-1,0],s=[],c=n*n;for(;o.length;){let l=o.pop()||0,u=o.pop()||0,d=o.pop()||0;if(u-d<=a){for(let n=d;n<=u;n++)_(i[2*n],i[2*n+1],e,t)<=c&&s.push(r[n]);continue}let f=d+u>>1,p=i[2*f],m=i[2*f+1];_(p,m,e,t)<=c&&s.push(r[f]),(l===0?e-n<=p:t-n<=m)&&(o.push(d),o.push(f-1),o.push(1-l)),(l===0?e+n>=p:t+n>=m)&&(o.push(f+1),o.push(u),o.push(1-l))}return s}};function p(e,t,n,r,i,a){if(i-r<=n)return;let o=r+i>>1;m(e,t,o,r,i,a),p(e,t,n,r,o-1,1-a),p(e,t,n,o+1,i,1-a)}function m(e,t,n,r,i,a){for(;i>r;){if(i-r>600){let o=i-r+1,s=n-r+1,c=Math.log(o),l=.5*Math.exp(2*c/3),u=.5*Math.sqrt(c*l*(o-l)/o)*(s-o/2<0?-1:1);m(e,t,n,Math.max(r,Math.floor(n-s*l/o+u)),Math.min(i,Math.floor(n+(o-s)*l/o+u)),a)}let o=t[2*n+a],s=r,c=i;for(h(e,t,r,n),t[2*i+a]>o&&h(e,t,r,i);s<c;){for(h(e,t,s,c),s++,c--;t[2*s+a]<o;)s++;for(;t[2*c+a]>o;)c--}t[2*r+a]===o?h(e,t,r,c):(c++,h(e,t,c,i)),c<=n&&(r=c+1),n<=c&&(i=c-1)}}function h(e,t,n,r){g(e,n,r),g(t,2*n,2*r),g(t,2*n+1,2*r+1)}function g(e,t,n){let r=e[t];e[t]=e[n],e[n]=r}function _(e,t,n,r){let i=e-n,a=t-r;return i*i+a*a}var v=class{constructor(e=[],t=(e,t)=>e<t?-1:+(e>t)){if(this.data=e,this.length=this.data.length,this.compare=t,this.length>0)for(let e=(this.length>>1)-1;e>=0;e--)this._down(e)}push(e){this.data.push(e),this._up(this.length++)}pop(){if(this.length===0)return;let e=this.data[0],t=this.data.pop();return--this.length>0&&(this.data[0]=t,this._down(0)),e}peek(){return this.data[0]}_up(e){let{data:t,compare:n}=this,r=t[e];for(;e>0;){let i=e-1>>1,a=t[i];if(n(r,a)>=0)break;t[e]=a,e=i}t[e]=r}_down(e){let{data:t,compare:n}=this,r=this.length>>1,i=t[e];for(;e<r;){let r=(e<<1)+1,a=r+1;if(a<this.length&&n(t[a],t[r])<0&&(r=a),n(t[r],i)>=0)break;t[e]=t[r],e=r}t[e]=i}};let y=Math.PI/180;function b(e,t,n,r=1/0,i=1/0,a){let o=1,s=[];r===void 0&&(r=1/0),i!==void 0&&(o=C(i/6371));let c=new v([],S),l={left:0,right:e.ids.length-1,axis:0,dist:0,minLng:-180,minLat:-90,maxLng:180,maxLat:90},u=Math.cos(n*y);for(;l;){let i=l.right,d=l.left;if(i-d<=e.nodeSize)for(let r=d;r<=i;r++){let i=e.ids[r];if(!a||a(i)){let a=T(t,n,e.coords[2*r],e.coords[2*r+1],u);c.push({id:i,dist:a})}}else{let r=d+i>>1,o=e.coords[2*r],s=e.coords[2*r+1],f=e.ids[r];if(!a||a(f)){let e=T(t,n,o,s,u);c.push({id:f,dist:e})}let p=(l.axis+1)%2,m={left:d,right:r-1,axis:p,minLng:l.minLng,minLat:l.minLat,maxLng:l.axis===0?o:l.maxLng,maxLat:l.axis===1?s:l.maxLat,dist:0},h={left:r+1,right:i,axis:p,minLng:l.axis===0?o:l.minLng,minLat:l.axis===1?s:l.minLat,maxLng:l.maxLng,maxLat:l.maxLat,dist:0};m.dist=x(t,n,u,m),h.dist=x(t,n,u,h),c.push(m),c.push(h)}let f;for(;(f=c.pop())&&`id`in f;)if(f.dist>o||(s.push(f.id),s.length===r))return s;l=f}return s}function x(e,t,n,r){let i=r.minLng,a=r.maxLng,o=r.minLat,s=r.maxLat;if(e>=i&&e<=a)return t<o?C((t-o)*y):t>s?C((t-s)*y):0;let c=Math.min(C((e-i)*y),C((e-a)*y)),l=E(t,c);return l>o&&l<s?w(c,n,t,l):Math.min(w(c,n,t,o),w(c,n,t,s))}function S(e,t){return e.dist-t.dist}function C(e){let t=Math.sin(e/2);return t*t}function w(e,t,n,r){return t*Math.cos(r*y)*e+C((n-r)*y)}function T(e,t,n,r,i){return w(C((e-n)*y),i,t,r)}function E(e,t){let n=1-2*t;return n<=0?e>0?90:-90:Math.atan(Math.tan(e*y)/n)/y}function D(e){if(!e._geoJsonFlag)throw Error(`Cannot use Coordinate Lookup on a non-GeoJson network.`);let t=new Set;Object.keys(e._nodeToIndexLookup).forEach(e=>{t.add(e)});let n=[];t.forEach(e=>{n.push(e.split(`,`).map(e=>Number(e)))}),this.coordinate_list=n,this.index=new f(n.length);for(let e of n)this.index.add(e[0],e[1]);this.index.finish()}D.prototype.getClosestNetworkPt=function(e,t){let n=b(this.index,e,t,1)[0];return this.coordinate_list[n]};function O(e,t,n,r){if(e.length===0)return[n[r]];let i=[],a=r;i.push(n[a]);for(let r of e){let e=t[r];a=a===e._start_index?e._end_index:a===e._end_index?e._start_index:e._end_index,i.push(n[a])}return i}function k(e,t,n,r,i,a,o,s){let c=[],l=[a],u=r[a],d=i[a];if(u)for(;u.attrs!=null;)c.push({id:u.attrs,direction:`f`}),l.push(u.prev),u=r[u.prev];if(c.reverse(),l.reverse(),d)for(;d.attrs!=null;)c.push({id:d.attrs,direction:`b`}),l.push(d.prev),d=i[d.prev];let f=s,p=c.map(e=>{let n=e.direction===`f`?t[e.id]._start_index:t[e.id]._end_index,r=e.direction===`f`?t[e.id]._end_index:t[e.id]._start_index,i=[...t[e.id]._ordered];return f===n?f=r:(i.reverse(),f=n),i}),m=[].concat(...p),h=m.map(e=>t[e]._id),g,_,v,y;return e.nodes&&(y=O(m,t,o,s)),(e.properties||e.path)&&(_=m.map(e=>{let{_start_index:n,_end_index:r,_ordered:i,...a}=t[e];return a})),e.path&&(v={type:`FeatureCollection`,features:m.map((e,t)=>({type:`Feature`,properties:_[t],geometry:{type:`LineString`,coordinates:n[e]}}))}),e.properties&&(g=_),{ids:h,path:v,properties:g,nodes:y}}function A(e){if(!(this instanceof A))return new A(e);if(e=e||{},!e.compare)throw Error(`Please supply a comparison function to NodeHeap`);if(this.data=[],this.length=this.data.length,this.compare=e.compare,this.setNodeId=function(e,t){e.heapIndex=t},this.length>0)for(var t=this.length>>1;t>=0;t--)this._down(t);if(e.setNodeId)for(var t=0;t<this.length;++t)this.setNodeId(this.data[t],t)}A.prototype={push:function(e){this.data.push(e),this.setNodeId(e,this.length),this.length++,this._up(this.length-1)},pop:function(){if(this.length!==0){var e=this.data[0];return this.length--,this.length>0&&(this.data[0]=this.data[this.length],this.setNodeId(this.data[0],0),this._down(0)),this.data.pop(),e}},peek:function(){return this.data[0]},updateItem:function(e){this._down(e),this._up(e)},_up:function(e){for(var t=this.data,n=this.compare,r=this.setNodeId,i=t[e];e>0;){var a=e-1>>1,o=t[a];if(n(i,o)>=0)break;t[e]=o,r(o,e),e=a}t[e]=i,r(i,e)},_down:function(e){for(var t=this.data,n=this.compare,r=this.length>>1,i=t[e],a=this.setNodeId;e<r;){var o=(e<<1)+1,s=o+1,c=t[o];if(s<this.length&&n(t[s],c)<0&&(o=s,c=t[s]),n(c,i)>=0)break;t[e]=c,a(c,e),e=o}t[e]=i,a(i,e)}};let ee=function(e){let t=this.adjacency_list,n=this.reverse_adjacency_list,r=this._edgeProperties,i=this._edgeGeometry,a=this._createNodePool(),o=this._nodeToIndexLookup,s=this._indexToNodeLookup;return e||(e={}),{queryContractionHierarchy:c};function c(c,l){a.reset();let u=o[String(c)],d=o[String(l)],f=[],p=[],m={},h={},g=a.createNewState({id:u,dist:0});f[u]=g,g.opened=1,m[g.id]=0;let _=a.createNewState({id:d,dist:0});p[d]=_,_.opened=1,h[_.id]=0;let v=O(t,g,f,m,p,h),y=O(n,_,p,h,f,m),b=!1,x=!1,S,C,w=1/0,T=null;if(u!==d)do b||(S=v.next(),S.done&&(b=!0)),x||(C=y.next(),C.done&&(x=!0));while(m[S.value.id]<w||h[C.value.id]<w);else w=0;let E={total_cost:w===1/0?0:w},D;if(e.ids||e.path||e.nodes||e.properties)if(T!=null)D=k(e,r,i,f,p,T,s,u);else{let t,n,r,i;e.ids&&(t=[]),e.path&&(n={}),e.properties&&(r=[]),e.nodes&&(i=[]),D={ids:t,path:n,properties:r,nodes:i}}return Object.assign(E,{...D});function*O(e,t,n,r,i,o){var s=new A({compare(e,t){return e.dist-t.dist}});do{if((e[t.id]||[]).forEach(e=>{let i=n[e.end];if(i===void 0&&(i=a.createNewState({id:e.end}),i.attrs=e.attrs,n[e.end]=i),i.visited===!0)return;i.opened||(s.push(i),i.opened=!0);let c=t.dist+e.cost;if(c>=i.dist)return;i.dist=c,r[i.id]=c,i.attrs=e.attrs,i.prev=t.id,s.updateItem(i.heapIndex);let l=o[e.end];if(l>=0){let t=c+l;w>t&&(w=t,T=e.end)}}),t.visited=!0,t=s.pop(),!t)return``;yield t}while(!0)}}};var te;try{te=Map}catch{}var j;try{j=Set}catch{}function ne(e,t,n){if(!e||typeof e!=`object`||typeof e==`function`)return e;if(e.nodeType&&`cloneNode`in e)return e.cloneNode(!0);if(e instanceof Date)return new Date(e.getTime());if(e instanceof RegExp)return new RegExp(e);if(Array.isArray(e))return e.map(re);if(te&&e instanceof te)return new Map(Array.from(e.entries()));if(j&&e instanceof j)return new Set(Array.from(e.values()));if(e instanceof Object){t.push(e);var r=Object.create(e);for(var i in n.push(r),e){var a=t.findIndex(function(t){return t===e[i]});r[i]=a>-1?n[a]:ne(e[i],t,n)}return r}return e}function re(e){return ne(e,[],[])}let ie=function(e){if(this._locked)throw Error(`Cannot add GeoJSON to a contracted network`);if(this._geoJsonFlag)throw Error(`Cannot load more than one GeoJSON file.`);if(this._manualAdd)throw Error(`Cannot load GeoJSON file after adding Edges manually via the API.`);let t=re(e);this._cleanseGeoJsonNetwork(t).forEach((e,t)=>{let n=e.geometry.coordinates,r=e.properties;if(!r||!n||!r._cost){this.debugMode&&console.log(`invalid feature detected.  skipping...`);return}let i=n[0],a=n[n.length-1];this._addEdge(i,a,r,re(n)),this._addEdge(a,i,r,re(n).reverse())}),this._geoJsonFlag=!0},ae=function(e){let t={},n=e.features;return n.forEach(e=>{let n=e.geometry.coordinates[0].join(`,`),r=e.geometry.coordinates[e.geometry.coordinates.length-1].join(`,`),i=`${n}|${r}`,a=`${r}|${n}`;if(!t[i])t[i]=e;else{this.debugMode&&console.log(`Duplicate feature found, choosing shortest.`);let n=t[i].properties._cost;e.properties._cost<n?(t[i].properties.__markDelete=!0,t[i]=e):e.properties.__markDelete=!0}if(!t[a])t[a]=e;else{let n=t[a].properties._cost;e.properties._cost<n?(t[a].properties.__markDelete=!0,t[a]=e):e.properties.__markDelete=!0}}),n.filter(e=>!e.properties.__markDelete)},oe=function(e,t,n,r,i){if(this._locked)throw Error(`Graph has been contracted.  No additional edges can be added.`);if(this._geoJsonFlag)throw Error(`Can not add additional edges manually to a GeoJSON network.`);this._manualAdd=!0,this._addEdge(e,t,n,r,i)},se=function(e,t,n,r,i){let a=String(e),o=String(t);if(a===o){this.debugMode&&console.log(`Start and End Nodes are the same.  Ignoring.`);return}this._nodeToIndexLookup[a]??(this._currentNodeIndex++,this._nodeToIndexLookup[a]=this._currentNodeIndex,this._indexToNodeLookup[this._currentNodeIndex]=a),this._nodeToIndexLookup[o]??(this._currentNodeIndex++,this._nodeToIndexLookup[o]=this._currentNodeIndex,this._indexToNodeLookup[this._currentNodeIndex]=o);let s=this._nodeToIndexLookup[a],c=this._nodeToIndexLookup[o];this._currentEdgeIndex++,this._edgeProperties[this._currentEdgeIndex]=JSON.parse(JSON.stringify(n)),this._edgeProperties[this._currentEdgeIndex]._start_index=s,this._edgeProperties[this._currentEdgeIndex]._end_index=c,r&&(this._edgeGeometry[this._currentEdgeIndex]=JSON.parse(JSON.stringify(r)));let l={end:c,cost:n._cost,attrs:this._currentEdgeIndex};this.adjacency_list[s]?this.adjacency_list[s].push(l):this.adjacency_list[s]=[l];let u={end:s,cost:n._cost,attrs:this._currentEdgeIndex};this.reverse_adjacency_list[c]?this.reverse_adjacency_list[c].push(u):this.reverse_adjacency_list[c]=[u],i&&(this.adjacency_list[c]?this.adjacency_list[c].push(u):this.adjacency_list[c]=[u],this.reverse_adjacency_list[s]?this.reverse_adjacency_list[s].push(l):this.reverse_adjacency_list[s]=[l])},ce=function(e,t,n){this._currentEdgeIndex++,this._edgeProperties[this._currentEdgeIndex]=n,this._edgeProperties[this._currentEdgeIndex]._start_index=e,this._edgeProperties[this._currentEdgeIndex]._end_index=t;let r={end:t,cost:n._cost,attrs:this._currentEdgeIndex};this.adjacency_list[e]?this.adjacency_list[e].push(r):this.adjacency_list[e]=[r];let i={end:e,cost:n._cost,attrs:this._currentEdgeIndex};this.reverse_adjacency_list[t]?this.reverse_adjacency_list[t].push(i):this.reverse_adjacency_list[t]=[i]};var M={};M.read=function(e,t){return e.readFields(M._readField,{_locked:!1,_geoJsonFlag:!1,adjacency_list:[],reverse_adjacency_list:[],_nodeToIndexLookup:{},_edgeProperties:[],_edgeGeometry:[]},t)},M._readField=function(e,t,n){if(e===1)t._locked=n.readBoolean();else if(e===2)t._geoJsonFlag=n.readBoolean();else if(e===3)t.adjacency_list.push(M.AdjList.read(n,n.readVarint()+n.pos));else if(e===4)t.reverse_adjacency_list.push(M.AdjList.read(n,n.readVarint()+n.pos));else if(e===5){var r=M._FieldEntry5.read(n,n.readVarint()+n.pos);t._nodeToIndexLookup[r.key]=r.value}else e===6?t._edgeProperties.push(n.readString()):e===7&&t._edgeGeometry.push(M.GeometryArray.read(n,n.readVarint()+n.pos))},M.write=function(e,t){if(e._locked&&t.writeBooleanField(1,e._locked),e._geoJsonFlag&&t.writeBooleanField(2,e._geoJsonFlag),e.adjacency_list)for(var n=0;n<e.adjacency_list.length;n++)t.writeMessage(3,M.AdjList.write,e.adjacency_list[n]);if(e.reverse_adjacency_list)for(n=0;n<e.reverse_adjacency_list.length;n++)t.writeMessage(4,M.AdjList.write,e.reverse_adjacency_list[n]);if(e._nodeToIndexLookup)for(n in e._nodeToIndexLookup)Object.prototype.hasOwnProperty.call(e._nodeToIndexLookup,n)&&t.writeMessage(5,M._FieldEntry5.write,{key:n,value:e._nodeToIndexLookup[n]});if(e._edgeProperties)for(n=0;n<e._edgeProperties.length;n++)t.writeStringField(6,e._edgeProperties[n]);if(e._edgeGeometry)for(n=0;n<e._edgeGeometry.length;n++)t.writeMessage(7,M.GeometryArray.write,e._edgeGeometry[n])},M.EdgeAttrs={},M.EdgeAttrs.read=function(e,t){return e.readFields(M.EdgeAttrs._readField,{end:0,cost:0,attrs:0},t)},M.EdgeAttrs._readField=function(e,t,n){e===1?t.end=n.readVarint():e===2?t.cost=n.readDouble():e===3&&(t.attrs=n.readVarint())},M.EdgeAttrs.write=function(e,t){e.end&&t.writeVarintField(1,e.end),e.cost&&t.writeDoubleField(2,e.cost),e.attrs&&t.writeVarintField(3,e.attrs)},M.AdjList={},M.AdjList.read=function(e,t){return e.readFields(M.AdjList._readField,{edges:[]},t)},M.AdjList._readField=function(e,t,n){e===1&&t.edges.push(M.EdgeAttrs.read(n,n.readVarint()+n.pos))},M.AdjList.write=function(e,t){if(e.edges)for(var n=0;n<e.edges.length;n++)t.writeMessage(1,M.EdgeAttrs.write,e.edges[n])},M.LineStringAray={},M.LineStringAray.read=function(e,t){return e.readFields(M.LineStringAray._readField,{coords:[]},t)},M.LineStringAray._readField=function(e,t,n){e===1&&n.readPackedDouble(t.coords)},M.LineStringAray.write=function(e,t){e.coords&&t.writePackedDouble(1,e.coords)},M.GeometryArray={},M.GeometryArray.read=function(e,t){return e.readFields(M.GeometryArray._readField,{linestrings:[]},t)},M.GeometryArray._readField=function(e,t,n){e===1&&t.linestrings.push(M.LineStringAray.read(n,n.readVarint()+n.pos))},M.GeometryArray.write=function(e,t){if(e.linestrings)for(var n=0;n<e.linestrings.length;n++)t.writeMessage(1,M.LineStringAray.write,e.linestrings[n])},M._FieldEntry5={},M._FieldEntry5.read=function(e,t){return e.readFields(M._FieldEntry5._readField,{key:``,value:0},t)},M._FieldEntry5._readField=function(e,t,n){e===1?t.key=n.readString():e===2&&(t.value=n.readVarint())},M._FieldEntry5.write=function(e,t){e.key&&t.writeStringField(1,e.key),e.value&&t.writeVarintField(2,e.value)};var le=s((e=>{\n/*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */\ne.read=function(e,t,n,r,i){var a,o,s=i*8-r-1,c=(1<<s)-1,l=c>>1,u=-7,d=n?i-1:0,f=n?-1:1,p=e[t+d];for(d+=f,a=p&(1<<-u)-1,p>>=-u,u+=s;u>0;a=a*256+e[t+d],d+=f,u-=8);for(o=a&(1<<-u)-1,a>>=-u,u+=r;u>0;o=o*256+e[t+d],d+=f,u-=8);if(a===0)a=1-l;else if(a===c)return o?NaN:(p?-1:1)*(1/0);else o+=2**r,a-=l;return(p?-1:1)*o*2**(a-r)},e.write=function(e,t,n,r,i,a){var o,s,c,l=a*8-i-1,u=(1<<l)-1,d=u>>1,f=i===23?2**-24-2**-77:0,p=r?0:a-1,m=r?1:-1,h=+(t<0||t===0&&1/t<0);for(t=Math.abs(t),isNaN(t)||t===1/0?(s=+!!isNaN(t),o=u):(o=Math.floor(Math.log(t)/Math.LN2),t*(c=2**-o)<1&&(o--,c*=2),o+d>=1?t+=f/c:t+=f*2**(1-d),t*c>=2&&(o++,c/=2),o+d>=u?(s=0,o=u):o+d>=1?(s=(t*c-1)*2**i,o+=d):(s=t*2**(d-1)*2**i,o=0));i>=8;e[n+p]=s&255,p+=m,s/=256,i-=8);for(o=o<<i|s,l+=i;l>0;e[n+p]=o&255,p+=m,o/=256,l-=8);e[n+p-m]|=h*128}})),ue=s(((e,t)=>{t.exports=r;var n=le();function r(e){this.buf=ArrayBuffer.isView&&ArrayBuffer.isView(e)?e:new Uint8Array(e||0),this.pos=0,this.type=0,this.length=this.buf.length}r.Varint=0,r.Fixed64=1,r.Bytes=2,r.Fixed32=5;var i=65536*65536,a=1/i,o=12,s=typeof TextDecoder>`u`?null:new TextDecoder(`utf-8`);r.prototype={destroy:function(){this.buf=null},readFields:function(e,t,n){for(n=n||this.length;this.pos<n;){var r=this.readVarint(),i=r>>3,a=this.pos;this.type=r&7,e(i,t,this),this.pos===a&&this.skip(r)}return t},readMessage:function(e,t){return this.readFields(e,t,this.readVarint()+this.pos)},readFixed32:function(){var e=w(this.buf,this.pos);return this.pos+=4,e},readSFixed32:function(){var e=E(this.buf,this.pos);return this.pos+=4,e},readFixed64:function(){var e=w(this.buf,this.pos)+w(this.buf,this.pos+4)*i;return this.pos+=8,e},readSFixed64:function(){var e=w(this.buf,this.pos)+E(this.buf,this.pos+4)*i;return this.pos+=8,e},readFloat:function(){var e=n.read(this.buf,this.pos,!0,23,4);return this.pos+=4,e},readDouble:function(){var e=n.read(this.buf,this.pos,!0,52,8);return this.pos+=8,e},readVarint:function(e){var t=this.buf,n,r=t[this.pos++];return n=r&127,r<128||(r=t[this.pos++],n|=(r&127)<<7,r<128)||(r=t[this.pos++],n|=(r&127)<<14,r<128)||(r=t[this.pos++],n|=(r&127)<<21,r<128)?n:(r=t[this.pos],n|=(r&15)<<28,c(n,e,this))},readVarint64:function(){return this.readVarint(!0)},readSVarint:function(){var e=this.readVarint();return e%2==1?(e+1)/-2:e/2},readBoolean:function(){return!!this.readVarint()},readString:function(){var e=this.readVarint()+this.pos,t=this.pos;return this.pos=e,e-t>=o&&s?O(this.buf,t,e):D(this.buf,t,e)},readBytes:function(){var e=this.readVarint()+this.pos,t=this.buf.subarray(this.pos,e);return this.pos=e,t},readPackedVarint:function(e,t){if(this.type!==r.Bytes)return e.push(this.readVarint(t));var n=l(this);for(e=e||[];this.pos<n;)e.push(this.readVarint(t));return e},readPackedSVarint:function(e){if(this.type!==r.Bytes)return e.push(this.readSVarint());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readSVarint());return e},readPackedBoolean:function(e){if(this.type!==r.Bytes)return e.push(this.readBoolean());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readBoolean());return e},readPackedFloat:function(e){if(this.type!==r.Bytes)return e.push(this.readFloat());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readFloat());return e},readPackedDouble:function(e){if(this.type!==r.Bytes)return e.push(this.readDouble());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readDouble());return e},readPackedFixed32:function(e){if(this.type!==r.Bytes)return e.push(this.readFixed32());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readFixed32());return e},readPackedSFixed32:function(e){if(this.type!==r.Bytes)return e.push(this.readSFixed32());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readSFixed32());return e},readPackedFixed64:function(e){if(this.type!==r.Bytes)return e.push(this.readFixed64());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readFixed64());return e},readPackedSFixed64:function(e){if(this.type!==r.Bytes)return e.push(this.readSFixed64());var t=l(this);for(e=e||[];this.pos<t;)e.push(this.readSFixed64());return e},skip:function(e){var t=e&7;if(t===r.Varint)for(;this.buf[this.pos++]>127;);else if(t===r.Bytes)this.pos=this.readVarint()+this.pos;else if(t===r.Fixed32)this.pos+=4;else if(t===r.Fixed64)this.pos+=8;else throw Error(`Unimplemented type: `+t)},writeTag:function(e,t){this.writeVarint(e<<3|t)},realloc:function(e){for(var t=this.length||16;t<this.pos+e;)t*=2;if(t!==this.length){var n=new Uint8Array(t);n.set(this.buf),this.buf=n,this.length=t}},finish:function(){return this.length=this.pos,this.pos=0,this.buf.subarray(0,this.length)},writeFixed32:function(e){this.realloc(4),T(this.buf,e,this.pos),this.pos+=4},writeSFixed32:function(e){this.realloc(4),T(this.buf,e,this.pos),this.pos+=4},writeFixed64:function(e){this.realloc(8),T(this.buf,e&-1,this.pos),T(this.buf,Math.floor(e*a),this.pos+4),this.pos+=8},writeSFixed64:function(e){this.realloc(8),T(this.buf,e&-1,this.pos),T(this.buf,Math.floor(e*a),this.pos+4),this.pos+=8},writeVarint:function(e){if(e=+e||0,e>268435455||e<0){d(e,this);return}this.realloc(4),this.buf[this.pos++]=e&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=(e>>>=7)&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=(e>>>=7)&127|(e>127?128:0),!(e<=127)&&(this.buf[this.pos++]=e>>>7&127)))},writeSVarint:function(e){this.writeVarint(e<0?-e*2-1:e*2)},writeBoolean:function(e){this.writeVarint(!!e)},writeString:function(e){e=String(e),this.realloc(e.length*4),this.pos++;var t=this.pos;this.pos=k(this.buf,e,this.pos);var n=this.pos-t;n>=128&&m(t,n,this),this.pos=t-1,this.writeVarint(n),this.pos+=n},writeFloat:function(e){this.realloc(4),n.write(this.buf,e,this.pos,!0,23,4),this.pos+=4},writeDouble:function(e){this.realloc(8),n.write(this.buf,e,this.pos,!0,52,8),this.pos+=8},writeBytes:function(e){var t=e.length;this.writeVarint(t),this.realloc(t);for(var n=0;n<t;n++)this.buf[this.pos++]=e[n]},writeRawMessage:function(e,t){this.pos++;var n=this.pos;e(t,this);var r=this.pos-n;r>=128&&m(n,r,this),this.pos=n-1,this.writeVarint(r),this.pos+=r},writeMessage:function(e,t,n){this.writeTag(e,r.Bytes),this.writeRawMessage(t,n)},writePackedVarint:function(e,t){t.length&&this.writeMessage(e,h,t)},writePackedSVarint:function(e,t){t.length&&this.writeMessage(e,g,t)},writePackedBoolean:function(e,t){t.length&&this.writeMessage(e,y,t)},writePackedFloat:function(e,t){t.length&&this.writeMessage(e,_,t)},writePackedDouble:function(e,t){t.length&&this.writeMessage(e,v,t)},writePackedFixed32:function(e,t){t.length&&this.writeMessage(e,b,t)},writePackedSFixed32:function(e,t){t.length&&this.writeMessage(e,x,t)},writePackedFixed64:function(e,t){t.length&&this.writeMessage(e,S,t)},writePackedSFixed64:function(e,t){t.length&&this.writeMessage(e,C,t)},writeBytesField:function(e,t){this.writeTag(e,r.Bytes),this.writeBytes(t)},writeFixed32Field:function(e,t){this.writeTag(e,r.Fixed32),this.writeFixed32(t)},writeSFixed32Field:function(e,t){this.writeTag(e,r.Fixed32),this.writeSFixed32(t)},writeFixed64Field:function(e,t){this.writeTag(e,r.Fixed64),this.writeFixed64(t)},writeSFixed64Field:function(e,t){this.writeTag(e,r.Fixed64),this.writeSFixed64(t)},writeVarintField:function(e,t){this.writeTag(e,r.Varint),this.writeVarint(t)},writeSVarintField:function(e,t){this.writeTag(e,r.Varint),this.writeSVarint(t)},writeStringField:function(e,t){this.writeTag(e,r.Bytes),this.writeString(t)},writeFloatField:function(e,t){this.writeTag(e,r.Fixed32),this.writeFloat(t)},writeDoubleField:function(e,t){this.writeTag(e,r.Fixed64),this.writeDouble(t)},writeBooleanField:function(e,t){this.writeVarintField(e,!!t)}};function c(e,t,n){var r=n.buf,i,a=r[n.pos++];if(i=(a&112)>>4,a<128||(a=r[n.pos++],i|=(a&127)<<3,a<128)||(a=r[n.pos++],i|=(a&127)<<10,a<128)||(a=r[n.pos++],i|=(a&127)<<17,a<128)||(a=r[n.pos++],i|=(a&127)<<24,a<128)||(a=r[n.pos++],i|=(a&1)<<31,a<128))return u(e,i,t);throw Error(`Expected varint not more than 10 bytes`)}function l(e){return e.type===r.Bytes?e.readVarint()+e.pos:e.pos+1}function u(e,t,n){return n?t*4294967296+(e>>>0):(t>>>0)*4294967296+(e>>>0)}function d(e,t){var n,r;if(e>=0?(n=e%4294967296|0,r=e/4294967296|0):(n=~(-e%4294967296),r=~(-e/4294967296),n^4294967295?n=n+1|0:(n=0,r=r+1|0)),e>=0x10000000000000000||e<-0x10000000000000000)throw Error(`Given varint doesn't fit into 10 bytes`);t.realloc(10),f(n,r,t),p(r,t)}function f(e,t,n){n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos++]=e&127|128,e>>>=7,n.buf[n.pos]=e&127}function p(e,t){var n=(e&7)<<4;t.buf[t.pos++]|=n|((e>>>=3)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127|((e>>>=7)?128:0),e&&(t.buf[t.pos++]=e&127)))))}function m(e,t,n){var r=t<=16383?1:t<=2097151?2:t<=268435455?3:Math.floor(Math.log(t)/(Math.LN2*7));n.realloc(r);for(var i=n.pos-1;i>=e;i--)n.buf[i+r]=n.buf[i]}function h(e,t){for(var n=0;n<e.length;n++)t.writeVarint(e[n])}function g(e,t){for(var n=0;n<e.length;n++)t.writeSVarint(e[n])}function _(e,t){for(var n=0;n<e.length;n++)t.writeFloat(e[n])}function v(e,t){for(var n=0;n<e.length;n++)t.writeDouble(e[n])}function y(e,t){for(var n=0;n<e.length;n++)t.writeBoolean(e[n])}function b(e,t){for(var n=0;n<e.length;n++)t.writeFixed32(e[n])}function x(e,t){for(var n=0;n<e.length;n++)t.writeSFixed32(e[n])}function S(e,t){for(var n=0;n<e.length;n++)t.writeFixed64(e[n])}function C(e,t){for(var n=0;n<e.length;n++)t.writeSFixed64(e[n])}function w(e,t){return(e[t]|e[t+1]<<8|e[t+2]<<16)+e[t+3]*16777216}function T(e,t,n){e[n]=t,e[n+1]=t>>>8,e[n+2]=t>>>16,e[n+3]=t>>>24}function E(e,t){return(e[t]|e[t+1]<<8|e[t+2]<<16)+(e[t+3]<<24)}function D(e,t,n){for(var r=``,i=t;i<n;){var a=e[i],o=null,s=a>239?4:a>223?3:a>191?2:1;if(i+s>n)break;var c,l,u;s===1?a<128&&(o=a):s===2?(c=e[i+1],(c&192)==128&&(o=(a&31)<<6|c&63,o<=127&&(o=null))):s===3?(c=e[i+1],l=e[i+2],(c&192)==128&&(l&192)==128&&(o=(a&15)<<12|(c&63)<<6|l&63,(o<=2047||o>=55296&&o<=57343)&&(o=null))):s===4&&(c=e[i+1],l=e[i+2],u=e[i+3],(c&192)==128&&(l&192)==128&&(u&192)==128&&(o=(a&15)<<18|(c&63)<<12|(l&63)<<6|u&63,(o<=65535||o>=1114112)&&(o=null))),o===null?(o=65533,s=1):o>65535&&(o-=65536,r+=String.fromCharCode(o>>>10&1023|55296),o=56320|o&1023),r+=String.fromCharCode(o),i+=s}return r}function O(e,t,n){return s.decode(e.subarray(t,n))}function k(e,t,n){for(var r=0,i,a;r<t.length;r++){if(i=t.charCodeAt(r),i>55295&&i<57344)if(a)if(i<56320){e[n++]=239,e[n++]=191,e[n++]=189,a=i;continue}else i=a-55296<<10|i-56320|65536,a=null;else{i>56319||r+1===t.length?(e[n++]=239,e[n++]=191,e[n++]=189):a=i;continue}else a&&(e[n++]=239,e[n++]=191,e[n++]=189,a=null);i<128?e[n++]=i:(i<2048?e[n++]=i>>6|192:(i<65536?e[n++]=i>>12|224:(e[n++]=i>>18|240,e[n++]=i>>12&63|128),e[n++]=i>>6&63|128),e[n++]=i&63|128)}return n}})),de=c({default:()=>pe,writeFileSync:()=>fe});function fe(){throw Error(`fs is not available in browser builds`)}var pe,me=o((()=>{pe={writeFileSync:fe}})),he=u(ue(),1);let ge=function(e){let t=typeof e==`object`?e:JSON.parse(e);this._locked=t._locked,this._geoJsonFlag=t._geoJsonFlag,this.adjacency_list=t.adjacency_list,this.reverse_adjacency_list=t.reverse_adjacency_list,this._nodeToIndexLookup=t._nodeToIndexLookup,this._edgeProperties=t._edgeProperties,this._edgeGeometry=t._edgeGeometry},_e=function(){if(!this._locked)throw Error(`No sense in saving network before it is contracted.`);return JSON.stringify({_locked:this._locked,_geoJsonFlag:this._geoJsonFlag,adjacency_list:this.adjacency_list,reverse_adjacency_list:this.reverse_adjacency_list,_nodeToIndexLookup:this._nodeToIndexLookup,_edgeProperties:this._edgeProperties,_edgeGeometry:this._edgeGeometry})},ve=function(e){var t=new he.default(e),n=M.read(t);n.adjacency_list=n.adjacency_list.map(e=>e.edges),n.reverse_adjacency_list=n.reverse_adjacency_list.map(e=>e.edges),n._edgeGeometry=n._edgeGeometry.map(e=>e.linestrings.map(e=>e.coords)),n._edgeProperties=n._edgeProperties.map(e=>JSON.parse(e)),this._locked=n._locked,this._geoJsonFlag=n._geoJsonFlag,this.adjacency_list=n.adjacency_list,this.reverse_adjacency_list=n.reverse_adjacency_list,this._nodeToIndexLookup=n._nodeToIndexLookup,this._edgeProperties=n._edgeProperties,this._edgeGeometry=n._edgeGeometry,this._indexToNodeLookup={};for(let[e,t]of Object.entries(this._nodeToIndexLookup))this._indexToNodeLookup[t]=e;console.log(`done loading pbf`)},ye=async function(e){if(!this._locked)throw Error(`No sense in saving network before it is contracted.`);let t;try{t=await Promise.resolve().then(()=>(me(),de))}catch{console.log(`saving as PBF only works in NodeJS`);return}let n={_locked:this._locked,_geoJsonFlag:this._geoJsonFlag,adjacency_list:this.adjacency_list,reverse_adjacency_list:this.reverse_adjacency_list,_nodeToIndexLookup:this._nodeToIndexLookup,_edgeProperties:this._edgeProperties,_edgeGeometry:this._edgeGeometry};n.adjacency_list=n.adjacency_list.map(e=>({edges:e.map(e=>e)})),n.reverse_adjacency_list=n.reverse_adjacency_list.map(e=>({edges:e.map(e=>e)})),n._edgeGeometry=n._edgeGeometry.map(e=>({linestrings:e.map(e=>({coords:e}))})),n._edgeProperties=n._edgeProperties.map(e=>JSON.stringify(e));var r=new he.default;M.write(n,r);var i=r.finish();t.writeFileSync(e,i),console.log(`done saving ${e}`)};function be(e){this.id=e.id,this.dist=e.dist===void 0?1/0:e.dist,this.prev=void 0,this.visited=void 0,this.opened=!1,this.heapIndex=-1}function xe(){var e=0,t=[];return{createNewState:r,reset:n};function n(){e=0}function r(n){var r=t[e];return r?(r.id=n.id,r.dist=n.dist===void 0?1/0:n.dist,r.prev=void 0,r.visited=void 0,r.opened=!1,r.heapIndex=-1):(r=new be(n),t[e]=r),e++,r}}let Se=function(){if(this._locked)throw Error(`Network has already been contracted`);this._locked=!0,this._maxUncontractedEdgeIndex=this._currentEdgeIndex;let e=this._createChShortcutter(),t=t=>this._contract(t,!0,e)-(this.adjacency_list[t]||[]).length+n(t),n=e=>(this.adjacency_list[e]||[]).reduce((e,t)=>e+(this.contracted_nodes[t.end]==null?0:1),0),r=new A({compare(e,t){return e.score-t.score}});this.contracted_nodes=[],Object.keys(this._nodeToIndexLookup).forEach(e=>{let n=this._nodeToIndexLookup[e],i=new Ee(t(n),n);r.push(i)});let i=1,a=r.length;for(;r.length>0;){let n=r.length;n%50==0&&(this.debugMode&&console.log(n/a),this._cleanAdjList(this.adjacency_list),this._cleanAdjList(this.reverse_adjacency_list));let o=!1,s=r.peek(),c=s.score;do{let e=s.id,n=t(e);n>c&&(s.score=n,r.updateItem(s.heapIndex)),s=r.peek(),s.id===e&&(o=!0)}while(o===!1);let l=r.pop();this._contract(l.id,!1,e),this.contracted_nodes[l.id]=i,i++}this._cleanAdjList(this.adjacency_list),this._cleanAdjList(this.reverse_adjacency_list),this._arrangeContractedPaths(this.adjacency_list),this._arrangeContractedPaths(this.reverse_adjacency_list),this.debugMode&&console.log(`Contraction complete`)},Ce=function(e){e.forEach((e,t)=>{e.forEach(e=>{let n=t,r=[],i=[];for(i=[e.attrs];i.length;){let e=i.pop();e<=this._maxUncontractedEdgeIndex?r.push(e):i.push(...this._edgeProperties[e]._id)}let a={};r.forEach(e=>{let t=this._edgeProperties[e],n=t._start_index,r=t._end_index;a[n]?a[n].push(e):a[n]=[e],a[r]?a[r].push(e):a[r]=[e]});let o=[],s=String(n),c=a[s][0];for(;c!=null;){o.push(c);let e=this._edgeProperties[c],t=String(e._start_index),n=String(e._end_index),r=t===s?n:t;s=r;let i=a[r];if(i.length===1)break;i.length>2&&(console.error(`too many edges in array. unexpected. unrecoverable.`),process.exit()),c=i[0]===c?i[1]:i[0]}this._edgeProperties[e.attrs]._ordered=o})})},we=function(e){e.forEach((t,n)=>{let r=this.contracted_nodes[n];r!=null&&(e[n]=e[n].filter(e=>{let t=this.contracted_nodes[e.end];return t==null?!0:r<t}))})},Te=function(e,t,n){let r=(this.reverse_adjacency_list[e]||[]).filter(e=>!this.contracted_nodes[e.end]),i=(this.adjacency_list[e]||[]).filter(e=>!this.contracted_nodes[e.end]),a=0;return r.forEach(r=>{let o=0,s=r.cost;if(i.forEach(e=>{if(r.end===e.end)return;let t=s+e.cost;t>o&&(o=t)}),!i.length)return;let c=n.runDijkstra(r.end,null,e,o);i.forEach(e=>{if(r.end===e.end)return;let n=s+e.cost;if(n<(c.distances[e.end]||1/0)&&(a++,!t)){let t={_cost:n,_id:[r.attrs,e.attrs],_start_index:r.end,_end_index:e.end};this._addContractedEdge(r.end,e.end,t)}})}),a};function Ee(e,t){this.score=e,this.id=t}let De=function(){let e=this._createNodePool(),t=this.adjacency_list;return{runDijkstra:n};function n(n,r,i,a){e.reset();let o=[],s={};var c=new A({compare(e,t){return e.dist-t.dist}});let l=e.createNewState({id:n,dist:0});for(o[n]=l,l.opened=1,s[l.id]=0,n===r&&(l=``);l;){(t[l.id]||[]).filter(e=>e.end!==i).forEach(t=>{let n=o[t.end];if(n===void 0&&(n=e.createNewState({id:t.end}),o[t.end]=n),n.visited===!0)return;n.opened||(c.push(n),n.opened=!0);let r=l.dist+t.cost;r>=n.dist||(n.dist=r,s[n.id]=r,n.prev=l.id,c.updateItem(n.heapIndex))}),l.visited=!0;let n=l.dist;l=c.pop(),l&&l.id===r&&(l=``),n>a&&(l=``)}return{distances:s,nodeState:o}}};function N(e,t){let n=t||{};this.debugMode=n.debugMode||!1,this.adjacency_list=[],this.reverse_adjacency_list=[],this._createNodePool=xe,this._currentNodeIndex=-1,this._nodeToIndexLookup={},this._indexToNodeLookup={},this._currentEdgeIndex=-1,this._edgeProperties=[],this._edgeGeometry=[],this._maxUncontractedEdgeIndex=0,this._locked=!1,this._geoJsonFlag=!1,this._manualAdd=!1,e&&(this._loadFromGeoJson(e),this.debugMode&&(console.log(`Nodes: `,this._currentNodeIndex),console.log(`Edges: `,this._currentEdgeIndex)))}N.prototype.createPathfinder=ee,N.prototype._loadFromGeoJson=ie,N.prototype._cleanseGeoJsonNetwork=ae,N.prototype._addContractedEdge=ce,N.prototype.addEdge=oe,N.prototype._addEdge=se,N.prototype.loadCH=ge,N.prototype.saveCH=_e,N.prototype.loadPbfCH=ve,N.prototype.savePbfCH=ye,N.prototype.contractGraph=Se,N.prototype._arrangeContractedPaths=Ce,N.prototype._cleanAdjList=we,N.prototype._contract=Te,N.prototype._createChShortcutter=De;let Oe=6371e3;Oe*Oe;let ke=Math.PI/180;function P([e,t],[n,r]){return Ae(e,t,n,r)}function Ae(e,t,n,r){let i=(r-t)*ke,a=(n-e)*ke,o=t*ke,s=r*ke,c=Math.sin(i/2),l=Math.sin(a/2),u=Math.hypot(c,Math.cos(o)*Math.cos(s)*l);return 2*Oe*Math.asin(u)}function je(e,t,n=5){if(e===t)return[e];let r=e>t,i=r?t:e,a=r?e:t,o=(a-i)/n,s=10**Math.floor(Math.log10(o)),c=o/s,l;l=c<1.5?1:c<3?2:c<7?5:10;let u=l*s,d=Math.floor(i/u)*u,f=Math.ceil(a/u)*u,p=[],m=d,h=Math.max(0,-Math.floor(Math.log10(u))),g=u/1e9;for(;m<=f+g;)p.push(Number(m.toFixed(h))),m+=u;return r?p.reverse():p}let Me=e=>{let t=0;for(let n=0;n<e.length-1;n++)t+=e[n][0]*e[n+1][1]-e[n+1][0]*e[n][1];return t/2};function Ne(e){let t=e.prototype._arrangeContractedPaths;return e.prototype._arrangeContractedPaths=function(e){let t=this;e.forEach((e,n)=>{e.forEach(e=>{let r=n,i=[],a=[e.attrs];for(;a.length;){let e=a.pop();if(e<=t._maxUncontractedEdgeIndex)i.push(e);else{let n=t._edgeProperties[e];n&&Array.isArray(n._id)?a.push(...n._id):i.push(e)}}let o={};if(i.forEach(e=>{let n=t._edgeProperties[e],r=String(n._start_index),i=String(n._end_index);o[r]||(o[r]=[]),o[r].push(e),o[i]||(o[i]=[]),o[i].push(e)}),Object.values(o).forEach(e=>e.sort((e,t)=>e-t)),i.length<=1){t._edgeProperties[e.attrs]._ordered=i;return}let s=i.length,c=new Set,l=null,u=(e,n)=>{if(n.length===s)return l=n.slice(),!0;let r=o[e]||[];for(let i of r){if(c.has(i))continue;c.add(i);let r=t._edgeProperties[i],a=String(r._start_index),o=String(r._end_index),s=e===a?o:a;if(n.push(i),u(s,n))return!0;n.pop(),c.delete(i)}return!1};if(u(String(r),[]),l){t._edgeProperties[e.attrs]._ordered=l;return}let d=[],f=String(r),p=o[f]||[],m=p.length?p[0]:null;for(;m!=null;){d.push(m);let e=t._edgeProperties[m],n=String(e._start_index),r=String(e._end_index),i=n===f?r:n;f=i;let a=o[i]||[];if(a.length===1)break;let s=null;for(let e of a)if(e!==m&&!d.includes(e)){s=e;break}if(s==null)break;m=s}for(let e of i)d.includes(e)||d.push(e);t._edgeProperties[e.attrs]._ordered=d})})},function(){t?e.prototype._arrangeContractedPaths=t:delete e.prototype._arrangeContractedPaths}}function Pe(e,t,n,r={}){if(!e||typeof e!=`object`)throw Error(`Invalid prepared graph for isoPHAST`);let{N:i}=e;if(!Number.isInteger(i))throw Error(\"Prepared graph missing node count `N`.\");let{direction:a=`from`,mode:o=`car`,outputUnscaled:s=!1}=r;if(a!==`from`&&a!==`to`)throw Error(`Invalid direction: expected \"from\" or \"to\".`);if(!Number.isInteger(t)||t<0||t>=i)throw Error(`Invalid startId ${t}: expected integer in range 0..${i-1}`);let c=new Float64Array(i).fill(1/0),l=o===`pedestrian`,u=e.distScale&&Number.isFinite(e.distScale)?e.distScale:10;if(!e._chGraph||e._chGraphMode!==o||e._chGraphIsUndirected!==l||e._chGraphCostField!==e.costField||e._chGraphPenaltyKey!==e.penaltyKey){let t=new N,n=0,r=e.edgeSrc||null,a=e.edgeTgt||null,s=e.edgeCostInt||null;if(r&&a&&s)for(let e=0;e<r.length;e++){let i=r[e],o=a[e],c=s[e]/u;t.addEdge(String(i),String(o),{_id:n++,_cost:c},null,l)}else{let{adjPtr:r,adjTo:a,adjCost:o}=e;for(let e=0;e<i;e++)for(let i=r[e];i<r[e+1];i++){let r=a[i],s=o[i]/u;t.addEdge(String(e),String(r),{_id:n++,_cost:s},null,l)}}let c=Ne(N);try{t.contractGraph()}finally{c()}e._chGraph=t,e._chGraphMode=o,e._chGraphIsUndirected=l,e._chGraphCostField=e.costField,e._chGraphPenaltyKey=e.penaltyKey,e._chFinder=e._chGraph.createPathfinder({})}let d=e._chFinder||e._chGraph.createPathfinder({});e._chFinder=d;let f=s&&e.coordsArr&&e.coordsArr[t]&&e.costField===`distance`&&e.coordsAreGeographic===!0,p=f?e.coordsArr[t]:null;if(a===`from`)for(let r=0;r<i;r++){if(r===t){c[r]=0;continue}if(f){let t=e.coordsArr[r];if(!t){c[r]=1/0;continue}if(P(p,t)>n){c[r]=1/0;continue}}try{let e=d.queryContractionHierarchy(String(t),String(r));e&&Number.isFinite(e.total_cost)?c[r]=e.total_cost===0&&r!==t?1/0:e.total_cost:c[r]=1/0}catch{c[r]=1/0}}else for(let r=0;r<i;r++){if(r===t){c[r]=0;continue}if(f){let t=e.coordsArr[r];if(!t){c[r]=1/0;continue}if(P(p,t)>n){c[r]=1/0;continue}}try{let e=d.queryContractionHierarchy(String(r),String(t));e&&Number.isFinite(e.total_cost)?c[r]=e.total_cost===0&&r!==t?1/0:e.total_cost:c[r]=1/0}catch{c[r]=1/0}}let m=[];for(let e=0;e<i;e++){let t=c[e];Number.isFinite(t)&&t<=n&&m.push(e)}if(!s){let e=new Float64Array(i);for(let t=0;t<i;t++){let n=c[t];e[t]=Number.isFinite(n)?Math.round(n*u):1/0}return{distances:e,reachable:m}}return{distances:c,reachable:m}}function Fe(e,t=`ERR_ITEM`){return!e||typeof e!=`object`?{error:!0,code:t,message:e?String(e):void 0,stack:void 0}:{error:!0,code:e.code||t,message:e.message,stack:e.stack}}function Ie(e){return!e||!e.error?String(e):`${e.code||`ERR`}: ${e.message||``}`}let Le=null;if(typeof process<`u`&&process?.hrtime&&typeof process.hrtime.bigint==`function`)try{let e=Number(process.hrtime.bigint()/1000000n);Le=Date.now()-e}catch{Le=null}let F=()=>{let e=Date.now();if(typeof performance<`u`&&typeof performance?.now==`function`&&typeof performance?.timeOrigin==`number`)try{let t=performance.timeOrigin+performance.now();return Math.abs(t-e)<1e3?t:e}catch{}if(Le!=null)try{let t=Number(process.hrtime.bigint()/1000000n)+Le;return Math.abs(t-e)<1e3?t:e}catch{return e}return e},Re=Object.freeze({error:`error`,warn:`warn`,info:`info`,log:`log`,debug:`debug`,table:`table`}),I=typeof globalThis<`u`&&globalThis?.console?globalThis.console:typeof self<`u`&&self?.console?self.console:typeof window<`u`&&window?.console?window.console:typeof global<`u`&&global?.console?global.console:null;function ze(e){try{return JSON.stringify(e)}catch{try{let t=typeof WeakSet==`function`?new WeakSet:new Set;return JSON.stringify(e,function(e,n){if(n&&typeof n==`object`){if(t.has(n))return`[Circular]`;t.add(n)}return typeof n==`function`?`[Function: ${n.name||`anonymous`}]`:typeof n==`symbol`?String(n):typeof n==`bigint`?n.toString()+`n`:n})}catch{try{return String(e)}catch{return`[Unserializable]`}}}}var Be=class{constructor(e=0,t={}){this._debugLevel=0,this._counters=Object.create(null),this._format=t?.format||`text`,this.name=t?.name||null,this._formatter=typeof t?.formatter==`function`?t.formatter:null,this._output=typeof t?.output==`function`?t.output:null,this.setDebugLevel(e)}setDebugLevel(e){let t=NaN;typeof e==`number`?t=e:typeof e==`string`||typeof e==`boolean`?t=Number(e):(e instanceof Number||e instanceof String||e instanceof Boolean)&&(t=Number(e.valueOf())),this._debugLevel=Number.isFinite(t)&&t>=0?Math.max(0,Math.min(3,Math.floor(t))):0}getDebugLevel(){return this._debugLevel}isDebugLevel(e=1){return Number(this._debugLevel)>=Number(e||1)}isDebug(){return this.isDebugLevel(1)}_resolveLogArgs(e){return e.map(e=>{if(typeof e==`function`)try{return e()}catch(e){return e}return e})}_emit(e,t,n,r,i={}){if(!this.isDebugLevel(e))return;let a=this._resolveLogArgs(r),o={level:n,msg:i.msgArray?a:a.length===1?a[0]:a,ts:F(),format:this._format};if(this.name&&(o.name=this.name),this._formatter)try{let e=this._formatter(o);if(e!=null){if(typeof e==`string`){if(this._output){try{this._output(e)}catch{}return}typeof I?.[t]==`function`&&I[t](e);return}o=e}}catch{}if(this._output){try{this._output(o)}catch{}return}if(typeof I?.[t]==`function`)if(this._format===`json`)try{let e=typeof o==`string`?o:ze(o);I[t](e)}catch{try{I[t](...Array.isArray(a)?a:[a])}catch{}}else I[t](...a)}error(...e){let t=e.map(e=>{try{if(e?.error)return Ie(e);if(e instanceof Error||e&&typeof e==`object`)return Ie(Fe(e))}catch{}return e});this._emit(1,`error`,Re.error,t)}warn(...e){this._emit(2,`warn`,Re.warn,e)}info(...e){this._emit(3,`info`,Re.info,e)}log(...e){this._emit(3,`log`,Re.log,e)}debug(...e){this._emit(3,`debug`,Re.debug,e)}table(...e){if(!this.isDebugLevel(3)||!I)return;if(this._format===`json`){this._emit(3,`log`,Re.table,e,{msgArray:!0});return}let t=this._resolveLogArgs(e);typeof I.table==`function`?I.table(...t):typeof I.log==`function`&&I.log(...t)}incrementCounter(e){if(!this.isDebug())return;let t=String(e||``);t&&(this._counters[t]=(this._counters[t]||0)+1)}getDebugCounters(){return Object.assign({},this._counters)}resetDebugCounters(){this._counters=Object.create(null)}};let Ve=1e3;60*Ve;let He=30*Ve,Ue=1e3,L,R;function We(){return L===void 0?typeof TextEncoder<`u`?(L=new TextEncoder,L):typeof Buffer<`u`&&typeof Buffer.from==`function`?(L={encode:e=>new Uint8Array(Buffer.from(e))},L):(L=!1,null):L===!1?null:L}function Ge(){return R===void 0?typeof TextDecoder<`u`?(R=new TextDecoder,R):typeof Buffer<`u`&&typeof Buffer.from==`function`?(R={decode:e=>Buffer.from(e).toString(`utf8`)},R):(R=!1,null):R===!1?null:R}let Ke=e=>{if(e instanceof Uint8Array)return e;if(ArrayBuffer.isView(e))return new Uint8Array(e.buffer,e.byteOffset,e.byteLength);if(e instanceof ArrayBuffer)return new Uint8Array(e);let t=JSON.stringify(e),n=We();if(typeof n?.encode==`function`)return n.encode(t);throw Error(`No TextEncoder or Buffer available to encode object`)},qe=e=>{let t;if(e instanceof Uint8Array)t=e;else if(ArrayBuffer.isView(e))t=new Uint8Array(e.buffer,e.byteOffset,e.byteLength);else if(e instanceof ArrayBuffer)t=new Uint8Array(e);else if(typeof Buffer<`u`&&typeof Buffer.isBuffer==`function`&&Buffer.isBuffer(e))t=new Uint8Array(e);else throw TypeError(`Unsupported input to u82o, expected ArrayBuffer/TypedArray/Buffer`);let n=Ge();if(typeof n?.decode==`function`)return JSON.parse(n.decode(t));if(typeof TextDecoder<`u`)return JSON.parse(new TextDecoder().decode(t));throw Error(`No TextDecoder or Buffer available to decode object`)};var Je=class{constructor(e=16){let t=Math.max(2,Number(e)||16);for(this._capacity=1;this._capacity<t;)this._capacity<<=1;this._mask=this._capacity-1,this._buffer=Array(this._capacity),this._head=0,this._tail=0,this._size=0}push(e){return this._size===this._capacity&&this._grow(),this._buffer[this._tail]=e,this._tail=this._tail+1&this._mask,this._size++,this._size}shift(){if(this._size===0)return;let e=this._buffer[this._head];return this._buffer[this._head]=void 0,this._head=this._head+1&this._mask,this._size--,e}peek(){return this._size===0?void 0:this._buffer[this._head]}clear(){if(this._size===0)return;let e=this._head;for(let t=0;t<this._size;t++)this._buffer[e]=void 0,e=e+1&this._mask;this._head=this._tail=0,this._size=0}get capacity(){return this._capacity}get isEmpty(){return this._size===0}*[Symbol.iterator](){let e=this._head;for(let t=0;t<this._size;t++)yield this._buffer[e+t&this._mask]}values(){return this[Symbol.iterator]()}*keys(){for(let e=0;e<this._size;e++)yield e}*entries(){for(let e=0;e<this._size;e++)yield[e,this._buffer[this._head+e&this._mask]]}*drain(){for(;this._size>0;)yield this.shift()}toArray(){let e=Array(this._size);for(let t=0;t<this._size;t++)e[t]=this._buffer[this._head+t&this._mask];return e}_grow(){let e=this._buffer,t=this._capacity<<1,n=Array(t);for(let t=0;t<this._size;t++)n[t]=e[this._head+t&this._mask];this._buffer=n,this._capacity=t,this._mask=t-1,this._head=0,this._tail=this._size&this._mask}pushMany(e){if(!Array.isArray(e)||e.length===0)return this._size;let t=this._size+e.length;for(;this._capacity<t;)this._grow();let n=Math.min(e.length,this._capacity-this._tail);for(let t=0;t<n;t++)this._buffer[this._tail+t]=e[t];this._tail=this._tail+n&this._mask;let r=n;for(;r<e.length;){let t=Math.min(e.length-r,this._capacity-this._tail);for(let n=0;n<t;n++)this._buffer[this._tail+n]=e[r+n];this._tail=this._tail+t&this._mask,r+=t}return this._size=t,this._size}get length(){return this._size}unshiftMany(e){if(!Array.isArray(e)||e.length===0)return this._size;let t=this._size+e.length;for(;this._capacity<t;)this._grow();let n=this._head-e.length&this._mask;for(let t=0;t<e.length;t++)this._buffer[n+t&this._mask]=e[t];return this._head=n,this._size=t,this._size}};let Ye=Symbol(`PowerSubscriberSet.original`);var z=class{constructor(e={}){let{weak:t=!1,maxListeners:n=0}=e||{};this._weak=!!t,this._maxListeners=Number.isFinite(Number(n))?Math.max(0,Math.floor(Number(n))):0,this._listeners=new Set,this._onceMap=new WeakMap,this._finalization=null,this._weak&&typeof WeakRef<`u`&&typeof FinalizationRegistry<`u`&&(this._finalization=new FinalizationRegistry(e=>{this._listeners.delete(e.ref)}))}get size(){return this._cleanup(),this._listeners.size}add(e){if(typeof e!=`function`){if(!this._weak||!e||typeof e.deref!=`function`)throw TypeError(`listener must be a function`);if(this._maxListeners>0&&this.size+1>this._maxListeners)throw Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);return this._listeners.add(e),()=>this.delete(e)}if(this._maxListeners>0&&this.size+1>this._maxListeners)throw Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);let t=this._makeEntry(e);return this._listeners.add(t),()=>this.delete(e)}addOnce(e){if(typeof e!=`function`)throw TypeError(`listener must be a function`);let t=(...t)=>{try{e(...t)}finally{this.delete(e)}};try{t[Ye]=e}catch{}if(this._onceMap.set(e,t),this._maxListeners>0&&this.size+1>this._maxListeners)throw Error(`PowerSubscriberSet: adding listener exceeds maxListeners (${this._maxListeners})`);let n=this._makeEntry(t);return this._listeners.add(n),()=>this.delete(e)}delete(e){let t=e,n=this._onceMap.get(e);n&&(t=n,this._onceMap.delete(e));for(let e of this._listeners){if(e===t)return this._listeners.delete(e),this._finalization&&typeof e.deref==`function`&&this._finalization.unregister(e),!0;let n=this._deref(e);if(!n){this._listeners.delete(e);continue}if(n===t)return this._listeners.delete(e),this._finalization&&typeof e.deref==`function`&&this._finalization.unregister(e),!0}return!1}forEach(e){for(let t of this._listeners){let n=this._deref(t);if(!n){this._listeners.delete(t);continue}e(n)}}clear(){this._listeners.clear(),this._onceMap=new WeakMap}values(){this._cleanup();let e=[];for(let t of this._listeners){let n=this._deref(t);n&&e.push(n)}return e}*[Symbol.iterator](){for(let e of this._listeners){let t=this._deref(e);if(!t){this._listeners.delete(e);continue}yield t}}_cleanup(){if(!(!this._weak||typeof WeakRef>`u`))for(let e of this._listeners)typeof e?.deref==`function`&&!e.deref()&&this._listeners.delete(e)}_makeEntry(e){if(this._weak&&typeof WeakRef<`u`){let t=new WeakRef(e);if(this._finalization)try{this._finalization.register(e,{ref:t},t)}catch{}return t}return e}_deref(e){return typeof e?.deref==`function`?e.deref():e}};function Xe(e){if(e){if(typeof e.cleanup==`function`){try{e.cleanup()}catch{}return}if(typeof e._cleanup==`function`){try{e._cleanup()}catch{}return}if(typeof e[Symbol.iterator]==`function`&&typeof e.delete==`function`)for(let t of e)(typeof t?.deref==`function`?t.deref():t)||e.delete(t)}}var Ze=class{constructor(e={}){this._listeners=new Map,this._maxListeners=Number.isFinite(Number(e.maxListeners))?Math.max(0,Number(e.maxListeners)):0,this._weak=!!e.weak,this._fr=null,this._finalizationRefs=new WeakMap,this._eventFinalizationRefs=new Map}_ensureFinalizationRegistry(){return!this._weak||typeof FinalizationRegistry>`u`?null:(this._fr||(this._fr=new FinalizationRegistry(e=>{try{let{event:t,ref:n}=e,r=this._listeners.get(t),i=this._eventFinalizationRefs.get(t);if(i&&n&&(i.delete(n),i.size===0&&this._eventFinalizationRefs.delete(t)),!r)return;Xe(r),r.size===0&&(this._listeners.delete(t),this._eventFinalizationRefs.delete(t))}catch{}})),this._fr)}cleanup(){if(this._weak)for(let[e,t]of this._listeners)Xe(t),t.size===0&&(this._clearWeakListenerEvent(e),this._listeners.delete(e))}on(e,t){if(typeof t!=`function`)throw TypeError(`listener must be a function`);let n=this._getBucket(e);n||(n=new z({maxListeners:this._maxListeners,weak:this._weak}),this._listeners.set(e,n));let r=n.add(t);return this._registerWeakListener(t,e)?()=>{r(),this._unregisterWeakListener(t,e)}:r}_getBucket(e){let t=this._listeners.get(e);if(!t)return null;if(t instanceof z)return t;if(typeof t?.[Symbol.iterator]==`function`){let n=new z({maxListeners:this._maxListeners,weak:this._weak});for(let e of t){let t=typeof e?.deref==`function`?e.deref():e;t&&n.add(t)}return this._listeners.set(e,n),n}return null}_registerWeakListener(e,t){let n=this._ensureFinalizationRegistry();if(!n||typeof WeakRef>`u`)return null;let r=new WeakRef(e);try{n.register(e,{event:t,ref:r},r);let i=this._finalizationRefs.get(e);i||(i=new Map,this._finalizationRefs.set(e,i));let a=i.get(t);a||(a=new Set,i.set(t,a)),a.add(r);let o=this._eventFinalizationRefs.get(t);o||(o=new Set,this._eventFinalizationRefs.set(t,o)),o.add(r)}catch{return null}return r}_unregisterWeakListener(e,t){if(!this._fr||!this._finalizationRefs.has(e))return;let n=this._finalizationRefs.get(e);if(!n||n.size===0){this._finalizationRefs.delete(e);return}let r=t===void 0?Array.from(n.keys()):[t];for(let e of r){let t=n.get(e);if(!t||t.size===0){n.delete(e);continue}for(let n of t){try{this._fr.unregister(n)}catch{}let t=this._eventFinalizationRefs.get(e);t&&(t.delete(n),t.size===0&&this._eventFinalizationRefs.delete(e))}n.delete(e)}n.size===0&&this._finalizationRefs.delete(e)}_clearWeakListenerEvent(e){if(!this._fr)return;let t=this._eventFinalizationRefs.get(e);if(t){for(let e of t)try{this._fr.unregister(e)}catch{}this._eventFinalizationRefs.delete(e)}}once(e,t){if(typeof t!=`function`)throw TypeError(`listener must be a function`);let n=this._getBucket(e);n||(n=new z({maxListeners:this._maxListeners,weak:this._weak}),this._listeners.set(e,n));let r=n.addOnce(t);return this._registerWeakListener(t,e)?()=>{r(),this._unregisterWeakListener(t,e)}:r}off(e,t){let n=this._getBucket(e);n&&(n.delete(t),this._unregisterWeakListener(t,e),n.size===0&&(this._clearWeakListenerEvent(e),this._listeners.delete(e)))}emit(e,t){let n=this._listeners.get(e);if(!n||n.size===0)return!1;if(n instanceof z){let r=!1;return n.forEach(e=>{r=!0;try{e(t)}catch{}}),n.size===0&&(this._clearWeakListenerEvent(e),this._listeners.delete(e)),r}let r=n.size>0;for(let e of n){let r=typeof e?.deref==`function`?e.deref():e;if(!r){n.delete(e);continue}try{r(t)}catch{}}return n.size===0&&(this._clearWeakListenerEvent(e),this._listeners.delete(e)),r}*_iterBucketListeners(e){if(e instanceof z){yield*e;return}for(let t of e){let n=typeof t?.deref==`function`?t.deref():t;if(!n){e.delete(t);continue}yield n}}async emitAsync(e,t,{concurrency:n=1/0}={}){let r=this._listeners.get(e);if(!r||r.size===0)return!1;let i=Number.isFinite(+n)&&+n>0?Math.max(1,Math.floor(+n)):1/0,a=async e=>{try{await e(t)}catch{}},o=new Set,s=!1;for(let e of this._iterBucketListeners(r)){if(!e)continue;s=!0;let t=Promise.resolve().then(()=>a(e)).finally(()=>{o.delete(t)});o.add(t),Number.isFinite(i)&&o.size>=i&&await Promise.race(o)}return o.size&&await Promise.all(o),r.size===0&&(this._clearWeakListenerEvent(e),this._listeners.delete(e)),s}listeners(e){let t=this._listeners.get(e);return t?t instanceof z?t.values():Array.from(t).map(e=>typeof e?.deref==`function`?e.deref():e).filter(Boolean):[]}clear(e){if(e===void 0){for(let e of this._eventFinalizationRefs.keys())this._clearWeakListenerEvent(e);this._eventFinalizationRefs.clear(),this._finalizationRefs=new WeakMap,this._listeners.clear();return}this._clearWeakListenerEvent(e),this._listeners.delete(e)}},Qe=class{constructor(e,t,n){this._underlying=e,this._logger=t,this._pool=n,this.onmessage=null,this.onerror=null,this.onmessageerror=null}postMessage(e,t){let n=e,r=t;if(n instanceof Uint8Array||ArrayBuffer.isView(n)||n instanceof ArrayBuffer){if(Array.isArray(r))try{r.length?this._underlying.postMessage(n,r):this._underlying.postMessage(n);return}catch(e){throw this._logger.error(e,`Failed to postMessage to underlying worker`),e}if(!r){let e=n instanceof ArrayBuffer?n:n.buffer;e?.byteLength>0&&(r=[e])}try{r?.length?this._underlying.postMessage(n,r):this._underlying.postMessage(n)}catch(e){throw this._logger.error(e,`Failed to postMessage to underlying worker`),e}return}if(typeof n==`object`&&n&&!ArrayBuffer.isView(n)&&!(n instanceof ArrayBuffer))try{let t=this._pool._encodeForTransfer(e);if(!r)r=[t.buffer];else if(Array.isArray(r))r.includes(t.buffer)||r.push(t.buffer);else{let e=Array.from(r);e.includes(t.buffer)||e.push(t.buffer),r=e}n=t}catch{r=t,n=e}try{r?.length?this._underlying.postMessage(n,r):this._underlying.postMessage(n)}catch(e){throw this._logger.error(e,`Failed to postMessage to underlying worker`),e}}addEventListener(...e){return this._underlying.addEventListener(...e)}removeEventListener(...e){return this._underlying.removeEventListener(...e)}terminate(){typeof this._underlying.terminate==`function`&&this._underlying.terminate()}},$e=class extends Error{constructor(e=`PowerPool has been shut down`){super(e),this.name=`PowerPoolShutdownError`}},et=class{constructor(e,t={}){let n=typeof navigator<`u`&&navigator.hardwareConcurrency||2,{size:r=Math.min(n,2),minSize:i=2,maxSize:a=Math.max(r,n),workerOptions:o={},maxTasksPerWorker:s,idleTimeout:c=6e4,taskQueue:l=!0,queuePolicy:u=`enqueue`,lazy:d=!0,awaitResponseTimeout:f=He,autoScale:p=!1}=t,m=s===void 0&&p?1:s??1/0;if(typeof e!=`function`&&typeof e!=`string`)throw TypeError(`PowerPool workerSource must be a function or string`);this._workerSource=e,this._workerOptions=o,this._maxTasksPerWorker=m,this.minSize=Math.max(0,i),this.maxSize=Math.max(this.minSize,a),this.idleTimeout=Math.max(0,c),this.taskQueueEnabled=!!l,this._queuePolicy=[`enqueue`,`drop-oldest`,`drop-newest`,`reject`].includes(u)?u:`enqueue`,this._createdAt=F(),this._totalWorkersCreated=0,this._totalTasksCompleted=0,this._taskDurationsWelfordCount=0,this._taskDurationsWelfordMean=0,this._taskDurationsWelfordM2=0,this._taskDurationsMin=1/0,this._taskDurationsMax=-1/0,this._ewmaLatency=null,this._autoScale=null,this._autoScaleInterval=null,this._lastAutoScaleAt=0,this._terminatedWorkerTaskCountsTotal=0,this._terminatedWorkerTaskCountsCount=0,this.workers=[],this.queue=new Je;let h={maxListeners:t?.listenerMaxListeners??t?.maxListeners,weak:!!t?.weakListeners};this._bus=new Ze(h),this._queueHighThreshold=Number.isFinite(Number(t?.queueHighThreshold))?Math.max(0,Math.floor(Number(t?.queueHighThreshold))):1/0,this._queueHighCrossed=!1,this._onmessage=null,this._onerror=null,this._onidle=null,this._onresize=null,this._nextIndex=0,this._nextWorkerId=0,this._correlationCounter=0,this._activeTasks=0,this._isIdle=!0,this._queuePaused=!1;let g=typeof t?.debugLevel==`number`?t.debugLevel:1;if(this._logger=new Be(g,{name:`powerPool`}),arguments.length>1&&arguments[1]!=null&&typeof arguments[1]!=`object`)throw TypeError(`PowerPool options must be an object`);this._pendingResponses=new Map,this._underlyingToWorkerObj=new Map,this._defaultAwaitResponseTimeout=Number.isFinite(Number(f))?Math.max(0,Math.floor(Number(f))):He;let _=Math.min(d?this.minSize:Math.max(r,this.minSize),this.maxSize);for(let e=0;e<_;e++)try{this._addWorkerInstance()}catch(e){try{if((e?.message?String(e.message):``).includes(`Invalid workerSource`))throw e}catch(e){throw e}try{this._logger.error(e,`Initial worker creation failed`)}catch(e){this._debugLog?.(e,`Initial worker creation: logger error`)}try{this._bus.emit(`pool:error`,{phase:`init`,error:e})}catch(e){this._debugLog?.(e,`Initial worker creation: bus.emit failed`)}break}if(this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(Ue,Math.floor(this.idleTimeout/2))),this._encodeCache=new Map,this._encodeCacheLimit=Math.max(16,t?.encodeCacheLimit?t.encodeCacheLimit:64),this._encodeCacheByteLimit=Number.isFinite(Number(t?.encodeCacheByteLimit))?Math.max(0,Number(t?.encodeCacheByteLimit)):1/0,this._encodeCacheBytes=0,t?.autoScale){let e=typeof t.autoScale==`object`?t.autoScale:{},n=Number.isFinite(Number(e.intervalMs))?Math.max(100,Math.floor(e.intervalMs)):1e3,r=Number.isFinite(Number(e.targetMs))?Math.max(1,Number(e.targetMs)):50,i=Number.isFinite(Number(e.alpha))?Math.max(0,Math.min(1,Number(e.alpha))):.2,a=Number.isFinite(Number(e.cooldownMs))?Math.max(0,Math.floor(e.cooldownMs)):5e3,o=Number.isFinite(Number(e.hysteresis))?Math.max(0,Math.min(1,Number(e.hysteresis))):.2,s=Number.isFinite(Number(e.stepUp))?Math.max(1,Math.floor(Number(e.stepUp))):1,c=Number.isFinite(Number(e.stepDown))?Math.max(1,Math.floor(Number(e.stepDown))):1,l=Number.isFinite(Number(e.backoffFactor))?Math.max(1,Number(e.backoffFactor)):1,u=Number.isFinite(Number(e.backoffMaxMultiplier))?Math.max(1,Number(e.backoffMaxMultiplier)):8,d=Number.isFinite(Number(e.backoffResetMs))?Math.max(0,Math.floor(Number(e.backoffResetMs))):a*4;this._autoScale={enabled:!0,intervalMs:n,targetMs:r,alpha:i,cooldownMs:a,hysteresis:o,stepUp:s,stepDown:c,backoffFactor:l,backoffMaxMultiplier:u,backoffResetMs:d},this._autoScaleBackoffMultiplier=1;try{this._autoScaleInterval=setInterval(()=>this._autoScaleTick(),n)}catch(e){this._debugLog?.(e,`autoScale: interval setup failed`)}}}_debugLog(e,t){try{typeof this._logger?.debug==`function`&&(e?this._logger.debug(e,t||`swallowed error`):this._logger.debug(t||`swallowed error`))}catch(e){try{typeof console<`u`&&typeof console.debug==`function`&&console.debug(e,t||`swallowed error`)}catch{}}}_ensureReaper(){try{this._reaperInterval||(this._reaperInterval=setInterval(()=>this._reapIdleWorkers(),Math.max(Ue,Math.floor(this.idleTimeout/2))))}catch(e){this._debugLog?.(e,`_ensureReaper: setInterval failed`)}}_createPendingResponsePromise(e,t){let n=e==null?e:String(e),r=null;return{pendingPromise:new Promise((e,i)=>{r={resolve:e,reject:i,timer:null};let a=Number.isFinite(Number(t?.timeout))?Math.max(0,Math.floor(Number(t?.timeout))):Number.isFinite(Number(this._defaultAwaitResponseTimeout))?this._defaultAwaitResponseTimeout:void 0;Number.isFinite(a)&&a>0&&(r.timer=setTimeout(()=>{try{this._cleanupPendingResponse(n,{rejectWith:Error(`postMessage response timeout`)})}catch{try{i(Error(`postMessage response timeout`))}catch(e){this._debugLog?.(e,`createPendingResponsePromise: reject fallback failed`)}}},a)),this._pendingResponses.set(n,r)}),correlationKey:n}}_postToWorkerObj(e,t,n,r,i,a){try{return t.transfer?.length?e.worker.postMessage(t.message,t.transfer):e.worker.postMessage(t.message),typeof e._startTimes?.push==`function`&&e._startTimes.push(n),e.tasks++,this._activeTasks++,e.lastActive=n,this._isIdle&&this._updateIdleState(),r?a:!0}catch(e){if(r&&i){try{this._cleanupPendingResponse(i,{rejectWith:e})}catch(e){this._debugLog?.(e,`postToWorkerObj: cleanupPendingResponse failed`)}try{this._logger.error(e,`Failed to postMessage to worker`)}catch(e){this._debugLog?.(e,`postToWorkerObj: logger.error failed`)}return a}try{this._logger.error(e,`Failed to postMessage to worker`)}catch(e){this._debugLog?.(e,`postToWorkerObj: logger.error failed`)}return!1}}_tryGrowPool(e,t,n,r,i,a,o){let s;try{s=this._addWorkerInstance()}catch(e){try{this._logger.error(e,`Failed to grow pool`)}catch(e){this._debugLog?.(e,`tryGrowPool: logger.error failed`)}try{this._bus.emit(`pool:error`,{phase:`grow`,error:e})}catch(e){this._debugLog?.(e,`tryGrowPool: bus.emit failed`)}if(i&&a){try{this._cleanupPendingResponse(a,{rejectWith:e})}catch(e){this._debugLog?.(e,`tryGrowPool: cleanupPendingResponse failed`)}return o}return!1}if(!s){if(i&&a){try{this._cleanupPendingResponse(a,{rejectWith:Error(`failed to add worker`)})}catch(e){this._debugLog?.(e,`tryGrowPool: cleanupPendingResponse failed`)}return o}return!1}let c=this._prepareForTransfer(e,t,n);return this._postToWorkerObj(s,c,r,i,a,o)}_enqueueOrReject(e,t,n,r){let i=this._queuePolicy;if(i===`reject`||i===`drop-newest`&&this.queue.length>0)return t&&n?(this._cleanupPendingResponse(n,{rejectWith:Error(`postMessage rejected by queue policy`)}),r):!1;if(i===`drop-oldest`&&this.queue.length>0){let e=this.queue.shift();e?.correlationId!=null&&this._cleanupPendingResponse(e.correlationId,{rejectWith:Error(`postMessage queued task dropped by policy`)})}let a={message:e.message,transfer:e.transfer};t&&n&&(a.correlationId=n),this.queue.push(a);try{Number.isFinite(this._queueHighThreshold)&&this.queue.length>this._queueHighThreshold&&!this._queueHighCrossed&&(this._queueHighCrossed=!0,this._bus.emit(`pool:queue:high`,{length:this.queue.length,threshold:this._queueHighThreshold}))}catch(e){this._debugLog?.(e,`enqueueOrReject: bus.emit failed`)}return this._updateIdleState(),t?r:!0}_clearLifecycleIntervals(){try{this._reaperInterval&&(clearInterval(this._reaperInterval),this._reaperInterval=null)}catch(e){this._debugLog?.(e,`clearLifecycleIntervals: clearInterval(reaper) failed`)}try{this._autoScaleInterval&&(clearInterval(this._autoScaleInterval),this._autoScaleInterval=null)}catch(e){this._debugLog?.(e,`clearLifecycleIntervals: clearInterval(autoScale) failed`)}}shutdown(){this._clearLifecycleIntervals();try{for(let[e]of this._pendingResponses)try{this._cleanupPendingResponse(e,{rejectWith:new $e(`pool:shutdown`)})}catch(e){this._debugLog?.(e,`shutdown: cleanup pending response`)}try{typeof this._pendingResponses?.clear==`function`&&this._pendingResponses.clear()}catch(e){this._debugLog?.(e,`shutdown: pendingResponses.clear failed`)}}catch(e){this._debugLog?.(e,`shutdown: iterate pending responses`)}try{for(let e of this.workers)try{e.worker.terminate()}catch(e){this._debugLog?.(e,`shutdown: terminate worker`)}}catch(e){this._debugLog?.(e,`shutdown: terminate workers loop`)}try{this._underlyingToWorkerObj&&this._underlyingToWorkerObj.clear()}catch(e){this._debugLog?.(e,`shutdown: underlyingToWorkerObj.clear failed`)}let e=this.workers.map(e=>e?.id).filter(e=>e!=null);e?.length&&this._bus.emit(`pool:scale`,{action:`remove`,terminated:e,count:e.length}),this.workers=[],this.queue=new Je,this._queueHighCrossed=!1,this._activeTasks=0}_encodeForTransfer(e){try{let t=JSON.stringify(e);if(typeof t==`string`&&t.length>2048)return Ke(e);let n=this._encodeCache.get(t);if(n){try{this._encodeCache.delete(t),this._encodeCache.set(t,n)}catch{}return n}let r=Ke(e),i=r?.byteLength||0,a=()=>this._encodeCache.size>=this._encodeCacheLimit||this._encodeCacheByteLimit!==1/0&&this._encodeCacheBytes+i>this._encodeCacheByteLimit;for(;a();){let e=[],t=this._encodeCache.keys();for(;a()&&e.length<10;){let n=t.next();if(n.done)break;e.push(n.value)}if(!e.length)break;for(let t of e){try{let e=this._encodeCache.get(t),n=typeof e?.byteLength==`number`?e.byteLength:0;this._encodeCacheBytes=Math.max(0,this._encodeCacheBytes-n)}catch{}this._encodeCache.delete(t)}}return this._encodeCache.set(t,r),r?.byteLength&&(this._encodeCacheBytes+=r.byteLength),r}catch{return Ke(e)}}prepareBuffer(e,t={}){let{clone:n=!0}=t,r=this._encodeForTransfer(e);return n?r.slice():r}prepareBuffers(e,t={}){if(!Array.isArray(e))throw Error(`prepareBuffers expects an array`);let{clone:n=!0,zeroCopy:r=!1}=t,i=Array(e.length);for(let t=0;t<e.length;t++){let a=e[t]&&typeof e[t]==`object`&&`message`in e[t]?e[t]:{message:e[t]},o=a.message,s=a.transfer;if(s){i[t]={message:o,transfer:s};continue}if(typeof o==`object`&&o&&!ArrayBuffer.isView(o)&&!(o instanceof ArrayBuffer)){if(r){i[t]={message:o,transfer:void 0};continue}try{let e=this._encodeForTransfer(o),r=n?e.slice():e;i[t]={message:r,transfer:n?[r.buffer]:void 0};continue}catch{i[t]={message:o,transfer:void 0};continue}}if(o instanceof ArrayBuffer||ArrayBuffer.isView(o)){i[t]={message:o,transfer:[o instanceof ArrayBuffer?o:o.buffer]};continue}i[t]={message:o,transfer:void 0}}return i}_prepareForTransfer(e,t,n){let r=!!n?.zeroCopy;if(e instanceof Uint8Array||ArrayBuffer.isView(e)||e instanceof ArrayBuffer){let n=e instanceof ArrayBuffer?e:e.buffer;if(!t){if(n?.byteLength===0)try{let t=e instanceof ArrayBuffer?e.slice(0):new Uint8Array(e);return{message:t,transfer:[t.buffer]}}catch{return{message:e,transfer:void 0}}return{message:e,transfer:[n]}}if(Array.isArray(t))return{message:e,transfer:t};if(t.length===0)return{message:e,transfer:[n]};let r=[],i=!1;for(let e of t)r.push(e),e===n&&(i=!0);return i||r.push(n),{message:e,transfer:r}}if(typeof e==`object`&&e&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer)){if(r)return{message:e,transfer:t};try{let n=this._encodeForTransfer(e).slice(),r=t;if(!r||Array.isArray(r)&&r.length===0)r=[n.buffer];else if(Array.isArray(r)){let e=!1;for(let t of r)if(t===n.buffer){e=!0;break}e||(r=[...r,n.buffer])}else if(r.length===0)r=[n.buffer];else{let e=[],t=!1;for(let i of r)e.push(i),i===n.buffer&&(t=!0);t||e.push(n.buffer),r=e}return{message:n,transfer:r}}catch{return{message:e,transfer:t}}}return{message:e,transfer:t}}_decrementActiveTasks(e=1){try{let t=Number.isFinite(Number(e))?Math.max(0,Math.floor(Number(e))):1;this._activeTasks=Math.max(0,this._activeTasks-t)}catch{this._activeTasks=0}}resize(e){let t=this.minSize,n=this.maxSize;if(typeof e==`object`&&e)Number.isFinite(e.minSize)&&(t=Math.max(0,Math.floor(e.minSize))),Number.isFinite(e.maxSize)&&(n=Math.max(t,Math.floor(e.maxSize)));else{let r=Number(e);if(!Number.isFinite(r))return;n=Math.max(t,Math.floor(r))}this.minSize=Math.max(0,t),this.maxSize=Math.max(this.minSize,n);let r=0;for(;this.workers.length<this.minSize&&this.workers.length<this.maxSize;)try{let e=this.workers.length;if(this._addWorkerInstance(),this.workers.length===e)break;r++}catch(e){try{this._logger.error(e,`resize: add worker failed`)}catch(e){this._debugLog?.(e,`resize: logger.error failed`)}try{this._bus.emit(`pool:error`,{phase:`resize`,error:e})}catch(e){this._debugLog?.(e,`resize: bus.emit failed`)}break}let i=[];for(;this.workers.length>this.maxSize;){let e=this.workers.pop();if(e){this._decrementActiveTasks(e.tasks||0);try{e.worker.terminate()}catch(e){this._debugLog?.(e,`resize: worker.terminate failed`)}this._deleteWorkerUnderlyingMapping(e),this._terminatedWorkerTaskCountsTotal+=e.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1,i.push(e.id)}}if(i.length||r){let e={data:{type:`pool:resize`,terminated:i,added:r}};if(this._onresize)try{this._onresize(e)}catch(e){this._logger.error(e,`Pool onresize handler error`)}this._bus.emit(`resize`,e),this._bus.emit(`pool:scale`,{added:r,terminated:i,minSize:this.minSize,maxSize:this.maxSize})}this._updateIdleState()}_createWorkerInstance(){if(typeof this._workerSource==`function`){let e=this._workerSource;if(e.prototype===void 0)return e();try{return new e}catch(t){let n=String(t?.message);if(t instanceof TypeError&&/not a constructor|cannot be invoked without\\s*'new'|Class constructor|not constructable/i.test(n))return e();throw t}}if(typeof this._workerSource==`string`){let e;try{e=Function(`try { return import.meta?.url } catch (e) { return undefined }`)()}catch{e=void 0}if(!e&&typeof document<`u`){let t=document.currentScript;t?.src&&(e=t.src)}!e&&typeof location<`u`&&location.href&&(e=location.href);try{if(e)return new Worker(new URL(this._workerSource,e),this._workerOptions)}catch{}return new Worker(this._workerSource,this._workerOptions)}throw Error(`Invalid workerSource: expected Worker factory or relative path string`)}_deleteWorkerUnderlyingMapping(e){try{let t=e?.worker?._underlying;t&&this._underlyingToWorkerObj&&this._underlyingToWorkerObj.delete(t)}catch(e){this._debugLog?.(e,`_deleteWorkerUnderlyingMapping failed`)}}_addWorkerInstance(e){e??(e=this._nextWorkerId++);let t=this._createWorkerInstance(),n=new Qe(t,this._logger,this),r={id:e,worker:n,tasks:0,lastActive:F(),latencyEwma:null,_startTimes:new Je};r.completedTasks=0,this.workers.push(r),this._totalWorkersCreated++,this._bus.emit(`pool:scale`,{action:`add`,id:r.id,minSize:this.minSize,maxSize:this.maxSize});try{this._underlyingToWorkerObj.set(t,r)}catch{}n.onmessage=e=>{let t=F();r.tasks=Math.max(0,r.tasks-1),this._decrementActiveTasks(1),r.lastActive=t;try{let t=e?.data;if(t&&typeof t==`object`&&t.correlationId!=null){let e=String(t.correlationId),n=Object.prototype.hasOwnProperty.call(t,`response`)?t.response:t;this._cleanupPendingResponse(e,{resolveWith:n})}}catch(e){this._debugLog?.(e,`worker.onmessage: resolve pending response`)}try{let n=r._startTimes?.length?r._startTimes.shift():null,i=null;try{let a=e?.data;if(typeof a?.duration==`number`&&Number.isFinite(a.duration)?i=Math.max(0,Number(a.duration)):n!=null&&(i=Math.max(0,t-n)),i!=null){let e=this._autoScale?.alpha||.2;r.latencyEwma==null?r.latencyEwma=i:r.latencyEwma=e*i+(1-e)*r.latencyEwma,this._ewmaLatency==null?this._ewmaLatency=i:this._ewmaLatency=e*i+(1-e)*this._ewmaLatency,this._totalTasksCompleted=(this._totalTasksCompleted||0)+1,r.completedTasks=(r.completedTasks||0)+1;let t=this._taskDurationsWelfordCount;this._taskDurationsWelfordCount=t+1;let n=i-this._taskDurationsWelfordMean;this._taskDurationsWelfordMean+=n*1/this._taskDurationsWelfordCount;let a=i-this._taskDurationsWelfordMean;this._taskDurationsWelfordM2+=n*a,i<this._taskDurationsMin&&(this._taskDurationsMin=i),i>this._taskDurationsMax&&(this._taskDurationsMax=i)}}catch(e){this._debugLog?.(e,`worker.onmessage: latency tracking inner`)}}catch(e){this._debugLog?.(e,`worker.onmessage: latency tracking outer`)}if(!this._queuePaused&&this.queue.length>0&&r.tasks<this._maxTasksPerWorker){let e=this.queue.shift();try{e.transfer?n.postMessage(e.message,e.transfer):n.postMessage(e.message),r._startTimes.push(t),r.tasks++,this._activeTasks++}catch(e){this._debugLog?.(e,`dispatch queued message to worker failed`),this._logger.error(e,`Failed to dispatch queued message to worker`)}this._queueHighCrossed&&this.queue.length<=this._queueHighThreshold&&(this._queueHighCrossed=!1)}if(this._onmessage)try{this._onmessage(e)}catch(e){this._logger.error(e,`Pool onmessage handler error`)}this._bus.emit(`message`,e),this._updateIdleState()};let i=e=>{let t=e?.data===void 0?e:e.data,r=t;if(t&&(t instanceof ArrayBuffer||ArrayBuffer.isView(t)))try{r=qe(t)}catch(e){try{o(e)}catch(e){this._debugLog?.(e,`_handleMessage: _handleMessageError failed`)}r=t}let i=e?.data!==void 0&&r===t?e:{data:r,originalEvent:e};if(typeof n.onmessage==`function`)try{n.onmessage(i)}catch(e){this._logger.error(e,`worker wrapper onmessage error`)}},a=e=>{if(typeof n.onerror==`function`)try{n.onerror(e)}catch(e){this._logger.error(e,`worker wrapper onerror error`)}this._bus.emit(`error`,e)},o=e=>{if(typeof n.onmessageerror==`function`)try{n.onmessageerror(e)}catch(e){this._logger.error(e,`worker wrapper onmessageerror error`)}this._bus.emit(`messageerror`,e)};if(typeof t.addEventListener==`function`){try{t.addEventListener(`message`,i)}catch(e){this._debugLog?.(e,`attach addEventListener message`)}try{t.addEventListener(`error`,a)}catch(e){this._debugLog?.(e,`attach addEventListener error`)}try{t.addEventListener(`messageerror`,o)}catch(e){this._debugLog?.(e,`attach addEventListener messageerror`)}}else if(typeof t.on==`function`){try{t.on(`message`,i)}catch(e){this._debugLog?.(e,`attach underlying.on message`)}try{t.on(`error`,a)}catch(e){this._debugLog?.(e,`attach underlying.on error`)}try{t.on(`messageerror`,o)}catch(e){this._debugLog?.(e,`attach underlying.on messageerror`)}}else{try{t.onmessage=i}catch(e){this._debugLog?.(e,`assign underlying.onmessage`)}try{t.onerror=a}catch(e){this._debugLog?.(e,`assign underlying.onerror`)}try{t.onmessageerror=o}catch(e){this._debugLog?.(e,`assign underlying.onmessageerror`)}}return r}_findLeastLoadedWorker(){if(!this.workers.length)return null;let e=null,t=1/0,n=1/0;for(let r=0;r<this.workers.length;r++){let i=this.workers[r],a=i.latencyEwma==null?1/0:i.latencyEwma;(i.tasks<t||i.tasks===t&&a<n)&&(e=i,t=i.tasks,n=a)}return e}postMessage(e,t,n){n=n||void 0;let r=F(),i=n?.workerId==null?null:n.workerId,a=i==null&&this.workers.length===1&&this._maxTasksPerWorker===1/0,o=i==null?a?this.workers[0]:this._findLeastLoadedWorker():this.workers.find(e=>e.id===i),s=!!(n?.awaitResponse||n?.correlationId!=null),c,l;if(s){if(c=n.correlationId==null?this._generateCorrelationId():String(n.correlationId),!(typeof e==`object`&&e&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer)))throw Error(`postMessage awaitResponse requires a plain-object message`);e=Object.assign({},e,{correlationId:c});let t=this._createPendingResponsePromise(c,n);l=t.pendingPromise,c=t.correlationKey}if(o?.tasks<this._maxTasksPerWorker)try{let i=r,a=this._prepareForTransfer(e,t,n);return this._postToWorkerObj(o,a,i,s,c,l)}catch(e){if(s&&c){try{this._cleanupPendingResponse(c,{rejectWith:e})}catch(e){this._debugLog?.(e,`postMessage: cleanupPendingResponse failed`)}try{this._logger.error(e,`Failed to postMessage to worker`)}catch(e){this._debugLog?.(e,`postMessage: logger.error failed`)}return l}try{this._logger.error(e,`Failed to postMessage to worker`)}catch(e){this._debugLog?.(e,`postMessage: logger.error failed`)}return!1}if(i!=null&&(!o||o.tasks>=this._maxTasksPerWorker)){if(s&&c){try{this._cleanupPendingResponse(c,{rejectWith:Error(`targeted worker unavailable`)})}catch(e){this._debugLog?.(e,`postMessage: cleanupPendingResponse failed`)}return l}return!1}if(i==null&&this.workers.length<this.maxSize){let i=r;return this._tryGrowPool(e,t,n,i,s,c,l)}if(this.taskQueueEnabled){let r=this._prepareForTransfer(e,t,n);return this._enqueueOrReject(r,s,c,l)}if(!this.workers.length)return s?l:!1;let u=this._nextIndex%this.workers.length;this._nextIndex=(this._nextIndex+1)%this.workers.length;let d=this.workers[u];try{let n=r,i=this._prepareForTransfer(e,t);return this._postToWorkerObj(d,i,n,s,c,l)}catch(e){if(s&&c){try{this._cleanupPendingResponse(c,{rejectWith:e})}catch(e){this._debugLog?.(e,`postMessage: cleanupPendingResponse failed`)}try{this._logger.error(e,`Failed to postMessage to fallback worker`)}catch(e){this._debugLog?.(e,`postMessage: logger.error failed`)}return l}try{this._logger.error(e,`Failed to postMessage to fallback worker`)}catch(e){this._debugLog?.(e,`postMessage: logger.error failed`)}return!1}}_generateCorrelationId(){try{let e=typeof globalThis<`u`?globalThis.crypto:void 0;if(typeof e?.randomUUID==`function`)return String(`${e.randomUUID()}-${this._correlationCounter++}`)}catch{}try{let e=typeof globalThis<`u`?globalThis.crypto:void 0;if(typeof e?.getRandomValues==`function`){let t=new Uint8Array(16);e.getRandomValues(t);let n=Array.from(t).map(e=>e.toString(16).padStart(2,`0`)).join(``);return String(`${n}-${this._correlationCounter++}`)}}catch{}let e=Math.floor(Math.random()*4294967295).toString(16);return String(`cid-${Math.floor(F()).toString(36)}-${e}-${this._correlationCounter++}`)}_cleanupPendingResponse(e,t={}){let n=e==null?e:String(e),r=this._pendingResponses.get(n);if(!r)return!1;try{if(r.timer)try{clearTimeout(r.timer)}catch(e){this._debugLog?.(e,`_cleanupPendingResponse: clearTimeout failed`)}}catch(e){this._debugLog?.(e,`_cleanupPendingResponse: timer check failed`)}try{Object.prototype.hasOwnProperty.call(t,`resolveWith`)?r.resolve(t.resolveWith):Object.prototype.hasOwnProperty.call(t,`rejectWith`)&&r.reject(t.rejectWith)}catch(e){this._debugLog?.(e,`_cleanupPendingResponse: resolve/reject failed`)}finally{try{this._pendingResponses.delete(n)}catch(e){this._debugLog?.(e,`_cleanupPendingResponse: delete failed`)}}return!0}broadcast(e,t){let n=F(),r=null,i=typeof e==`object`&&!!e&&!ArrayBuffer.isView(e)&&!(e instanceof ArrayBuffer);for(let a of this.workers)try{let o=e,s=t;if(!s&&i)try{r??(r=this._encodeForTransfer(e));let t=r.slice();o=t,s=[t.buffer]}catch{o=e,s=void 0}s?.length?a.worker.postMessage(o,s):a.worker.postMessage(o),typeof a._startTimes?.push==`function`&&a._startTimes.push(n),a.tasks++,this._activeTasks++,a.lastActive=n}catch(e){this._logger.error(e,`broadcast error`)}this._updateIdleState()}_normalizeStopThePressOptions(e){let t=e?.recreateWorkers===void 0?!0:!!e.recreateWorkers,n=typeof e==`object`?Object.assign({},e):void 0;return n&&delete n.recreateWorkers,{recreate:t,fwdOptions:n}}_resetPoolForStopThePress({recreate:e,scope:t}){try{typeof this.queue?.clear==`function`&&this.queue.clear()}catch(e){this._logger.error(e,`${t}: failed to clear queue`)}try{this._queueHighCrossed=!1}catch(e){this._debugLog?.(e,`_resetPoolForStopThePress: queueHighCrossed reset failed`)}try{for(let[e]of this._pendingResponses)try{this._cleanupPendingResponse(e,{rejectWith:Error(`${t}: cancelled pending response`)})}catch(e){this._debugLog?.(e,`_resetPoolForStopThePress: cleanupPendingResponse failed`)}}catch(e){this._logger.error(e,`${t}: failed to cancel pending responses`)}let n=0,r=[];try{let e=this.workers;if(n=Number(e?.length)||0,Array.isArray(e))r=e.slice();else{r=Array(n);for(let t=0;t<n;t++)r[t]=e[t]}}catch(e){this._logger.error(e,`${t}: failed to snapshot workers`),n=0,r=[]}let i=r.map(e=>e?.id).filter(e=>e!=null);try{for(let e=r.length-1;e>=0;e--){let t=r[e];this._terminatedWorkerTaskCountsTotal+=t.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1;try{t.worker.terminate()}catch(e){this._debugLog?.(e,`_resetPoolForStopThePress: worker.terminate failed`)}this._deleteWorkerUnderlyingMapping(t)}this.workers.length=0,this._activeTasks=0}catch(e){this._logger.error(e,`${t}: failed while terminating workers`)}if(e||this._clearLifecycleIntervals(),e){let e=Math.max(this.minSize,Math.min(n,this.maxSize));for(let t=0;t<e;t++)try{let e=this.workers.length;if(this._addWorkerInstance(),this.workers.length===e)break}catch(e){try{this._logger.error(e,`recreate: add worker failed`)}catch(e){this._debugLog?.(e,`recreate: logger.error failed`)}try{this._bus.emit(`pool:error`,{phase:`recreate`,error:e})}catch(e){this._debugLog?.(e,`recreate: bus.emit failed`)}break}try{this._ensureReaper()}catch(e){this._debugLog?.(e,`recreate: ensureReaper failed`)}}return this._updateIdleState(),{currentCount:n,terminatedIds:i}}stopThePress(e,t,n){let{recreate:r,fwdOptions:i}=this._normalizeStopThePressOptions(n),{currentCount:a,terminatedIds:o}=this._resetPoolForStopThePress({recreate:r,scope:`stopThePress`});try{o?.length&&this._bus.emit(`pool:scale`,{action:`remove`,terminated:o,count:a})}catch(e){this._logger.error(e,`pool scale stopThePress listener error`)}return this.postMessage(e,t,i)}postMessageBatch(e,t){if(!Array.isArray(e))throw Error(`postMessageBatch expects an array of {message, transfer?}`);let n=!!(t?.awaitResponse||t?.correlationId!=null),r=typeof t?.correlationIdFactory==`function`?t.correlationIdFactory:null;if(n){if(t?.correlationId!=null&&e.length>1&&!r)throw Error(`postMessageBatch cannot use a fixed correlationId for multiple items; provide options.correlationIdFactory or omit correlationId`);let n=Array(e.length);for(let i=0;i<e.length;i++){let a=e[i]||{},o=Object.assign({},t);r&&(o.correlationId=String(r(i,a))),n[i]=this.postMessage(a.message,a.transfer,o)}return n}let i=Array(e.length),a=[],o=t?.workerId==null?null:t.workerId,s=this.prepareBuffers(e,{clone:!0,zeroCopy:!!t?.zeroCopy});if(o==null&&this.workers.length===1&&this._maxTasksPerWorker===1/0){let t=this.workers[0],n=!1;for(let r=0;r<e.length;r++){let a=s[r]||{message:e[r]?.message,transfer:e[r]?.transfer};try{let e=F();a.transfer?.length?t.worker.postMessage(a.message,a.transfer):t.worker.postMessage(a.message),typeof t._startTimes?.push==`function`&&t._startTimes.push(e),t.tasks++,this._activeTasks++,t.lastActive=e,n=!0,i[r]=!0}catch{i[r]=!1}}return n&&this._updateIdleState(),i}let c=o!=null,l=null;if(c){if(l=this.workers.find(e=>e.id===o),!l)return e.map(()=>!1)}else l=this._findLeastLoadedWorker();let u=!1;for(let t=0;t<e.length;t++){let n=e[t]||{},r=s[t]||{message:n.message,transfer:n.transfer},d=!1;l?.tasks>=this._maxTasksPerWorker&&(l=null);let f=l;if(!f&&!c&&(f=this._findLeastLoadedWorker()),f?.tasks<this._maxTasksPerWorker)try{let e=F();r.transfer?.length?f.worker.postMessage(r.message,r.transfer):f.worker.postMessage(r.message),typeof f._startTimes?.push==`function`&&f._startTimes.push(e),f.tasks++,this._activeTasks++,f.lastActive=e,u=!0,i[t]=!0,d=!0,l=f.tasks<this._maxTasksPerWorker?f:null}catch{i[t]=!1,d=!0}if(!d&&o==null&&this.workers.length<this.maxSize)try{let e=this._addWorkerInstance();if(!e)i[t]=!1,d=!0;else{let n=F();r.transfer?.length?e.worker.postMessage(r.message,r.transfer):e.worker.postMessage(r.message),typeof e._startTimes?.push==`function`&&e._startTimes.push(n),e.tasks++,this._activeTasks++,e.lastActive=n,u=!0,i[t]=!0,d=!0,l=e.tasks<this._maxTasksPerWorker?e:null}}catch(e){try{this._logger.error(e,`postMessageBatch: add worker failed`)}catch{}try{this._bus.emit(`pool:error`,{phase:`postMessageBatch`,error:e})}catch{}i[t]=!1,d=!0}if(!d){if(o!=null){i[t]=!1;continue}if(this.taskQueueEnabled){let e=this._queuePolicy;if(e===`reject`||e===`drop-newest`&&this.queue.length>0)i[t]=!1;else{if(e===`drop-oldest`&&this.queue.length>0){let e=this.queue.shift();e?.correlationId!=null&&this._cleanupPendingResponse(e.correlationId,{rejectWith:Error(`postMessage queued task dropped by policy`)})}a.push({message:r.message,transfer:r.transfer}),i[t]=!0}}else if(!this.workers.length)i[t]=!1;else{let e=this._nextIndex%this.workers.length;this._nextIndex=(this._nextIndex+1)%this.workers.length;let n=this.workers[e];try{let e=F();r.transfer?.length?n.worker.postMessage(r.message,r.transfer):n.worker.postMessage(r.message),typeof n._startTimes?.push==`function`&&n._startTimes.push(e),n.tasks++,this._activeTasks++,n.lastActive=e,u=!0,i[t]=!0}catch(e){i[t]=!1,this._logger.error(e,`Failed to postMessage to fallback worker`)}}}}if(a.length)try{this.queue.pushMany(a),u=!0;try{Number.isFinite(this._queueHighThreshold)&&this.queue.length>this._queueHighThreshold&&!this._queueHighCrossed&&(this._queueHighCrossed=!0,this._bus.emit(`pool:queue:high`,{length:this.queue.length,threshold:this._queueHighThreshold}))}catch(e){this._debugLog?.(e,`postMessageBatch: bus.emit pool:queue:high failed`)}}catch(e){this._logger.error(e,`postMessageBatch: failed to enqueue prepared items`)}return u&&this._updateIdleState(),i}stopThePressBatch(e,t){let{recreate:n,fwdOptions:r}=this._normalizeStopThePressOptions(t);this._resetPoolForStopThePress({recreate:n,scope:`stopThePressBatch`});try{return this.postMessageBatch(e,r)}catch(t){try{this._logger.error(t,`stopThePressBatch: postMessageBatch failed`)}catch(e){this._debugLog?.(e,`stopThePressBatch: logger.error failed`)}try{return Array(e?e.length:0).fill(!1)}catch{return[]}}}addWorker(){try{return this._addWorkerInstance()}catch(e){try{this._logger.error(e,`addWorker: failed`)}catch(e){this._debugLog?.(e,`addWorker: logger.error failed`)}try{this._bus.emit(`pool:error`,{phase:`addWorker`,error:e})}catch(e){this._debugLog?.(e,`addWorker: bus.emit failed`)}return null}}removeWorker(){let e=this.workers.pop();if(e){this._decrementActiveTasks(e.tasks||0);try{e.worker.terminate()}catch(e){this._debugLog?.(e,`removeWorker: worker.terminate failed`)}this._deleteWorkerUnderlyingMapping(e),this._terminatedWorkerTaskCountsTotal+=e.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1}}_reapIdleWorkers(){if(this.idleTimeout<=0)return;let e=F();for(let t=this.workers.length-1;t>=0;t--){let n=this.workers[t];if(this.workers.length<=this.minSize)break;if(n.tasks===0&&e-(n.lastActive||0)>this.idleTimeout){try{n.worker.terminate()}catch(e){this._debugLog?.(e,`_reapIdleWorkers: worker.terminate failed`)}try{let e=n.worker?._underlying;e&&this._underlyingToWorkerObj&&this._underlyingToWorkerObj.delete(e)}catch(e){this._debugLog?.(e,`_reapIdleWorkers: underlyingToWorkerObj.delete failed`)}let e=this.workers.length-1;t===e?this.workers.pop():this.workers[t]=this.workers.pop()}}this._updateIdleState()}_autoScaleTick(){try{if(!this._autoScale||!this._autoScale.enabled)return;let e=F(),t=this._autoScale;this._lastAutoScaleAt&&t.backoffResetMs&&e-this._lastAutoScaleAt>t.backoffResetMs&&(this._autoScaleBackoffMultiplier=1);let n=Math.floor((t.cooldownMs||0)*(this._autoScaleBackoffMultiplier||1));if(this._lastAutoScaleAt&&e-this._lastAutoScaleAt<n)return;let r=t.targetMs,i=t.hysteresis||.2,a=this._ewmaLatency,o=this.workers.length,s=r*(1+i),c=a==null?!1:a>s,l=this.queue.length>Math.ceil(o*(1+i));if(c||l){if(o<this.maxSize)try{let n=Math.min(this.maxSize-o,t.stepUp||1);for(let e=0;e<n;e++)try{let e=this.workers.length;if(this._addWorkerInstance(),this.workers.length===e)break}catch(e){this._debugLog?.(e,`autoScale: addWorker failed`);try{this._bus.emit(`pool:error`,{phase:`autoScale:add`,error:e})}catch(e){this._debugLog?.(e,`autoScale: bus.emit failed`)}break}this._lastAutoScaleAt=e,this._autoScaleBackoffMultiplier=Math.min((this._autoScaleBackoffMultiplier||1)*(t.backoffFactor||1),t.backoffMaxMultiplier||8)}catch(e){this._debugLog?.(e,`autoScale: addWorker failed outer`)}return}let u=r*Math.max(0,1-i);if(a!=null&&a<u&&this.queue.length===0&&o>this.minSize)try{let n=Math.min(o-this.minSize,t.stepDown||1),r=0;for(let e=this.workers.length-1;e>=0&&r<n;e--){let t=this.workers[e];if(!t||t.tasks>0)continue;try{t.worker.terminate()}catch(e){this._debugLog?.(e,`autoScale: terminate worker`)}this._deleteWorkerUnderlyingMapping(t),this._terminatedWorkerTaskCountsTotal+=t.completedTasks||0,this._terminatedWorkerTaskCountsCount+=1;let n=this.workers.length-1;e===n?this.workers.pop():this.workers[e]=this.workers.pop(),r++}r>0&&(this._lastAutoScaleAt=e,this._autoScaleBackoffMultiplier=Math.min((this._autoScaleBackoffMultiplier||1)*(t.backoffFactor||1),t.backoffMaxMultiplier||8))}catch(e){this._debugLog?.(e,`autoScale: remove worker failed`)}}catch(e){this._debugLog?.(e,`autoScaleTick outer`)}}_emitIdle(){let e={data:{type:`pool:idle`,stats:this.getStats()}};if(this._isIdle=!0,this._onmessage)try{this._onmessage(e)}catch(e){this._logger.error(e,`Pool onmessage handler error`)}if(this._onidle)try{this._onidle(e)}catch(e){this._logger.error(e,`Pool onidle handler error`)}try{this._bus.emit(`message`,e)}catch(e){this._logger.error(e,`pool listener error`)}try{this._bus.emit(`idle`,e)}catch(e){this._logger.error(e,`pool idle listener error`)}}_updateIdleState(){let e=this.queue.length===0,t=this._activeTasks===0&&e;t&&!this._isIdle?this._emitIdle():!t&&this._isIdle&&(this._isIdle=!1)}terminate(){try{this.shutdown()}catch{}}async[Symbol.dispose](){if(typeof this[Symbol.asyncDispose]==`function`){await this[Symbol.asyncDispose]();return}this.terminate()}async[Symbol.asyncDispose](){try{await this.drain()}catch{}this.terminate()}getStats(){let e=this.workers.map(e=>({id:e.id,tasks:e.tasks,lastActive:e.lastActive})),t=F(),n=this._createdAt==null?0:Math.max(0,t-this._createdAt),r=this._totalWorkersCreated||this.workers.length,i=this._totalTasksCompleted||0,a=this._terminatedWorkerTaskCountsCount||0,o=this._terminatedWorkerTaskCountsTotal||0,s=0;for(let e of this.workers)s+=e.completedTasks||0;let c=a+(this.workers.length||0),l=c>0?(o+s)/c:0,u=0,d=0,f=0,p=0,m=0,h=this._taskDurationsWelfordCount||0;if(h>0){u=this._taskDurationsMin===1/0?0:this._taskDurationsMin,d=this._taskDurationsMax===-1/0?0:this._taskDurationsMax,f=this._taskDurationsWelfordMean;let e=h>1?this._taskDurationsWelfordM2/h:0;p=Math.sqrt(e),m=0}return{status:e,performance:{poolLiveDuration:n,totalWorkersCreated:r,totalTasksPerformed:i,averageTasksPerWorkerUntilTermination:l,timePerTask:{max:d,min:u,average:f,stddev:p},percentSlowTasks:m},queueLength:this.queue.length,activeTasks:this._activeTasks,workerCount:this.workers.length,minSize:this.minSize,maxSize:this.maxSize,isIdle:this._activeTasks===0&&this.queue.length===0}}drain(){let e=this.queue.length===0;return this._activeTasks===0&&e?Promise.resolve(this.getStats()):new Promise(e=>{let t=()=>{try{this.removeEventListener(`idle`,t)}catch(e){this._debugLog?.(e,`drain: removeEventListener failed`)}e(this.getStats())};this.addEventListener(`idle`,t)})}addEventListener(e,t){if(typeof t==`function`&&(this._bus.on(e,t),e===`idle`)){let e=this.queue.length===0;if(this._activeTasks===0&&e){let e={data:{type:`pool:idle`,stats:this.getStats()}};try{t(e)}catch(e){this._logger.error(e,`pool idle listener error`)}}}}removeEventListener(e,t){!t||typeof t!=`function`||this._bus.off(e,t)}get onresize(){return this._onresize}set onresize(e){this._onresize=e}get onmessage(){return this._onmessage}set onmessage(e){this._onmessage=e}get onerror(){return this._onerror}set onerror(e){this._onerror=e}get onidle(){return this._onidle}set onidle(e){if(this._onidle=e,typeof e==`function`){let t=this.queue.length===0;if(this._activeTasks===0&&t){let t={data:{type:`pool:idle`,stats:this.getStats()}};try{e(t)}catch(e){this._logger.error(e,`Pool onidle handler error`)}}}}pauseQueue(){this._queuePaused=!0}resumeQueue(){this._queuePaused&&(this._queuePaused=!1,this._dispatchQueuedTasks())}pause(){return this.pauseQueue()}resume(){return this.resumeQueue()}get queuePaused(){return this._queuePaused}_dispatchQueuedTasks(){if(this._queuePaused||!this.taskQueueEnabled||this.queue.length===0)return;let e=this.queue,t=this._maxTasksPerWorker,n=F(),r=!1;for(let i of this.workers){let a=t-i.tasks;for(;a>0&&e.length>0;){let t=e.shift();try{t.transfer?.length?i.worker.postMessage(t.message,t.transfer):i.worker.postMessage(t.message),typeof i._startTimes?.push==`function`&&i._startTimes.push(n),i.tasks++,a--,this._activeTasks++,i.lastActive=n,r=!0}catch(e){this._debugLog?.(e,`dispatch queued message to worker failed`),this._logger.error(e,`Failed to dispatch queued message to worker`);break}}}this._queueHighCrossed&&this.queue.length<=this._queueHighThreshold&&(this._queueHighCrossed=!1),r&&this._updateIdleState()}};function tt(e,t,n=0,r=e.length-1,i=rt){for(;r>n;){if(r-n>600){let a=r-n+1,o=t-n+1,s=Math.log(a),c=.5*Math.exp(2*s/3),l=.5*Math.sqrt(s*c*(a-c)/a)*(o-a/2<0?-1:1);tt(e,t,Math.max(n,Math.floor(t-o*c/a+l)),Math.min(r,Math.floor(t+(a-o)*c/a+l)),i)}let a=e[t],o=n,s=r;for(nt(e,n,t),i(e[r],a)>0&&nt(e,n,r);o<s;){for(nt(e,o,s),o++,s--;i(e[o],a)<0;)o++;for(;i(e[s],a)>0;)s--}i(e[n],a)===0?nt(e,n,s):(s++,nt(e,s,r)),s<=t&&(n=s+1),t<=s&&(r=s-1)}}function nt(e,t,n){let r=e[t];e[t]=e[n],e[n]=r}function rt(e,t){return e<t?-1:+(e>t)}var it=class{constructor(e=9){this._maxEntries=Math.max(4,e),this._minEntries=Math.max(2,Math.ceil(this._maxEntries*.4)),this.clear()}all(){return this._all(this.data,[])}search(e){let t=this.data,n=[];if(!gt(e,t))return n;let r=this.toBBox,i=[];for(;t;){for(let a=0;a<t.children.length;a++){let o=t.children[a],s=t.leaf?r(o):o;gt(e,s)&&(t.leaf?n.push(o):ht(e,s)?this._all(o,n):i.push(o))}t=i.pop()}return n}collides(e){let t=this.data;if(!gt(e,t))return!1;let n=[];for(;t;){for(let r=0;r<t.children.length;r++){let i=t.children[r],a=t.leaf?this.toBBox(i):i;if(gt(e,a)){if(t.leaf||ht(e,a))return!0;n.push(i)}}t=n.pop()}return!1}load(e){if(!(e&&e.length))return this;if(e.length<this._minEntries){for(let t=0;t<e.length;t++)this.insert(e[t]);return this}let t=this._build(e.slice(),0,e.length-1,0);if(!this.data.children.length)this.data=t;else if(this.data.height===t.height)this._splitRoot(this.data,t);else{if(this.data.height<t.height){let e=this.data;this.data=t,t=e}this._insert(t,this.data.height-t.height-1,!0)}return this}insert(e){return e&&this._insert(e,this.data.height-1),this}clear(){return this.data=_t([]),this}remove(e,t){if(!e)return this;let n=this.data,r=this.toBBox(e),i=[],a=[],o,s,c;for(;n||i.length;){if(n||(n=i.pop(),s=i[i.length-1],o=a.pop(),c=!0),n.leaf){let r=at(e,n.children,t);if(r!==-1)return n.children.splice(r,1),i.push(n),this._condense(i),this}!c&&!n.leaf&&ht(n,r)?(i.push(n),a.push(o),o=0,s=n,n=n.children[0]):s?(o++,n=s.children[o],c=!1):n=null}return this}toBBox(e){return e}compareMinX(e,t){return e.minX-t.minX}compareMinY(e,t){return e.minY-t.minY}toJSON(){return this.data}fromJSON(e){return this.data=e,this}_all(e,t){let n=[];for(;e;)e.leaf?t.push(...e.children):n.push(...e.children),e=n.pop();return t}_build(e,t,n,r){let i=n-t+1,a=this._maxEntries,o;if(i<=a)return o=_t(e.slice(t,n+1)),ot(o,this.toBBox),o;r||(r=Math.ceil(Math.log(i)/Math.log(a)),a=Math.ceil(i/a**(r-1))),o=_t([]),o.leaf=!1,o.height=r;let s=Math.ceil(i/a),c=s*Math.ceil(Math.sqrt(a));vt(e,t,n,c,this.compareMinX);for(let i=t;i<=n;i+=c){let t=Math.min(i+c-1,n);vt(e,i,t,s,this.compareMinY);for(let n=i;n<=t;n+=s){let i=Math.min(n+s-1,t);o.children.push(this._build(e,n,i,r-1))}}return ot(o,this.toBBox),o}_chooseSubtree(e,t,n,r){for(;r.push(t),!(t.leaf||r.length-1===n);){let n=1/0,r=1/0,i;for(let a=0;a<t.children.length;a++){let o=t.children[a],s=dt(o),c=pt(e,o)-s;c<r?(r=c,n=s<n?s:n,i=o):c===r&&s<n&&(n=s,i=o)}t=i||t.children[0]}return t}_insert(e,t,n){let r=n?e:this.toBBox(e),i=[],a=this._chooseSubtree(r,this.data,t,i);for(a.children.push(e),ct(a,r);t>=0&&i[t].children.length>this._maxEntries;)this._split(i,t),t--;this._adjustParentBBoxes(r,i,t)}_split(e,t){let n=e[t],r=n.children.length,i=this._minEntries;this._chooseSplitAxis(n,i,r);let a=this._chooseSplitIndex(n,i,r),o=_t(n.children.splice(a,n.children.length-a));o.height=n.height,o.leaf=n.leaf,ot(n,this.toBBox),ot(o,this.toBBox),t?e[t-1].children.push(o):this._splitRoot(n,o)}_splitRoot(e,t){this.data=_t([e,t]),this.data.height=e.height+1,this.data.leaf=!1,ot(this.data,this.toBBox)}_chooseSplitIndex(e,t,n){let r,i=1/0,a=1/0;for(let o=t;o<=n-t;o++){let t=st(e,0,o,this.toBBox),s=st(e,o,n,this.toBBox),c=mt(t,s),l=dt(t)+dt(s);c<i?(i=c,r=o,a=l<a?l:a):c===i&&l<a&&(a=l,r=o)}return r||n-t}_chooseSplitAxis(e,t,n){let r=e.leaf?this.compareMinX:lt,i=e.leaf?this.compareMinY:ut;this._allDistMargin(e,t,n,r)<this._allDistMargin(e,t,n,i)&&e.children.sort(r)}_allDistMargin(e,t,n,r){e.children.sort(r);let i=this.toBBox,a=st(e,0,t,i),o=st(e,n-t,n,i),s=ft(a)+ft(o);for(let r=t;r<n-t;r++){let t=e.children[r];ct(a,e.leaf?i(t):t),s+=ft(a)}for(let r=n-t-1;r>=t;r--){let t=e.children[r];ct(o,e.leaf?i(t):t),s+=ft(o)}return s}_adjustParentBBoxes(e,t,n){for(let r=n;r>=0;r--)ct(t[r],e)}_condense(e){for(let t=e.length-1,n;t>=0;t--)e[t].children.length===0?t>0?(n=e[t-1].children,n.splice(n.indexOf(e[t]),1)):this.clear():ot(e[t],this.toBBox)}};function at(e,t,n){if(!n)return t.indexOf(e);for(let r=0;r<t.length;r++)if(n(e,t[r]))return r;return-1}function ot(e,t){st(e,0,e.children.length,t,e)}function st(e,t,n,r,i){i||(i=_t(null)),i.minX=1/0,i.minY=1/0,i.maxX=-1/0,i.maxY=-1/0;for(let a=t;a<n;a++){let t=e.children[a];ct(i,e.leaf?r(t):t)}return i}function ct(e,t){return e.minX=Math.min(e.minX,t.minX),e.minY=Math.min(e.minY,t.minY),e.maxX=Math.max(e.maxX,t.maxX),e.maxY=Math.max(e.maxY,t.maxY),e}function lt(e,t){return e.minX-t.minX}function ut(e,t){return e.minY-t.minY}function dt(e){return(e.maxX-e.minX)*(e.maxY-e.minY)}function ft(e){return e.maxX-e.minX+(e.maxY-e.minY)}function pt(e,t){return(Math.max(t.maxX,e.maxX)-Math.min(t.minX,e.minX))*(Math.max(t.maxY,e.maxY)-Math.min(t.minY,e.minY))}function mt(e,t){let n=Math.max(e.minX,t.minX),r=Math.max(e.minY,t.minY),i=Math.min(e.maxX,t.maxX),a=Math.min(e.maxY,t.maxY);return Math.max(0,i-n)*Math.max(0,a-r)}function ht(e,t){return e.minX<=t.minX&&e.minY<=t.minY&&t.maxX<=e.maxX&&t.maxY<=e.maxY}function gt(e,t){return t.minX<=e.maxX&&t.minY<=e.maxY&&t.maxX>=e.minX&&t.maxY>=e.minY}function _t(e){return{children:e,height:1,leaf:!0,minX:1/0,minY:1/0,maxX:-1/0,maxY:-1/0}}function vt(e,t,n,r,i){let a=[t,n];for(;a.length;){if(n=a.pop(),t=a.pop(),n-t<=r)continue;let o=t+Math.ceil((n-t)/r/2)*r;tt(e,o,t,n,i),a.push(t,o,o,n)}}let yt=Math.PI/180,bt=111320;function xt(e){return Math.max(Math.cos(e*yt),1e-6)}function St(e){return Array.isArray(e)&&e.length===2&&Number.isFinite(e[0])&&Number.isFinite(e[1])}function Ct(e){let{nodes:t}=e,n=t.size,r=new f(n),i=Array(n),a=Array(n),o=0;for(let[e,n]of t)r.add(n.coords[0],n.coords[1]),a[o]=e,i[o]=n.coords,o+=1;return r.finish(),{index:r,coordsArr:i,nodeIds:a}}function wt(e,t,n){e._spatialIndex||(e._spatialIndex=Ct(e));let{index:r,nodeIds:i}=e._spatialIndex,[a,o]=t,s=n/(bt*xt(o));return r.within(a,o,s).map(e=>i[e])}function Tt(e,t,n=500){if(!t||typeof t!=`object`||!t.nodes||typeof t.nodes!=`object`||typeof t.nodes.get!=`function`||typeof t.nodes.has!=`function`||typeof t.nodes.size!=`number`)throw Error(`Invalid graph: expected object with nodes Map.`);if(!St(e))return-1;t._spatialIndex||(t._spatialIndex=Ct(t));let{index:r,coordsArr:i,nodeIds:a}=t._spatialIndex,[o,s]=e,c=n/(bt*xt(s)),l=r.within(o,s,c);if(l.length===0)return-1;let u=-1,d=n;for(let t of l){let n=a[t],r=P(e,i[t]);r<d&&(d=r,u=n)}return u}function Et(e){if(e._incidentEdgeIndex)return e._incidentEdgeIndex;let t=e.nodes.size,n=Array.from({length:t},()=>[]);for(let r=0;r<e.edges.length;r++){let i=e.edges[r];i.source>=0&&i.source<t&&n[i.source].push(r),i.target>=0&&i.target<t&&n[i.target].push(r)}return e._incidentEdgeIndex=n,n}function Dt(e){if(e._edgeSpatialIndex)return e._edgeSpatialIndex;let t=new it,n=[];for(let t=0;t<e.edges.length;t+=1){let r=e.edges[t],i=e.nodes.get(r.source),a=e.nodes.get(r.target);if(!i||!a)continue;let[o,s]=i.coords,[c,l]=a.coords,u=Math.min(o,c),d=Math.min(s,l),f=Math.max(o,c),p=Math.max(s,l);n.push({minX:u,minY:d,maxX:f,maxY:p,edgeIndex:t})}return t.load(n),e._edgeSpatialIndex={tree:t},e._edgeSpatialIndex}function Ot(e,t,n){let{tree:r}=Dt(e),[i,a]=t,o=n/(bt*xt(a)),s=n/bt;return r.search({minX:i-o,minY:a-s,maxX:i+o,maxY:a+s}).map(e=>e.edgeIndex)}function kt(e,t,n,r){let i=e[0]*r,a=e[1],o=t[0]*r,s=t[1],c=n[0]*r,l=n[1],u=c-o,d=l-s,f=u*u+d*d;if(f===0)return null;let p=((i-o)*u+(a-s)*d)/f;return{t:p,projected:[o+u*p,s+d*p]}}function At(e,t,n,r=60){let i=wt(t,e,n+250),a=Et(t),o=new Set;for(let e of i){let t=a[e];if(t)for(let e of t)o.add(e)}for(let r of Ot(t,e,n+250))o.add(r);if(o.size===0)return null;let s=xt(e[1]),c=null,l=i=>{let a=t.edges[i];if(!a)return;let o=t.nodes.get(a.source)?.coords,l=t.nodes.get(a.target)?.coords;if(!o||!l||a.cost===-1&&a.reverseCost===-1)return;let u=kt(e,o,l,s);if(!u)return;let{t:d,projected:f}=u,p=Math.max(0,Math.min(1,d)),m=p===d?[f[0]/s,f[1]]:[(o[0]*s+(l[0]*s-o[0]*s)*p)/s,o[1]+(l[1]-o[1])*p],h=P(e,m);h>n||h>r||(!c||h<c.distanceM)&&(c={edge:a,edgeIndex:i,projectedCoords:m,distanceM:h,source:a.source,target:a.target,t:p})};for(let e of o)l(e);return c}function jt(e,t,n){let r={id:t,coords:n};return{size:e.size+1,get(n){return n===t?r:e.get(n)},has(n){return n===t||e.has(n)},keys(){return(function*(){for(let t of e.keys())yield t;yield t})()},values(){return(function*(){for(let t of e.values())yield t;yield r})()},entries(){return(function*(){for(let t of e.entries())yield t;yield[t,r]})()},[Symbol.iterator](){return this.entries()}}}function Mt(e,t,n){let r=e.length+n.length-1,i=Array(r),a=0;for(let n=0;n<t;n+=1)i[a++]=e[n];for(let e=0;e<n.length;e+=1)i[a++]=n[e];for(let n=t+1;n<e.length;n+=1)i[a++]=e[n];return i}function Nt(e){let t=-1;for(let n of e.nodes.keys())n>t&&(t=n);return t+1}function Pt(e,t){let n=Nt(e),r=jt(e.nodes,n,t.projectedCoords),i=e.nodes.get(t.edge.source).coords,a=e.nodes.get(t.edge.target).coords,o=P(i,t.projectedCoords),s=P(t.projectedCoords,a),c=o/(t.edge.speed/3.6),l=s/(t.edge.speed/3.6),u=t.edge.properties,d=t.edge.fibonacciScore,f=Number.isFinite(t.edge.id)?t.edge.id:e.edges.length,p=-(f*2+1),m=-(f*2+2),h=t.edge.cost===-1?-1:o,g=t.edge.cost===-1?-1:s,_=t.edge.reverseCost===-1?-1:o,v=t.edge.reverseCost===-1?-1:s,y=[{id:p,source:t.edge.source,target:n,cost:h,reverseCost:_,length:o,speed:t.edge.speed,travelTime:c,properties:u,fibonacciScore:d},{id:m,source:n,target:t.edge.target,cost:g,reverseCost:v,length:s,speed:t.edge.speed,travelTime:l,properties:u,fibonacciScore:d}],b=Mt(e.edges,t.edgeIndex,y),x={...e,nodes:r,edges:b,nodeIndex:e.nodeIndex&&new Map(e.nodeIndex),_lastAddedNodeId:n};return delete x._spatialIndex,delete x._incidentEdgeIndex,delete x._edgeSpatialIndex,delete x._prepared,x}function Ft(e,t,n,r=60){let i={type:`none`,nodeId:-1,nodeSnapDistanceM:1/0,segmentSnap:null,segmentSnapDistanceM:1/0,snapDistanceM:1/0};if(!St(e))return i;let a=Tt(e,t,n);i.nodeId=a,a!==-1&&(i.nodeSnapDistanceM=P(e,t.nodes.get(a)?.coords??[NaN,NaN]));let o=At(e,t,n,r);return o?(i.segmentSnap=o,i.segmentSnapDistanceM=o.distanceM,o.t===0||o.t===1?(i.nodeId=o.t===0?o.source:o.target,i.nodeSnapDistanceM=o.distanceM,i.type=`node`,i.snapDistanceM=o.distanceM):(i.type=`segment`,i.snapDistanceM=i.segmentSnapDistanceM)):i.nodeId!==-1&&(i.type=`node`,i.snapDistanceM=i.nodeSnapDistanceM),i}function It(e,t,n,r=60){let i=Array.isArray(n)&&n.length>0?n:[250,500,800],a={type:`none`,nodeId:-1,nodeSnapDistanceM:1/0,segmentSnap:null,segmentSnapDistanceM:1/0,snapDistanceM:1/0};for(let n of i)if(a=Ft(e,t,n,r),a.type!==`none`)return a;return a}let Lt=Object.freeze({generatedAt:`2026-05-14T12:09:50.023890+00:00`,featureOrder:`safeN.safeE.safeBeelineKm.avgOutDegree.logAvgOutDegree.edgesPerKm.nodesPerKm.sizeRatioEN.beelinePerNode.relativeDensity.logRelativeDensity.globalCoverage.logGlobalCoverage.emptyRatio.logEmptyRatio.sourceDegree.logSourceDegree.targetDegree.logTargetDegree.sourceCentrality.logSourceCentrality.targetCentrality.logTargetCentrality.sourceTargetDegreeRatio.logSourceTargetDegreeRatio.sourceTargetCentralityRatio.logSourceTargetCentralityRatio.graphDensity.logGraphDensity.avgBranchFactor.logAvgBranchFactor.logN.logE.logBeelineKm.logEdgesPerKm.logNodesPerKm.logEoverN.logBeelinePerNode.densityBySize.logDensityBySize.coverageDensity.logCoverageDensity.degreeProduct.logDegreeProduct.centralityProduct.logCentralityProduct.coverageEmptyContrast.logCoverageEmptyContrast.safeBeelineKmOverSizeRatioEN.globalCoverageTimesEmptyRatio.avgOutDegreeTimesLogRelativeDensity.beelinePerNodeTimesSourceTargetDegreeRatio.coverageEmptyContrastTimesLogAvgBranchFactor.densityBySizeTimesSourceCentrality`.split(`.`),engines:[`bidirectional-astar`,`adaptive-barrier`,`delta-stepping`,`ultra-dijkstra`],profiles:{sabOff:{modelType:`runtime-linear`,runtimeFeatureOrder:[`logCoverageEmptyContrast`,`coverageEmptyContrast`,`logBeelineKm`,`logGlobalCoverage`,`coverageEmptyContrastTimesLogAvgBranchFactor`,`globalCoverageTimesEmptyRatio`,`globalCoverage`,`logN`,`logCoverageDensity`,`coverageDensity`,`logBeelinePerNode`,`emptyRatio`,`logEmptyRatio`,`nodesPerKm`,`safeE`,`logNodesPerKm`,`safeN`,`logDegreeProduct`,`logAvgOutDegree`],runtimeScalerMean:[.06556720195803181,.0731442078931785,1.4236504914043746,.1274378465216673,.07819653195448278,.08118231694255597,.1543265248357349,10.303111752925552,.17318584189179753,.22518520180606383,.11077072259443911,.6113882096815391,.4697981181917068,25886.454095149275,96300.95706156234,9.542876204745204,50236.53543714433,1.1404662599176258,1.0376200671227167],runtimeScalerScale:[.09791359830930801,.11283372783744608,1.205813794351115,.1729715667652156,.12223918904340954,.12812009435995403,.22270626147508962,.9370328405825591,.23384438099017318,.32774938612525195,.10830298254262768,.1901375656668161,.12239682271807398,30122.03214494164,136140.6064161884,1.134891872441802,66804.89900976988,.37873500296185686,.07307932080003535],scaler_mean:[50236.53543714433,96300.95706156234,8.811713398861887,1.8301021595600395,1.0376200671227167,46691.66932353172,25886.454095149275,1.8301021595600395,.12412093189152984,1.563824666516969,.9006241416831274,.1543265248357349,.1274378465216673,.6113882096815391,.4697981181917068,1.5266425245732023,.9038794415086874,1.5100879461976202,.8968495332975497,240.40972581479565,1.6462850154099467,207.89136057941025,1.482679392704691,1.1176064838765305,.7227498584196084,156.3625135791239,1.21825247223386,1.563824666516969,.9006241416831274,1.8301021595600395,1.0376200671227167,10.303111752925552,10.901041114441284,1.4236504914043746,10.140768612397107,9.542876204745204,1.0376200671227167,.11077072259443911,72692.83279130736,10.631200021584998,.22518520180606383,.17318584189179753,2.3652353854112778,1.1404662599176258,68542.94257630626,1.0976159650899078,.0731442078931785,.06556720195803181,4.5708167763977245,.08118231694255597,1.6403681905025316,.139011921267347,.07819653195448278,24210719.982673805],scaler_scale:[66804.89900976988,136140.6064161884,16.37643321707155,.20992740583687178,.07307932080003535,55197.995514594644,30122.03214494164,.20992740583687178,.13408686935044067,.9260257453699001,.26763322218916585,.22270626147508962,.1729715667652156,.1901375656668161,.12239682271807398,.5448711670791195,.21396681826804373,.5435285860691879,.2170080148348037,563.1941228557155,2.7802864215256413,520.7104021530203,2.6817953680212856,.5197638498576193,.23037605747236584,460.25801622388303,2.399787688983799,.9260257453699001,.26763322218916585,.20992740583687178,.07307932080003535,.9370328405825591,.9801404944225173,1.205813794351115,1.1183207232048495,1.134891872441802,.07307932080003535,.10830298254262768,95420.60613838973,1.0812307532601826,.32774938612525195,.23384438099017318,1.325101645292458,.37873500296185686,398239.3546235395,3.4815632581316156,.11283372783744608,.09791359830930801,8.23936595992181,.12812009435995403,.49209809077367217,.1721760789948754,.12223918904340954,94662765.256157],classes:[`bidirectional-astar`,`adaptive-barrier`,`delta-stepping`,`ultra-dijkstra`],fallbackEngine:`ultra-dijkstra`,minConfidence:.38,minMargin:.12886761708647598,regressors:{\"bidirectional-astar\":{coefficients:[-.060064834640561754,.06054298387122733,0,0,-.14163470000905695,0,.09788596715152553,0,0,0,0,-1.1526636021160117,.5343256306566045,.37499750037648033,-.35976433021502024,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.24675822265458403,0,1.2196683029182918,0,-.03983659930268524,0,-.2695451542733109,0,0,.671854724977891,-.7422207555216168,0,.05015013812114926,0,0,-2.694169422480982,2.21552840832821,0,.36908947060756964,0,0,1.0083142901944306,0],intercept:1.6000045151393378},\"adaptive-barrier\":{coefficients:[-.36694436137423125,.5430937632996549,0,0,.0981459127646973,0,.05429129876772165,0,0,0,0,.08103412798635481,-1.5546001821621578,.3914634806647806,-.3904112993709444,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.5755721848471492,0,.856625041652958,0,.11797480512599912,0,-.1346232110649061,0,0,-.035450419464435445,.015164980021515683,0,-.004704384110935086,0,0,-.6693120604092808,1.6180383214594944,0,.7303130942967913,0,0,-.048527134966310656,0],intercept:2.0856753210827215},\"delta-stepping\":{coefficients:[.09046410581749657,-.08565840535321591,0,0,-.037973691758273156,0,.016573474978267232,0,0,0,0,-.3096217110684022,-1.1221739804013025,.20862569890677668,-.17297112009761137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.4170935891136975,0,.6332863801937848,0,.2091579984962251,0,.008125901232422413,0,0,-.15322247533451325,.3901073650784493,0,.020519031402166977,0,0,-1.3083496653601456,1.1325190095747204,0,.6140432279497015,0,0,.8430406793837071,0],intercept:2.464112411396266},\"ultra-dijkstra\":{coefficients:[.16140464728320866,-.14084546769446807,0,0,.04004212149033014,0,-.005418953083769061,0,0,0,0,-.8200856809277366,-.7105944052895973,.09807636851082269,-.09658220559030377,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.5404675517751019,0,.4580313217503341,0,.11390117436384688,0,-.0820528025939607,0,0,.3750794784063655,-.21972942705859694,0,.011454437972059951,0,0,-2.3813989278487337,1.9768855366732156,0,.6717439823546598,0,0,1.2176941802834327,0],intercept:1.5935040890283059}},runtimeRegressors:{\"bidirectional-astar\":{coefficients:[2.21552840832821,-2.694169422480982,1.2196683029182918,.5343256306566045,1.0083142901944306,.36908947060756964,-1.1526636021160117,.24675822265458403,-.7422207555216168,.671854724977891,-.2695451542733109,.37499750037648033,-.35976433021502024,.09788596715152553,.06054298387122733,-.03983659930268524,-.060064834640561754,.05015013812114926,-.14163470000905695],intercept:1.6000045151393378},\"adaptive-barrier\":{coefficients:[1.6180383214594944,-.6693120604092808,.856625041652958,-1.5546001821621578,-.048527134966310656,.7303130942967913,.08103412798635481,.5755721848471492,.015164980021515683,-.035450419464435445,-.1346232110649061,.3914634806647806,-.3904112993709444,.05429129876772165,.5430937632996549,.11797480512599912,-.36694436137423125,-.004704384110935086,.0981459127646973],intercept:2.0856753210827215},\"delta-stepping\":{coefficients:[1.1325190095747204,-1.3083496653601456,.6332863801937848,-1.1221739804013025,.8430406793837071,.6140432279497015,-.3096217110684022,.4170935891136975,.3901073650784493,-.15322247533451325,.008125901232422413,.20862569890677668,-.17297112009761137,.016573474978267232,-.08565840535321591,.2091579984962251,.09046410581749657,.020519031402166977,-.037973691758273156],intercept:2.464112411396266},\"ultra-dijkstra\":{coefficients:[1.9768855366732156,-2.3813989278487337,.4580313217503341,-.7105944052895973,1.2176941802834327,.6717439823546598,-.8200856809277366,.5404675517751019,-.21972942705859694,.3750794784063655,-.0820528025939607,.09807636851082269,-.09658220559030377,-.005418953083769061,-.14084546769446807,.11390117436384688,.16140464728320866,.011454437972059951,.04004212149033014],intercept:1.5935040890283059}}},sabOn:{modelType:`runtime-linear`,runtimeFeatureOrder:[`logBeelineKm`,`coverageEmptyContrast`,`logCoverageEmptyContrast`,`coverageEmptyContrastTimesLogAvgBranchFactor`,`logGlobalCoverage`,`emptyRatio`,`logEmptyRatio`,`safeN`,`logN`,`safeE`,`globalCoverageTimesEmptyRatio`,`logCoverageDensity`,`coverageDensity`,`logDegreeProduct`,`globalCoverage`,`logSourceDegree`,`logE`,`safeBeelineKm`],runtimeScalerMean:[1.4236504914043746,.0731442078931785,.06556720195803181,.07819653195448278,.1274378465216673,.6113882096815391,.4697981181917068,50236.53543714433,10.303111752925552,96300.95706156234,.08118231694255597,.17318584189179753,.22518520180606383,1.1404662599176258,.1543265248357349,.9038794415086874,10.901041114441284,8.811713398861887],runtimeScalerScale:[1.205813794351115,.11283372783744608,.09791359830930801,.12223918904340954,.1729715667652156,.1901375656668161,.12239682271807398,66804.89900976988,.9370328405825591,136140.6064161884,.12812009435995403,.23384438099017318,.32774938612525195,.37873500296185686,.22270626147508962,.21396681826804373,.9801404944225173,16.37643321707155],scaler_mean:[50236.53543714433,96300.95706156234,8.811713398861887,1.8301021595600395,1.0376200671227167,46691.66932353172,25886.454095149275,1.8301021595600395,.12412093189152984,1.563824666516969,.9006241416831274,.1543265248357349,.1274378465216673,.6113882096815391,.4697981181917068,1.5266425245732023,.9038794415086874,1.5100879461976202,.8968495332975497,240.40972581479565,1.6462850154099467,207.89136057941025,1.482679392704691,1.1176064838765305,.7227498584196084,156.3625135791239,1.21825247223386,1.563824666516969,.9006241416831274,1.8301021595600395,1.0376200671227167,10.303111752925552,10.901041114441284,1.4236504914043746,10.140768612397107,9.542876204745204,1.0376200671227167,.11077072259443911,72692.83279130736,10.631200021584998,.22518520180606383,.17318584189179753,2.3652353854112778,1.1404662599176258,68542.94257630626,1.0976159650899078,.0731442078931785,.06556720195803181,4.5708167763977245,.08118231694255597,1.6403681905025316,.139011921267347,.07819653195448278,24210719.982673805],scaler_scale:[66804.89900976988,136140.6064161884,16.37643321707155,.20992740583687178,.07307932080003535,55197.995514594644,30122.03214494164,.20992740583687178,.13408686935044067,.9260257453699001,.26763322218916585,.22270626147508962,.1729715667652156,.1901375656668161,.12239682271807398,.5448711670791195,.21396681826804373,.5435285860691879,.2170080148348037,563.1941228557155,2.7802864215256413,520.7104021530203,2.6817953680212856,.5197638498576193,.23037605747236584,460.25801622388303,2.399787688983799,.9260257453699001,.26763322218916585,.20992740583687178,.07307932080003535,.9370328405825591,.9801404944225173,1.205813794351115,1.1183207232048495,1.134891872441802,.07307932080003535,.10830298254262768,95420.60613838973,1.0812307532601826,.32774938612525195,.23384438099017318,1.325101645292458,.37873500296185686,398239.3546235395,3.4815632581316156,.11283372783744608,.09791359830930801,8.23936595992181,.12812009435995403,.49209809077367217,.1721760789948754,.12223918904340954,94662765.256157],classes:[`bidirectional-astar`,`adaptive-barrier`,`delta-stepping`,`ultra-dijkstra`],fallbackEngine:`ultra-dijkstra`,minConfidence:.4031064417572186,minMargin:.13592029146354787,regressors:{\"bidirectional-astar\":{coefficients:[.06396195345941952,.09843120066599517,-.043605193085689505,0,0,0,0,0,0,0,0,-.9224205241257682,.07116530021749333,.48182240214529687,-.48601106070768924,0,.013826821833020215,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1.645942252681823,-1.379134923092328,.7399021028741163,0,0,0,0,0,0,.784492571669958,-1.0238954503421347,0,.020726921315062014,0,0,-2.4553944652215693,2.442434467028444,0,.559026160140828,0,0,.8563954584186991,0],intercept:1.5506585409325215},\"adaptive-barrier\":{coefficients:[-.3580628543870847,.6324701367752412,.08771553813509221,0,0,0,0,0,0,0,0,-.005775223059395949,-1.0147493895976376,.5601828661916017,-.5709491704018335,0,.016037577783091072,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-.0074619458877428725,.7273014841881951,.3288672484055958,0,0,0,0,0,0,.2831014929057221,-.5412888656534994,0,-.02258574661952856,0,0,-.6647723315449283,1.85839767299336,0,.5754176373604867,0,0,-.3223512647983622,0],intercept:2.025635093222053},\"delta-stepping\":{coefficients:[.4636955292282326,-.3376687669738135,.16100812199475653,0,0,0,0,0,0,0,0,-.0957981960545135,-1.145733977045978,.41585700916357704,-.41578613196208664,0,.005557420425558764,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1.126294501726203,-.33815078831666534,.30841022744146873,0,0,0,0,0,0,-.0606321100308792,.23448331170112233,0,.02217706174664163,0,0,-.8352633546539048,.9939206323348815,0,.5690834080211844,0,0,.46288386474685134,0],intercept:3.346688787775706},\"ultra-dijkstra\":{coefficients:[.13171127092823096,.02108969020153371,.01973159956300433,0,0,0,0,0,0,0,0,-.4086688745404235,-.7936697037397609,.2769349407142573,-.27025383182918133,0,.01166791242574731,0,0,0,0,0,0,0,0,0,0,0,0,0,0,.38919012209920906,.22336051159135661,.0818547042850731,0,0,0,0,0,0,.2822318466354596,-.24470429748021025,0,.0030028169135182295,0,0,-1.4337485443127604,1.4682394700156614,0,.552310518974865,0,0,.7110037869807747,0],intercept:1.5361624944689642}},runtimeRegressors:{\"bidirectional-astar\":{coefficients:[.7399021028741163,-2.4553944652215693,2.442434467028444,.8563954584186991,.07116530021749333,.48182240214529687,-.48601106070768924,.06396195345941952,1.645942252681823,.09843120066599517,.559026160140828,-1.0238954503421347,.784492571669958,.020726921315062014,-.9224205241257682,.013826821833020215,-1.379134923092328,-.043605193085689505],intercept:1.5506585409325215},\"adaptive-barrier\":{coefficients:[.3288672484055958,-.6647723315449283,1.85839767299336,-.3223512647983622,-1.0147493895976376,.5601828661916017,-.5709491704018335,-.3580628543870847,-.0074619458877428725,.6324701367752412,.5754176373604867,-.5412888656534994,.2831014929057221,-.02258574661952856,-.005775223059395949,.016037577783091072,.7273014841881951,.08771553813509221],intercept:2.025635093222053},\"delta-stepping\":{coefficients:[.30841022744146873,-.8352633546539048,.9939206323348815,.46288386474685134,-1.145733977045978,.41585700916357704,-.41578613196208664,.4636955292282326,1.126294501726203,-.3376687669738135,.5690834080211844,.23448331170112233,-.0606321100308792,.02217706174664163,-.0957981960545135,.005557420425558764,-.33815078831666534,.16100812199475653],intercept:3.346688787775706},\"ultra-dijkstra\":{coefficients:[.0818547042850731,-1.4337485443127604,1.4682394700156614,.7110037869807747,-.7936697037397609,.2769349407142573,-.27025383182918133,.13171127092823096,.38919012209920906,.02108969020153371,.552310518974865,-.24470429748021025,.2822318466354596,.0030028169135182295,-.4086688745404235,.01166791242574731,.22336051159135661,.01973159956300433],intercept:1.5361624944689642}}}}}),Rt=Object.freeze({\"adaptive-barrier\":Object.freeze({fallbackUseParallel:!1,policy:Object.freeze({minNodesForParallel:13e3,minFrontierForParallel:256})}),\"delta-stepping\":Object.freeze({fallbackUseParallel:!0,policy:Object.freeze({minFrontierForParallel:256})})});Object.freeze({parallelization:Rt}),typeof window<`u`&&typeof navigator<`u`&&typeof SharedArrayBuffer<`u`&&typeof Worker<`u`&&typeof crossOriginIsolated==`boolean`&&crossOriginIsolated,(()=>{let e=Lt?.profiles??{},t=Array.isArray(Lt?.featureOrder)?Lt.featureOrder:[],n={};for(let r in e){let i=e[r];if(!i||typeof i!=`object`)continue;let a=Array.isArray(i.runtimeFeatureOrder)?i.runtimeFeatureOrder:t,o=Array.isArray(i.runtimeScalerMean)?i.runtimeScalerMean:Array.isArray(i.scaler_mean)?i.scaler_mean:null,s=Array.isArray(i.runtimeScalerScale)?i.runtimeScalerScale:Array.isArray(i.scaler_scale)?i.scaler_scale:null,c=Array.isArray(i.classes)?i.classes:null,l=i.runtimeRegressors||i.regressors,u=typeof i.fallbackEngine==`string`?i.fallbackEngine:null,d=i.modelType===`runtime-linear`,f=Array.isArray(o)&&Array.isArray(s)&&Array.isArray(c)&&c.length>0&&a.length===o.length&&a.length===s.length,p=d&&f&&l&&typeof l==`object`&&c.every(e=>{let t=l[e];return t&&Array.isArray(t.coefficients)&&t.coefficients.length===a.length});n[r]=Object.freeze({runtimeFeatureOrder:a,means:o,scales:s,classes:c,fallbackEngine:u,regressors:l,isRuntimeLinear:d,hasValidScaler:f,hasValidRegressors:p,minConfidence:Math.max(.36,Number.isFinite(i.minConfidence)?i.minConfidence:0),minMargin:Math.max(.04,Number.isFinite(i.minMargin)?i.minMargin:0)})}return Object.freeze(n)})();let zt={car:{motorway:1,motorway_link:1,motorway_junction:1,trunk:1.05,trunk_link:1.05,primary:1.15,primary_link:1.15,secondary:1.5,secondary_link:1.5,tertiary:1.75,tertiary_link:1.75,residential:2.5,service:2.5,unclassified:3,living_street:3,road:5,minor:5},bicycle:{cycleway:1,path:1.1,pedestrian:1.1,footway:1.1,bridleway:1.3,track:2,living_street:2,service:2,residential:2.2,unclassified:2.3,tertiary_link:2.5,tertiary:2.5,secondary_link:3,secondary:3,primary_link:3.5,primary:3.5,road:4},pedestrian:{road:1,primary:1,primary_link:1,secondary:1,secondary_link:1,tertiary:1,tertiary_link:1,residential:1,living_street:1,service:1,track:1,pedestrian:1,path:1,cycleway:1,footway:1,bridleway:1,byway:1,steps:1,unclassified:1,minor:1}};function Bt(e={}){let{intersectionPenaltySec:t=0,turnPenaltySec:n=0,turnAngleThresholdDeg:r=25}=e,i=[[`intersectionPenaltySec`,t],[`turnPenaltySec`,n],[`turnAngleThresholdDeg`,r]];for(let[e,t]of i)if(!Number.isFinite(t)||t<0)throw Error(`Invalid penalties.${e}: expected a non-negative finite number`);return{intersectionPenaltySec:t,turnPenaltySec:n,turnAngleThresholdDeg:r}}if(et!==void 0&&et.prototype?._postToWorkerObj){let e=et.prototype._postToWorkerObj;et.prototype._postToWorkerObj=function(t,n,r,i,a,o){if(n&&n.message&&typeof n.message==`object`&&n.message!==null&&!ArrayBuffer.isView(n.message)&&!(n.message instanceof ArrayBuffer)&&Array.isArray(n.transfer)&&n.transfer.length>0&&t?.worker?._underlying?.postMessage)try{return t.worker._underlying.postMessage(n.message,n.transfer),typeof t._startTimes?.push==`function`&&t._startTimes.push(r),t.tasks++,this._activeTasks++,t.lastActive=r,this._isIdle&&this._updateIdleState(),i?o:!0}catch{}return e.call(this,t,n,r,i,a,o)}}new Be(0,{name:`omt-router`});let Vt=Object.freeze({IDLE:`idle`,RUNNING:`running`,CANCELLING:`cancelling`,ERROR:`error`});Object.freeze({cpu:`bidirectional-astar`,bidirectionalAStar:`bidirectional-astar`,adaptiveBarrier:`adaptive-barrier`,deltaStepping:`delta-stepping`,ultraDijkstra:`ultra-dijkstra`});let Ht=typeof navigator<`u`?navigator.hardwareConcurrency??4:4;Math.max(1,Ht-1),Object.freeze({MISSING_RESULT:`missing_result`,ENDPOINT_MISMATCH:`endpoint_mismatch`,INVALID_PATH:`invalid_path`,COST_MISMATCH:`cost_mismatch`,NO_PATH:`no_path`,NO_NODE:`no_node`,POOR_SNAP:`poor_snap`,INCOMPLETE_PATH:`incomplete_path`,TILE_CORS:`tile_cors`,NO_ROUTE:`no_route`,INVALID_ROUTE:`invalid_route`}),Object.freeze({ENGINE_ERROR:`engine_error`,ENGINE_WORKER_FAILED:`engine_worker_failed`,ENGINE_WORKER_CRASHED:`engine_worker_crashed`,ENGINE_WORKER_UNAVAILABLE:`engine_worker_unavailable`,ENGINE_CANCELLED:`engine_cancelled`,ENGINE_SHUTDOWN:`engine_shutdown`,ENGINE_WORKER_BUSY:`engine_worker_busy`});function Ut(e){return e===`travelTime`||e===`optimal`}function Wt(e,t){let n=e.properties?.class??``,r=zt[t];return r?Number(r[n]??1):1}function Gt(e,t){let n=Wt(e,t);return e.travelTime*(1+.7*(n-1))}Vt.IDLE;function Kt(e,t={}){if(!Ut(e))return`none`;let{intersectionPenaltySec:n}=Bt(t);return`i${n}`}function qt(e,t=`distance`,n={}){let{nodes:r,edges:i}=e,a=r.size,o=Bt(n),s=Ut(t)&&o.intersectionPenaltySec>0,c=null;if(s){let e=new Int32Array(a);for(let t of i)t.cost!==-1&&(e[t.source]++,e[t.target]++),t.reverseCost!==-1&&(e[t.target]++,e[t.source]++);c=new Uint8Array(a);for(let t=0;t<a;t++)c[t]=+(e[t]>=3)}let l=i.length*2,u=new Int32Array(l),d=new Int32Array(l),f=new Int32Array(l),p=new Int32Array(l*3),m=new Int32Array(l*3),h=0,g=0,_=0,v=new Map,y=(e,t,n)=>{let r=s&&c&&c[t]?o.intersectionPenaltySec:0,i=v.get(e);if(i||(i=new Set,v.set(e,i)),i.has(t))return;i.add(t);let a=Math.round((n+r)*10);u[h]=e,d[h]=t,f[h]=a,h++,p[g++]=e,p[g++]=t,p[g++]=a,m[_++]=t,m[_++]=e,m[_++]=a};for(let n of i){let r=Ut(t),i=n.cost===-1?-1:r?t===`optimal`?Gt(n,e.mode):n.travelTime:n.length,a=n.reverseCost===-1?-1:r?t===`optimal`?Gt(n,e.mode):n.travelTime:n.length;i!==-1&&y(n.source,n.target,i),a!==-1&&y(n.target,n.source,a)}let b=h,x=u.subarray(0,b),S=d.subarray(0,b),C=f.subarray(0,b),w=new Int32Array(a+1),T=new Int32Array(b),E=new Int32Array(b);for(let e=0;e<g;e+=3)w[p[e]+1]++;for(let e=0;e<a;e++)w[e+1]+=w[e];let D=w.slice(0,a);for(let e=0;e<g;e+=3){let t=p[e],n=p[e+1],r=p[e+2],i=D[t]++;T[i]=n,E[i]=r}let O=new Int32Array(a+1),k=new Int32Array(b),A=new Int32Array(b);for(let e=0;e<_;e+=3)O[m[e]+1]++;for(let e=0;e<a;e++)O[e+1]+=O[e];let ee=O.slice(0,a);for(let e=0;e<_;e+=3){let t=m[e],n=m[e+1],r=m[e+2],i=ee[t]++;k[i]=n,A[i]=r}let te=Array(a);for(let e=0;e<a;e++)te[e]=r.get(e).coords;let j=Array(a);for(let e=0;e<a;e++){let t=w[e],n=w[e+1],r=n-t;if(r===0)continue;if(r===1){j[e]=[T[t],E[t]];continue}let i=new Map;for(let e=t;e<n;e++)i.set(T[e],E[e]);j[e]=i}let ne=x,re=S,ie=C;if(e.mode===`pedestrian`){let e=new Map;for(let t=0;t<x.length;t++){let n=x[t],r=S[t],i=n<r?n:r,a=n<r?r:n,o=i+`:`+a,s=C[t],c=e.get(o);(c===void 0||s<c)&&e.set(o,s)}let t=Array.from(e.entries()),n=t.length,r=new Int32Array(n),i=new Int32Array(n),a=new Int32Array(n),o=0;for(let[e,n]of t){let[t,s]=e.split(`:`).map(Number);r[o]=t,i[o]=s,a[o]=n,o++}ne=r,re=i,ie=a}return{edgeSrc:ne,edgeTgt:re,edgeCostInt:ie,adjPtr:w,adjTo:T,adjCost:E,adjCostMap:j,revAdjPtr:O,revAdjFrom:k,revAdjCost:A,N:a,E:b,nodes:r,coordsArr:te,costField:t,penalties:o,penaltyKey:Kt(t,o),distScale:10,coordsAreGeographic:e.coordsAreGeographic===!0}}let B=11102230246251565e-32,V=134217729;(3+8*B)*B;function Jt(e,t,n,r,i){let a,o,s,c,l=t[0],u=r[0],d=0,f=0;u>l==u>-l?(a=l,l=t[++d]):(a=u,u=r[++f]);let p=0;if(d<e&&f<n)for(u>l==u>-l?(o=l+a,s=a-(o-l),l=t[++d]):(o=u+a,s=a-(o-u),u=r[++f]),a=o,s!==0&&(i[p++]=s);d<e&&f<n;)u>l==u>-l?(o=a+l,c=o-a,s=a-(o-c)+(l-c),l=t[++d]):(o=a+u,c=o-a,s=a-(o-c)+(u-c),u=r[++f]),a=o,s!==0&&(i[p++]=s);for(;d<e;)o=a+l,c=o-a,s=a-(o-c)+(l-c),l=t[++d],a=o,s!==0&&(i[p++]=s);for(;f<n;)o=a+u,c=o-a,s=a-(o-c)+(u-c),u=r[++f],a=o,s!==0&&(i[p++]=s);return(a!==0||p===0)&&(i[p++]=a),p}function Yt(e,t){let n=t[0];for(let r=1;r<e;r++)n+=t[r];return n}function H(e){return new Float64Array(e)}(3+16*B)*B,(2+12*B)*B,(9+64*B)*B*B;let U=H(4),Xt=H(8),Zt=H(12),Qt=H(16),W=H(4);function $t(e,t,n,r,i,a,o){let s,c,l,u,d,f,p,m,h,g,_,v,y,b,x,S,C,w,T=e-i,E=n-i,D=t-a,O=r-a;b=T*O,f=V*T,p=f-(f-T),m=T-p,f=V*O,h=f-(f-O),g=O-h,x=m*g-(b-p*h-m*h-p*g),S=D*E,f=V*D,p=f-(f-D),m=D-p,f=V*E,h=f-(f-E),g=E-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,U[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,U[1]=y-(_+d)+(d-S),w=v+_,d=w-v,U[2]=v-(w-d)+(_-d),U[3]=w;let k=Yt(4,U),A=22204460492503146e-32*o;if(k>=A||-k>=A||(d=e-T,s=e-(T+d)+(d-i),d=n-E,l=n-(E+d)+(d-i),d=t-D,c=t-(D+d)+(d-a),d=r-O,u=r-(O+d)+(d-a),s===0&&c===0&&l===0&&u===0)||(A=11093356479670487e-47*o+33306690738754706e-32*Math.abs(k),k+=T*u+O*s-(D*l+E*c),k>=A||-k>=A))return k;b=s*O,f=V*s,p=f-(f-s),m=s-p,f=V*O,h=f-(f-O),g=O-h,x=m*g-(b-p*h-m*h-p*g),S=c*E,f=V*c,p=f-(f-c),m=c-p,f=V*E,h=f-(f-E),g=E-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,W[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,W[1]=y-(_+d)+(d-S),w=v+_,d=w-v,W[2]=v-(w-d)+(_-d),W[3]=w;let ee=Jt(4,U,4,W,Xt);b=T*u,f=V*T,p=f-(f-T),m=T-p,f=V*u,h=f-(f-u),g=u-h,x=m*g-(b-p*h-m*h-p*g),S=D*l,f=V*D,p=f-(f-D),m=D-p,f=V*l,h=f-(f-l),g=l-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,W[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,W[1]=y-(_+d)+(d-S),w=v+_,d=w-v,W[2]=v-(w-d)+(_-d),W[3]=w;let te=Jt(ee,Xt,4,W,Zt);return b=s*u,f=V*s,p=f-(f-s),m=s-p,f=V*u,h=f-(f-u),g=u-h,x=m*g-(b-p*h-m*h-p*g),S=c*l,f=V*c,p=f-(f-c),m=c-p,f=V*l,h=f-(f-l),g=l-h,C=m*g-(S-p*h-m*h-p*g),_=x-C,d=x-_,W[0]=x-(_+d)+(d-C),v=b+_,d=v-b,y=b-(v-d)+(_-d),_=y-S,d=y-_,W[1]=y-(_+d)+(d-S),w=v+_,d=w-v,W[2]=v-(w-d)+(_-d),W[3]=w,Qt[Jt(te,Zt,4,W,Qt)-1]}function en(e,t,n,r,i,a){let o=(t-a)*(n-i),s=(e-i)*(r-a),c=o-s,l=Math.abs(o+s);return Math.abs(c)>=33306690738754716e-32*l?c:-$t(e,t,n,r,i,a,l)}(7+56*B)*B,(3+28*B)*B,(26+288*B)*B*B,H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(8),H(8),H(8),H(4),H(8),H(8),H(16),H(12),H(192),H(192),(10+96*B)*B,(4+48*B)*B,(44+576*B)*B*B,H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(8),H(8),H(8),H(8),H(8),H(8),H(8),H(8),H(8),H(4),H(4),H(4),H(8),H(16),H(16),H(16),H(32),H(32),H(48),H(64),H(1152),H(1152),(16+224*B)*B,(5+72*B)*B,(71+1408*B)*B*B,H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(4),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(24),H(1152),H(1152),H(1152),H(1152),H(1152),H(2304),H(2304),H(3456),H(5760),H(8),H(8),H(8),H(16),H(24),H(48),H(48),H(96),H(192),H(384),H(384),H(384),H(768),H(96),H(96),H(96),H(1152);let tn=2**-52,nn=new Uint32Array(512);var rn=class e{static from(t,n=dn,r=fn){let i=t.length,a=new Float64Array(i*2);for(let e=0;e<i;e++){let i=t[e];a[2*e]=n(i),a[2*e+1]=r(i)}return new e(a)}constructor(e){let t=e.length>>1;if(t>0&&typeof e[0]!=`number`)throw Error(`Expected coords to contain numbers.`);this.coords=e;let n=Math.max(2*t-5,0);this._triangles=new Uint32Array(n*3),this._halfedges=new Int32Array(n*3),this._hashSize=Math.ceil(Math.sqrt(t)),this._hullPrev=new Uint32Array(t),this._hullNext=new Uint32Array(t),this._hullTri=new Uint32Array(t),this._hullHash=new Int32Array(this._hashSize),this._ids=new Uint32Array(t),this._dists=new Float64Array(t),this.trianglesLen=0,this._cx=0,this._cy=0,this._hullStart=0,this.hull=this._triangles,this.triangles=this._triangles,this.halfedges=this._halfedges,this.update()}update(){let{coords:e,_hullPrev:t,_hullNext:n,_hullTri:r,_hullHash:i}=this,a=e.length>>1,o=1/0,s=1/0,c=-1/0,l=-1/0;for(let t=0;t<a;t++){let n=e[2*t],r=e[2*t+1];n<o&&(o=n),r<s&&(s=r),n>c&&(c=n),r>l&&(l=r),this._ids[t]=t}let u=(o+c)/2,d=(s+l)/2,f=0,p=0,m=0;for(let t=0,n=1/0;t<a;t++){let r=on(u,d,e[2*t],e[2*t+1]);r<n&&(f=t,n=r)}let h=e[2*f],g=e[2*f+1];for(let t=0,n=1/0;t<a;t++){if(t===f)continue;let r=on(h,g,e[2*t],e[2*t+1]);r<n&&r>0&&(p=t,n=r)}let _=e[2*p],v=e[2*p+1],y=1/0;for(let t=0;t<a;t++){if(t===f||t===p)continue;let n=cn(h,g,_,v,e[2*t],e[2*t+1]);n<y&&(m=t,y=n)}let b=e[2*m],x=e[2*m+1];if(y===1/0){for(let t=0;t<a;t++)this._dists[t]=e[2*t]-e[0]||e[2*t+1]-e[1];G(this._ids,this._dists,0,a-1);let t=new Uint32Array(a),n=0;for(let e=0,r=-1/0;e<a;e++){let i=this._ids[e],a=this._dists[i];a>r&&(t[n++]=i,r=a)}this.hull=t.subarray(0,n),this.triangles=new Uint32Array,this.halfedges=new Int32Array;return}if(en(h,g,_,v,b,x)<0){let e=p,t=_,n=v;p=m,_=b,v=x,m=e,b=t,x=n}let S=ln(h,g,_,v,b,x);this._cx=S.x,this._cy=S.y;for(let t=0;t<a;t++)this._dists[t]=on(e[2*t],e[2*t+1],S.x,S.y);G(this._ids,this._dists,0,a-1),this._hullStart=f;let C=3;n[f]=t[m]=p,n[p]=t[f]=m,n[m]=t[p]=f,r[f]=0,r[p]=1,r[m]=2,i.fill(-1),i[this._hashKey(h,g)]=f,i[this._hashKey(_,v)]=p,i[this._hashKey(b,x)]=m,this.trianglesLen=0,this._addTriangle(f,p,m,-1,-1,-1);for(let a=0,o=0,s=0;a<this._ids.length;a++){let c=this._ids[a],l=e[2*c],u=e[2*c+1];if(a>0&&Math.abs(l-o)<=tn&&Math.abs(u-s)<=tn||(o=l,s=u,c===f||c===p||c===m))continue;let d=0;for(let e=0,t=this._hashKey(l,u);e<this._hashSize&&(d=i[(t+e)%this._hashSize],!(d!==-1&&d!==n[d]));e++);d=t[d];let h=d,g;for(;g=n[h],en(l,u,e[2*h],e[2*h+1],e[2*g],e[2*g+1])>=0;)if(h=g,h===d){h=-1;break}if(h===-1)continue;let _=this._addTriangle(h,c,n[h],-1,-1,r[h]);r[c]=this._legalize(_+2),r[h]=_,C++;let v=n[h];for(;g=n[v],en(l,u,e[2*v],e[2*v+1],e[2*g],e[2*g+1])<0;)_=this._addTriangle(v,c,g,r[c],-1,r[v]),r[c]=this._legalize(_+2),n[v]=v,C--,v=g;if(h===d)for(;g=t[h],en(l,u,e[2*g],e[2*g+1],e[2*h],e[2*h+1])<0;)_=this._addTriangle(g,c,h,-1,r[h],r[g]),this._legalize(_+2),r[g]=_,n[h]=h,C--,h=g;this._hullStart=t[c]=h,n[h]=t[v]=c,n[c]=v,i[this._hashKey(l,u)]=c,i[this._hashKey(e[2*h],e[2*h+1])]=h}this.hull=new Uint32Array(C);for(let e=0,t=this._hullStart;e<C;e++)this.hull[e]=t,t=n[t];this.triangles=this._triangles.subarray(0,this.trianglesLen),this.halfedges=this._halfedges.subarray(0,this.trianglesLen)}_hashKey(e,t){return Math.floor(an(e-this._cx,t-this._cy)*this._hashSize)%this._hashSize}_legalize(e){let{_triangles:t,_halfedges:n,coords:r}=this,i=0,a=0;for(;;){let o=n[e],s=e-e%3;if(a=s+(e+2)%3,o===-1){if(i===0)break;e=nn[--i];continue}let c=o-o%3,l=s+(e+1)%3,u=c+(o+2)%3,d=t[a],f=t[e],p=t[l],m=t[u];if(sn(r[2*d],r[2*d+1],r[2*f],r[2*f+1],r[2*p],r[2*p+1],r[2*m],r[2*m+1])){t[e]=m,t[o]=d;let r=n[u];if(r===-1){let t=this._hullStart;do{if(this._hullTri[t]===u){this._hullTri[t]=e;break}t=this._hullPrev[t]}while(t!==this._hullStart)}this._link(e,r),this._link(o,n[a]),this._link(a,u);let s=c+(o+1)%3;i<nn.length&&(nn[i++]=s)}else{if(i===0)break;e=nn[--i]}}return a}_link(e,t){this._halfedges[e]=t,t!==-1&&(this._halfedges[t]=e)}_addTriangle(e,t,n,r,i,a){let o=this.trianglesLen;return this._triangles[o]=e,this._triangles[o+1]=t,this._triangles[o+2]=n,this._link(o,r),this._link(o+1,i),this._link(o+2,a),this.trianglesLen+=3,o}};function an(e,t){let n=e/(Math.abs(e)+Math.abs(t));return(t>0?3-n:1+n)/4}function on(e,t,n,r){let i=e-n,a=t-r;return i*i+a*a}function sn(e,t,n,r,i,a,o,s){let c=e-o,l=t-s,u=n-o,d=r-s,f=i-o,p=a-s,m=c*c+l*l,h=u*u+d*d,g=f*f+p*p;return c*(d*g-h*p)-l*(u*g-h*f)+m*(u*p-d*f)<0}function cn(e,t,n,r,i,a){let o=n-e,s=r-t,c=i-e,l=a-t,u=o*o+s*s,d=c*c+l*l,f=.5/(o*l-s*c),p=(l*u-s*d)*f,m=(o*d-c*u)*f;return p*p+m*m}function ln(e,t,n,r,i,a){let o=n-e,s=r-t,c=i-e,l=a-t,u=o*o+s*s,d=c*c+l*l,f=.5/(o*l-s*c);return{x:e+(l*u-s*d)*f,y:t+(o*d-c*u)*f}}function G(e,t,n,r){if(r-n<=20)for(let i=n+1;i<=r;i++){let r=e[i],a=t[r],o=i-1;for(;o>=n&&t[e[o]]>a;)e[o+1]=e[o--];e[o+1]=r}else{let i=n+r>>1,a=n+1,o=r;un(e,i,a),t[e[n]]>t[e[r]]&&un(e,n,r),t[e[a]]>t[e[r]]&&un(e,a,r),t[e[n]]>t[e[a]]&&un(e,n,a);let s=e[a],c=t[s];for(;;){do a++;while(t[e[a]]<c);do o--;while(t[e[o]]>c);if(o<a)break;un(e,a,o)}e[n+1]=e[o],e[o]=s,r-a+1>=o-n?(G(e,t,a,r),G(e,t,n,o-1)):(G(e,t,n,o-1),G(e,t,a,r))}}function un(e,t,n){let r=e[t];e[t]=e[n],e[n]=r}function dn(e){return e[0]}function fn(e){return e[1]}let pn=1e-6;var K=class{constructor(){this._x0=this._y0=this._x1=this._y1=null,this._=``}moveTo(e,t){this._+=`M${this._x0=this._x1=+e},${this._y0=this._y1=+t}`}closePath(){this._x1!==null&&(this._x1=this._x0,this._y1=this._y0,this._+=`Z`)}lineTo(e,t){this._+=`L${this._x1=+e},${this._y1=+t}`}arc(e,t,n){e=+e,t=+t,n=+n;let r=e+n,i=t;if(n<0)throw Error(`negative radius`);this._x1===null?this._+=`M${r},${i}`:(Math.abs(this._x1-r)>pn||Math.abs(this._y1-i)>pn)&&(this._+=`L`+r+`,`+i),n&&(this._+=`A${n},${n},0,1,1,${e-n},${t}A${n},${n},0,1,1,${this._x1=r},${this._y1=i}`)}rect(e,t,n,r){this._+=`M${this._x0=this._x1=+e},${this._y0=this._y1=+t}h${+n}v${+r}h${-n}Z`}value(){return this._||null}},mn=class{constructor(){this._=[]}moveTo(e,t){this._.push([e,t])}closePath(){this._.push(this._[0].slice())}lineTo(e,t){this._.push([e,t])}value(){return this._.length?this._:null}},hn=class{constructor(e,[t,n,r,i]=[0,0,960,500]){if(!((r=+r)>=(t=+t))||!((i=+i)>=(n=+n)))throw Error(`invalid bounds`);this.delaunay=e,this._circumcenters=new Float64Array(e.points.length*2),this.vectors=new Float64Array(e.points.length*2),this.xmax=r,this.xmin=t,this.ymax=i,this.ymin=n,this._init()}update(){return this.delaunay.update(),this._init(),this}_init(){let{delaunay:{points:e,hull:t,triangles:n},vectors:r}=this,i,a,o=this.circumcenters=this._circumcenters.subarray(0,n.length/3*2);for(let r=0,s=0,c=n.length,l,u;r<c;r+=3,s+=2){let c=n[r]*2,d=n[r+1]*2,f=n[r+2]*2,p=e[c],m=e[c+1],h=e[d],g=e[d+1],_=e[f],v=e[f+1],y=h-p,b=g-m,x=_-p,S=v-m,C=(y*S-b*x)*2;if(Math.abs(C)<1e-9){if(i===void 0){i=a=0;for(let n of t)i+=e[n*2],a+=e[n*2+1];i/=t.length,a/=t.length}let n=1e9*Math.sign((i-p)*S-(a-m)*x);l=(p+_)/2-n*S,u=(m+v)/2+n*x}else{let e=1/C,t=y*y+b*b,n=x*x+S*S;l=p+(S*t-b*n)*e,u=m+(y*n-x*t)*e}o[s]=l,o[s+1]=u}let s=t[t.length-1],c,l=s*4,u,d=e[2*s],f,p=e[2*s+1];r.fill(0);for(let n=0;n<t.length;++n)s=t[n],c=l,u=d,f=p,l=s*4,d=e[2*s],p=e[2*s+1],r[c+2]=r[l]=f-p,r[c+3]=r[l+1]=d-u}render(e){let t=e==null?e=new K:void 0,{delaunay:{halfedges:n,inedges:r,hull:i},circumcenters:a,vectors:o}=this;if(i.length<=1)return null;for(let t=0,r=n.length;t<r;++t){let r=n[t];if(r<t)continue;let i=Math.floor(t/3)*2,o=Math.floor(r/3)*2,s=a[i],c=a[i+1],l=a[o],u=a[o+1];this._renderSegment(s,c,l,u,e)}let s,c=i[i.length-1];for(let t=0;t<i.length;++t){s=c,c=i[t];let n=Math.floor(r[c]/3)*2,l=a[n],u=a[n+1],d=s*4,f=this._project(l,u,o[d+2],o[d+3]);f&&this._renderSegment(l,u,f[0],f[1],e)}return t&&t.value()}renderBounds(e){let t=e==null?e=new K:void 0;return e.rect(this.xmin,this.ymin,this.xmax-this.xmin,this.ymax-this.ymin),t&&t.value()}renderCell(e,t){let n=t==null?t=new K:void 0,r=this._clip(e);if(r===null||!r.length)return;t.moveTo(r[0],r[1]);let i=r.length;for(;r[0]===r[i-2]&&r[1]===r[i-1]&&i>1;)i-=2;for(let e=2;e<i;e+=2)(r[e]!==r[e-2]||r[e+1]!==r[e-1])&&t.lineTo(r[e],r[e+1]);return t.closePath(),n&&n.value()}*cellPolygons(){let{delaunay:{points:e}}=this;for(let t=0,n=e.length/2;t<n;++t){let e=this.cellPolygon(t);e&&(e.index=t,yield e)}}cellPolygon(e){let t=new mn;return this.renderCell(e,t),t.value()}_renderSegment(e,t,n,r,i){let a,o=this._regioncode(e,t),s=this._regioncode(n,r);o===0&&s===0?(i.moveTo(e,t),i.lineTo(n,r)):(a=this._clipSegment(e,t,n,r,o,s))&&(i.moveTo(a[0],a[1]),i.lineTo(a[2],a[3]))}contains(e,t,n){return(t=+t,t!==t)||(n=+n,n!==n)?!1:this.delaunay._step(e,t,n)===e}*neighbors(e){let t=this._clip(e);if(t)for(let n of this.delaunay.neighbors(e)){let e=this._clip(n);if(e){loop:for(let r=0,i=t.length;r<i;r+=2)for(let a=0,o=e.length;a<o;a+=2)if(t[r]===e[a]&&t[r+1]===e[a+1]&&t[(r+2)%i]===e[(a+o-2)%o]&&t[(r+3)%i]===e[(a+o-1)%o]){yield n;break loop}}}}_cell(e){let{circumcenters:t,delaunay:{inedges:n,halfedges:r,triangles:i}}=this,a=n[e];if(a===-1)return null;let o=[],s=a;do{let n=Math.floor(s/3);if(o.push(t[n*2],t[n*2+1]),s=s%3==2?s-2:s+1,i[s]!==e)break;s=r[s]}while(s!==a&&s!==-1);return o}_clip(e){if(e===0&&this.delaunay.hull.length===1)return[this.xmax,this.ymin,this.xmax,this.ymax,this.xmin,this.ymax,this.xmin,this.ymin];let t=this._cell(e);if(t===null)return null;let{vectors:n}=this,r=e*4;return this._simplify(n[r]||n[r+1]?this._clipInfinite(e,t,n[r],n[r+1],n[r+2],n[r+3]):this._clipFinite(e,t))}_clipFinite(e,t){let n=t.length,r=null,i,a,o=t[n-2],s=t[n-1],c,l=this._regioncode(o,s),u,d=0;for(let f=0;f<n;f+=2)if(i=o,a=s,o=t[f],s=t[f+1],c=l,l=this._regioncode(o,s),c===0&&l===0)u=d,d=0,r?r.push(o,s):r=[o,s];else{let t,n,f,p,m;if(c===0){if((t=this._clipSegment(i,a,o,s,c,l))===null)continue;[n,f,p,m]=t}else{if((t=this._clipSegment(o,s,i,a,l,c))===null)continue;[p,m,n,f]=t,u=d,d=this._edgecode(n,f),u&&d&&this._edge(e,u,d,r,r.length),r?r.push(n,f):r=[n,f]}u=d,d=this._edgecode(p,m),u&&d&&this._edge(e,u,d,r,r.length),r?r.push(p,m):r=[p,m]}if(r)u=d,d=this._edgecode(r[0],r[1]),u&&d&&this._edge(e,u,d,r,r.length);else if(this.contains(e,(this.xmin+this.xmax)/2,(this.ymin+this.ymax)/2))return[this.xmax,this.ymin,this.xmax,this.ymax,this.xmin,this.ymax,this.xmin,this.ymin];return r}_clipSegment(e,t,n,r,i,a){let o=i<a;for(o&&([e,t,n,r,i,a]=[n,r,e,t,a,i]);;){if(i===0&&a===0)return o?[n,r,e,t]:[e,t,n,r];if(i&a)return null;let s,c,l=i||a;l&8?(s=e+(n-e)*(this.ymax-t)/(r-t),c=this.ymax):l&4?(s=e+(n-e)*(this.ymin-t)/(r-t),c=this.ymin):l&2?(c=t+(r-t)*(this.xmax-e)/(n-e),s=this.xmax):(c=t+(r-t)*(this.xmin-e)/(n-e),s=this.xmin),i?(e=s,t=c,i=this._regioncode(e,t)):(n=s,r=c,a=this._regioncode(n,r))}}_clipInfinite(e,t,n,r,i,a){let o=Array.from(t),s;if((s=this._project(o[0],o[1],n,r))&&o.unshift(s[0],s[1]),(s=this._project(o[o.length-2],o[o.length-1],i,a))&&o.push(s[0],s[1]),o=this._clipFinite(e,o))for(let t=0,n=o.length,r,i=this._edgecode(o[n-2],o[n-1]);t<n;t+=2)r=i,i=this._edgecode(o[t],o[t+1]),r&&i&&(t=this._edge(e,r,i,o,t),n=o.length);else this.contains(e,(this.xmin+this.xmax)/2,(this.ymin+this.ymax)/2)&&(o=[this.xmin,this.ymin,this.xmax,this.ymin,this.xmax,this.ymax,this.xmin,this.ymax]);return o}_edge(e,t,n,r,i){for(;t!==n;){let n,a;switch(t){case 5:t=4;continue;case 4:t=6,n=this.xmax,a=this.ymin;break;case 6:t=2;continue;case 2:t=10,n=this.xmax,a=this.ymax;break;case 10:t=8;continue;case 8:t=9,n=this.xmin,a=this.ymax;break;case 9:t=1;continue;case 1:t=5,n=this.xmin,a=this.ymin;break}(r[i]!==n||r[i+1]!==a)&&this.contains(e,n,a)&&(r.splice(i,0,n,a),i+=2)}return i}_project(e,t,n,r){let i=1/0,a,o,s;if(r<0){if(t<=this.ymin)return null;(a=(this.ymin-t)/r)<i&&(s=this.ymin,o=e+(i=a)*n)}else if(r>0){if(t>=this.ymax)return null;(a=(this.ymax-t)/r)<i&&(s=this.ymax,o=e+(i=a)*n)}if(n>0){if(e>=this.xmax)return null;(a=(this.xmax-e)/n)<i&&(o=this.xmax,s=t+(i=a)*r)}else if(n<0){if(e<=this.xmin)return null;(a=(this.xmin-e)/n)<i&&(o=this.xmin,s=t+(i=a)*r)}return[o,s]}_edgecode(e,t){return(e===this.xmin?1:e===this.xmax?2:0)|(t===this.ymin?4:t===this.ymax?8:0)}_regioncode(e,t){return(e<this.xmin?1:e>this.xmax?2:0)|(t<this.ymin?4:t>this.ymax?8:0)}_simplify(e){if(e&&e.length>4){for(let t=0;t<e.length;t+=2){let n=(t+2)%e.length,r=(t+4)%e.length;(e[t]===e[n]&&e[n]===e[r]||e[t+1]===e[n+1]&&e[n+1]===e[r+1])&&(e.splice(n,2),t-=2)}e.length||(e=null)}return e}};let gn=2*Math.PI,q=Math.pow;function _n(e){return e[0]}function vn(e){return e[1]}function yn(e){let{triangles:t,coords:n}=e;for(let e=0;e<t.length;e+=3){let r=2*t[e],i=2*t[e+1],a=2*t[e+2];if((n[a]-n[r])*(n[i+1]-n[r+1])-(n[i]-n[r])*(n[a+1]-n[r+1])>1e-10)return!1}return!0}function bn(e,t,n){return[e+Math.sin(e+t)*n,t+Math.cos(e-t)*n]}var xn=class e{static from(t,n=_n,r=vn,i){return new e(`length`in t?Sn(t,n,r,i):Float64Array.from(Cn(t,n,r,i)))}constructor(e){this._delaunator=new rn(e),this.inedges=new Int32Array(e.length/2),this._hullIndex=new Int32Array(e.length/2),this.points=this._delaunator.coords,this._init()}update(){return this._delaunator.update(),this._init(),this}_init(){let e=this._delaunator,t=this.points;if(e.hull&&e.hull.length>2&&yn(e)){this.collinear=Int32Array.from({length:t.length/2},(e,t)=>t).sort((e,n)=>t[2*e]-t[2*n]||t[2*e+1]-t[2*n+1]);let e=this.collinear[0],n=this.collinear[this.collinear.length-1],r=[t[2*e],t[2*e+1],t[2*n],t[2*n+1]],i=1e-8*Math.hypot(r[3]-r[1],r[2]-r[0]);for(let e=0,n=t.length/2;e<n;++e){let n=bn(t[2*e],t[2*e+1],i);t[2*e]=n[0],t[2*e+1]=n[1]}this._delaunator=new rn(t)}else delete this.collinear;let n=this.halfedges=this._delaunator.halfedges,r=this.hull=this._delaunator.hull,i=this.triangles=this._delaunator.triangles,a=this.inedges.fill(-1),o=this._hullIndex.fill(-1);for(let e=0,t=n.length;e<t;++e){let t=i[e%3==2?e-2:e+1];(n[e]===-1||a[t]===-1)&&(a[t]=e)}for(let e=0,t=r.length;e<t;++e)o[r[e]]=e;r.length<=2&&r.length>0&&(this.triangles=new Int32Array(3).fill(-1),this.halfedges=new Int32Array(3).fill(-1),this.triangles[0]=r[0],a[r[0]]=1,r.length===2&&(a[r[1]]=0,this.triangles[1]=r[1],this.triangles[2]=r[1]))}voronoi(e){return new hn(this,e)}*neighbors(e){let{inedges:t,hull:n,_hullIndex:r,halfedges:i,triangles:a,collinear:o}=this;if(o){let t=o.indexOf(e);t>0&&(yield o[t-1]),t<o.length-1&&(yield o[t+1]);return}let s=t[e];if(s===-1)return;let c=s,l=-1;do{if(yield l=a[c],c=c%3==2?c-2:c+1,a[c]!==e)return;if(c=i[c],c===-1){let t=n[(r[e]+1)%n.length];t!==l&&(yield t);return}}while(c!==s)}find(e,t,n=0){if((e=+e,e!==e)||(t=+t,t!==t))return-1;let r=n,i;for(;(i=this._step(n,e,t))>=0&&i!==n&&i!==r;)n=i;return i}_step(e,t,n){let{inedges:r,hull:i,_hullIndex:a,halfedges:o,triangles:s,points:c}=this;if(r[e]===-1||!c.length)return(e+1)%(c.length>>1);let l=e,u=q(t-c[e*2],2)+q(n-c[e*2+1],2),d=r[e],f=d;do{let r=s[f],d=q(t-c[r*2],2)+q(n-c[r*2+1],2);if(d<u&&(u=d,l=r),f=f%3==2?f-2:f+1,s[f]!==e)break;if(f=o[f],f===-1){if(f=i[(a[e]+1)%i.length],f!==r&&q(t-c[f*2],2)+q(n-c[f*2+1],2)<u)return f;break}}while(f!==d);return l}render(e){let t=e==null?e=new K:void 0,{points:n,halfedges:r,triangles:i}=this;for(let t=0,a=r.length;t<a;++t){let a=r[t];if(a<t)continue;let o=i[t]*2,s=i[a]*2;e.moveTo(n[o],n[o+1]),e.lineTo(n[s],n[s+1])}return this.renderHull(e),t&&t.value()}renderPoints(e,t){t===void 0&&(!e||typeof e.moveTo!=`function`)&&(t=e,e=null),t=t==null?2:+t;let n=e==null?e=new K:void 0,{points:r}=this;for(let n=0,i=r.length;n<i;n+=2){let i=r[n],a=r[n+1];e.moveTo(i+t,a),e.arc(i,a,t,0,gn)}return n&&n.value()}renderHull(e){let t=e==null?e=new K:void 0,{hull:n,points:r}=this,i=n[0]*2,a=n.length;e.moveTo(r[i],r[i+1]);for(let t=1;t<a;++t){let i=2*n[t];e.lineTo(r[i],r[i+1])}return e.closePath(),t&&t.value()}hullPolygon(){let e=new mn;return this.renderHull(e),e.value()}renderTriangle(e,t){let n=t==null?t=new K:void 0,{points:r,triangles:i}=this,a=i[e*=3]*2,o=i[e+1]*2,s=i[e+2]*2;return t.moveTo(r[a],r[a+1]),t.lineTo(r[o],r[o+1]),t.lineTo(r[s],r[s+1]),t.closePath(),n&&n.value()}*trianglePolygons(){let{triangles:e}=this;for(let t=0,n=e.length/3;t<n;++t)yield this.trianglePolygon(t)}trianglePolygon(e){let t=new mn;return this.renderTriangle(e,t),t.value()}};function Sn(e,t,n,r){let i=e.length,a=new Float64Array(i*2);for(let o=0;o<i;++o){let i=e[o];a[o*2]=t.call(r,i,o,e),a[o*2+1]=n.call(r,i,o,e)}return a}function*Cn(e,t,n,r){let i=0;for(let a of e)yield t.call(r,a,i,e),yield n.call(r,a,i,e),++i}function wn(e,t){return e==null||t==null?NaN:e<t?-1:e>t?1:e>=t?0:NaN}function Tn(e,t){return e==null||t==null?NaN:t<e?-1:t>e?1:t>=e?0:NaN}function En(e){let t,n,r;e.length===2?(t=e===wn||e===Tn?e:Dn,n=e,r=e):(t=wn,n=(t,n)=>wn(e(t),n),r=(t,n)=>e(t)-n);function i(e,r,i=0,a=e.length){if(i<a){if(t(r,r)!==0)return a;do{let t=i+a>>>1;n(e[t],r)<0?i=t+1:a=t}while(i<a)}return i}function a(e,r,i=0,a=e.length){if(i<a){if(t(r,r)!==0)return a;do{let t=i+a>>>1;n(e[t],r)<=0?i=t+1:a=t}while(i<a)}return i}function o(e,t,n=0,a=e.length){let o=i(e,t,n,a-1);return o>n&&r(e[o-1],t)>-r(e[o],t)?o-1:o}return{left:i,center:o,right:a}}function Dn(){return 0}function On(e){return e===null?NaN:+e}let kn=En(wn),An=kn.right;kn.left,En(On).center;let jn=Math.sqrt(50),Mn=Math.sqrt(10),Nn=Math.sqrt(2);function Pn(e,t,n){let r=(t-e)/Math.max(0,n),i=Math.floor(Math.log10(r)),a=r/10**i,o=a>=jn?10:a>=Mn?5:a>=Nn?2:1,s,c,l;return i<0?(l=10**-i/o,s=Math.round(e*l),c=Math.round(t*l),s/l<e&&++s,c/l>t&&--c,l=-l):(l=10**i*o,s=Math.round(e/l),c=Math.round(t/l),s*l<e&&++s,c*l>t&&--c),c<s&&.5<=n&&n<2?Pn(e,t,n*2):[s,c,l]}function Fn(e,t,n){if(t=+t,e=+e,n=+n,!(n>0))return[];if(e===t)return[e];let r=t<e,[i,a,o]=r?Pn(t,e,n):Pn(e,t,n);if(!(a>=i))return[];let s=a-i+1,c=Array(s);if(r)if(o<0)for(let e=0;e<s;++e)c[e]=(a-e)/-o;else for(let e=0;e<s;++e)c[e]=(a-e)*o;else if(o<0)for(let e=0;e<s;++e)c[e]=(i+e)/-o;else for(let e=0;e<s;++e)c[e]=(i+e)*o;return c}function In(e,t,n){return t=+t,e=+e,n=+n,Pn(e,t,n)[2]}function Ln(e,t,n){t=+t,e=+e,n=+n;let r=t<e,i=r?In(t,e,n):In(e,t,n);return(r?-1:1)*(i<0?1/-i:i)}function Rn(e,t){switch(arguments.length){case 0:break;case 1:this.range(e);break;default:this.range(t).domain(e);break}return this}function zn(e,t,n){e.prototype=t.prototype=n,n.constructor=e}function Bn(e,t){var n=Object.create(e.prototype);for(var r in t)n[r]=t[r];return n}function Vn(){}var Hn=.7,Un=1/Hn,J=`\\\\s*([+-]?\\\\d+)\\\\s*`,Wn=`\\\\s*([+-]?(?:\\\\d*\\\\.)?\\\\d+(?:[eE][+-]?\\\\d+)?)\\\\s*`,Y=`\\\\s*([+-]?(?:\\\\d*\\\\.)?\\\\d+(?:[eE][+-]?\\\\d+)?)%\\\\s*`,Gn=/^#([0-9a-f]{3,8})$/,Kn=RegExp(`^rgb\\\\(${J},${J},${J}\\\\)$`),qn=RegExp(`^rgb\\\\(${Y},${Y},${Y}\\\\)$`),Jn=RegExp(`^rgba\\\\(${J},${J},${J},${Wn}\\\\)$`),Yn=RegExp(`^rgba\\\\(${Y},${Y},${Y},${Wn}\\\\)$`),Xn=RegExp(`^hsl\\\\(${Wn},${Y},${Y}\\\\)$`),Zn=RegExp(`^hsla\\\\(${Wn},${Y},${Y},${Wn}\\\\)$`),Qn={aliceblue:15792383,antiquewhite:16444375,aqua:65535,aquamarine:8388564,azure:15794175,beige:16119260,bisque:16770244,black:0,blanchedalmond:16772045,blue:255,blueviolet:9055202,brown:10824234,burlywood:14596231,cadetblue:6266528,chartreuse:8388352,chocolate:13789470,coral:16744272,cornflowerblue:6591981,cornsilk:16775388,crimson:14423100,cyan:65535,darkblue:139,darkcyan:35723,darkgoldenrod:12092939,darkgray:11119017,darkgreen:25600,darkgrey:11119017,darkkhaki:12433259,darkmagenta:9109643,darkolivegreen:5597999,darkorange:16747520,darkorchid:10040012,darkred:9109504,darksalmon:15308410,darkseagreen:9419919,darkslateblue:4734347,darkslategray:3100495,darkslategrey:3100495,darkturquoise:52945,darkviolet:9699539,deeppink:16716947,deepskyblue:49151,dimgray:6908265,dimgrey:6908265,dodgerblue:2003199,firebrick:11674146,floralwhite:16775920,forestgreen:2263842,fuchsia:16711935,gainsboro:14474460,ghostwhite:16316671,gold:16766720,goldenrod:14329120,gray:8421504,green:32768,greenyellow:11403055,grey:8421504,honeydew:15794160,hotpink:16738740,indianred:13458524,indigo:4915330,ivory:16777200,khaki:15787660,lavender:15132410,lavenderblush:16773365,lawngreen:8190976,lemonchiffon:16775885,lightblue:11393254,lightcoral:15761536,lightcyan:14745599,lightgoldenrodyellow:16448210,lightgray:13882323,lightgreen:9498256,lightgrey:13882323,lightpink:16758465,lightsalmon:16752762,lightseagreen:2142890,lightskyblue:8900346,lightslategray:7833753,lightslategrey:7833753,lightsteelblue:11584734,lightyellow:16777184,lime:65280,limegreen:3329330,linen:16445670,magenta:16711935,maroon:8388608,mediumaquamarine:6737322,mediumblue:205,mediumorchid:12211667,mediumpurple:9662683,mediumseagreen:3978097,mediumslateblue:8087790,mediumspringgreen:64154,mediumturquoise:4772300,mediumvioletred:13047173,midnightblue:1644912,mintcream:16121850,mistyrose:16770273,moccasin:16770229,navajowhite:16768685,navy:128,oldlace:16643558,olive:8421376,olivedrab:7048739,orange:16753920,orangered:16729344,orchid:14315734,palegoldenrod:15657130,palegreen:10025880,paleturquoise:11529966,palevioletred:14381203,papayawhip:16773077,peachpuff:16767673,peru:13468991,pink:16761035,plum:14524637,powderblue:11591910,purple:8388736,rebeccapurple:6697881,red:16711680,rosybrown:12357519,royalblue:4286945,saddlebrown:9127187,salmon:16416882,sandybrown:16032864,seagreen:3050327,seashell:16774638,sienna:10506797,silver:12632256,skyblue:8900331,slateblue:6970061,slategray:7372944,slategrey:7372944,snow:16775930,springgreen:65407,steelblue:4620980,tan:13808780,teal:32896,thistle:14204888,tomato:16737095,turquoise:4251856,violet:15631086,wheat:16113331,white:16777215,whitesmoke:16119285,yellow:16776960,yellowgreen:10145074};zn(Vn,rr,{copy(e){return Object.assign(new this.constructor,this,e)},displayable(){return this.rgb().displayable()},hex:$n,formatHex:$n,formatHex8:er,formatHsl:tr,formatRgb:nr,toString:nr});function $n(){return this.rgb().formatHex()}function er(){return this.rgb().formatHex8()}function tr(){return pr(this).formatHsl()}function nr(){return this.rgb().formatRgb()}function rr(e){var t,n;return e=(e+``).trim().toLowerCase(),(t=Gn.exec(e))?(n=t[1].length,t=parseInt(t[1],16),n===6?ir(t):n===3?new X(t>>8&15|t>>4&240,t>>4&15|t&240,(t&15)<<4|t&15,1):n===8?ar(t>>24&255,t>>16&255,t>>8&255,(t&255)/255):n===4?ar(t>>12&15|t>>8&240,t>>8&15|t>>4&240,t>>4&15|t&240,((t&15)<<4|t&15)/255):null):(t=Kn.exec(e))?new X(t[1],t[2],t[3],1):(t=qn.exec(e))?new X(t[1]*255/100,t[2]*255/100,t[3]*255/100,1):(t=Jn.exec(e))?ar(t[1],t[2],t[3],t[4]):(t=Yn.exec(e))?ar(t[1]*255/100,t[2]*255/100,t[3]*255/100,t[4]):(t=Xn.exec(e))?fr(t[1],t[2]/100,t[3]/100,1):(t=Zn.exec(e))?fr(t[1],t[2]/100,t[3]/100,t[4]):Qn.hasOwnProperty(e)?ir(Qn[e]):e===`transparent`?new X(NaN,NaN,NaN,0):null}function ir(e){return new X(e>>16&255,e>>8&255,e&255,1)}function ar(e,t,n,r){return r<=0&&(e=t=n=NaN),new X(e,t,n,r)}function or(e){return e instanceof Vn||(e=rr(e)),e?(e=e.rgb(),new X(e.r,e.g,e.b,e.opacity)):new X}function sr(e,t,n,r){return arguments.length===1?or(e):new X(e,t,n,r??1)}function X(e,t,n,r){this.r=+e,this.g=+t,this.b=+n,this.opacity=+r}zn(X,sr,Bn(Vn,{brighter(e){return e=e==null?Un:Un**+e,new X(this.r*e,this.g*e,this.b*e,this.opacity)},darker(e){return e=e==null?Hn:Hn**+e,new X(this.r*e,this.g*e,this.b*e,this.opacity)},rgb(){return this},clamp(){return new X(Z(this.r),Z(this.g),Z(this.b),dr(this.opacity))},displayable(){return-.5<=this.r&&this.r<255.5&&-.5<=this.g&&this.g<255.5&&-.5<=this.b&&this.b<255.5&&0<=this.opacity&&this.opacity<=1},hex:cr,formatHex:cr,formatHex8:lr,formatRgb:ur,toString:ur}));function cr(){return`#${Q(this.r)}${Q(this.g)}${Q(this.b)}`}function lr(){return`#${Q(this.r)}${Q(this.g)}${Q(this.b)}${Q((isNaN(this.opacity)?1:this.opacity)*255)}`}function ur(){let e=dr(this.opacity);return`${e===1?`rgb(`:`rgba(`}${Z(this.r)}, ${Z(this.g)}, ${Z(this.b)}${e===1?`)`:`, ${e})`}`}function dr(e){return isNaN(e)?1:Math.max(0,Math.min(1,e))}function Z(e){return Math.max(0,Math.min(255,Math.round(e)||0))}function Q(e){return e=Z(e),(e<16?`0`:``)+e.toString(16)}function fr(e,t,n,r){return r<=0?e=t=n=NaN:n<=0||n>=1?e=t=NaN:t<=0&&(e=NaN),new $(e,t,n,r)}function pr(e){if(e instanceof $)return new $(e.h,e.s,e.l,e.opacity);if(e instanceof Vn||(e=rr(e)),!e)return new $;if(e instanceof $)return e;e=e.rgb();var t=e.r/255,n=e.g/255,r=e.b/255,i=Math.min(t,n,r),a=Math.max(t,n,r),o=NaN,s=a-i,c=(a+i)/2;return s?(o=t===a?(n-r)/s+(n<r)*6:n===a?(r-t)/s+2:(t-n)/s+4,s/=c<.5?a+i:2-a-i,o*=60):s=c>0&&c<1?0:o,new $(o,s,c,e.opacity)}function mr(e,t,n,r){return arguments.length===1?pr(e):new $(e,t,n,r??1)}function $(e,t,n,r){this.h=+e,this.s=+t,this.l=+n,this.opacity=+r}zn($,mr,Bn(Vn,{brighter(e){return e=e==null?Un:Un**+e,new $(this.h,this.s,this.l*e,this.opacity)},darker(e){return e=e==null?Hn:Hn**+e,new $(this.h,this.s,this.l*e,this.opacity)},rgb(){var e=this.h%360+(this.h<0)*360,t=isNaN(e)||isNaN(this.s)?0:this.s,n=this.l,r=n+(n<.5?n:1-n)*t,i=2*n-r;return new X(_r(e>=240?e-240:e+120,i,r),_r(e,i,r),_r(e<120?e+240:e-120,i,r),this.opacity)},clamp(){return new $(hr(this.h),gr(this.s),gr(this.l),dr(this.opacity))},displayable(){return(0<=this.s&&this.s<=1||isNaN(this.s))&&0<=this.l&&this.l<=1&&0<=this.opacity&&this.opacity<=1},formatHsl(){let e=dr(this.opacity);return`${e===1?`hsl(`:`hsla(`}${hr(this.h)}, ${gr(this.s)*100}%, ${gr(this.l)*100}%${e===1?`)`:`, ${e})`}`}}));function hr(e){return e=(e||0)%360,e<0?e+360:e}function gr(e){return Math.max(0,Math.min(1,e||0))}function _r(e,t,n){return(e<60?t+(n-t)*e/60:e<180?n:e<240?t+(n-t)*(240-e)/60:t)*255}var vr=e=>()=>e;function yr(e,t){return function(n){return e+n*t}}function br(e,t,n){return e**=+n,t=t**+n-e,n=1/n,function(r){return(e+r*t)**+n}}function xr(e){return(e=+e)==1?Sr:function(t,n){return n-t?br(t,n,e):vr(isNaN(t)?n:t)}}function Sr(e,t){var n=t-e;return n?yr(e,n):vr(isNaN(e)?t:e)}var Cr=(function e(t){var n=xr(t);function r(e,t){var r=n((e=sr(e)).r,(t=sr(t)).r),i=n(e.g,t.g),a=n(e.b,t.b),o=Sr(e.opacity,t.opacity);return function(t){return e.r=r(t),e.g=i(t),e.b=a(t),e.opacity=o(t),e+``}}return r.gamma=e,r})(1);function wr(e,t){t||(t=[]);var n=e?Math.min(t.length,e.length):0,r=t.slice(),i;return function(a){for(i=0;i<n;++i)r[i]=e[i]*(1-a)+t[i]*a;return r}}function Tr(e){return ArrayBuffer.isView(e)&&!(e instanceof DataView)}function Er(e,t){var n=t?t.length:0,r=e?Math.min(n,e.length):0,i=Array(r),a=Array(n),o;for(o=0;o<r;++o)i[o]=Fr(e[o],t[o]);for(;o<n;++o)a[o]=t[o];return function(e){for(o=0;o<r;++o)a[o]=i[o](e);return a}}function Dr(e,t){var n=new Date;return e=+e,t=+t,function(r){return n.setTime(e*(1-r)+t*r),n}}function Or(e,t){return e=+e,t=+t,function(n){return e*(1-n)+t*n}}function kr(e,t){var n={},r={},i;for(i in(typeof e!=`object`||!e)&&(e={}),(typeof t!=`object`||!t)&&(t={}),t)i in e?n[i]=Fr(e[i],t[i]):r[i]=t[i];return function(e){for(i in n)r[i]=n[i](e);return r}}var Ar=/[-+]?(?:\\d+\\.?\\d*|\\.?\\d+)(?:[eE][-+]?\\d+)?/g,jr=new RegExp(Ar.source,`g`);function Mr(e){return function(){return e}}function Nr(e){return function(t){return e(t)+``}}function Pr(e,t){var n=Ar.lastIndex=jr.lastIndex=0,r,i,a,o=-1,s=[],c=[];for(e+=``,t+=``;(r=Ar.exec(e))&&(i=jr.exec(t));)(a=i.index)>n&&(a=t.slice(n,a),s[o]?s[o]+=a:s[++o]=a),(r=r[0])===(i=i[0])?s[o]?s[o]+=i:s[++o]=i:(s[++o]=null,c.push({i:o,x:Or(r,i)})),n=jr.lastIndex;return n<t.length&&(a=t.slice(n),s[o]?s[o]+=a:s[++o]=a),s.length<2?c[0]?Nr(c[0].x):Mr(t):(t=c.length,function(e){for(var n=0,r;n<t;++n)s[(r=c[n]).i]=r.x(e);return s.join(``)})}function Fr(e,t){var n=typeof t,r;return t==null||n===`boolean`?vr(t):(n===`number`?Or:n===`string`?(r=rr(t))?(t=r,Cr):Pr:t instanceof rr?Cr:t instanceof Date?Dr:Tr(t)?wr:Array.isArray(t)?Er:typeof t.valueOf!=`function`&&typeof t.toString!=`function`||isNaN(t)?kr:Or)(e,t)}function Ir(e,t){return e=+e,t=+t,function(n){return Math.round(e*(1-n)+t*n)}}function Lr(e){return function(){return e}}function Rr(e){return+e}var zr=[0,1];function Br(e){return e}function Vr(e,t){return(t-=e=+e)?function(n){return(n-e)/t}:Lr(isNaN(t)?NaN:.5)}function Hr(e,t){var n;return e>t&&(n=e,e=t,t=n),function(n){return Math.max(e,Math.min(t,n))}}function Ur(e,t,n){var r=e[0],i=e[1],a=t[0],o=t[1];return i<r?(r=Vr(i,r),a=n(o,a)):(r=Vr(r,i),a=n(a,o)),function(e){return a(r(e))}}function Wr(e,t,n){var r=Math.min(e.length,t.length)-1,i=Array(r),a=Array(r),o=-1;for(e[r]<e[0]&&(e=e.slice().reverse(),t=t.slice().reverse());++o<r;)i[o]=Vr(e[o],e[o+1]),a[o]=n(t[o],t[o+1]);return function(t){var n=An(e,t,1,r)-1;return a[n](i[n](t))}}function Gr(e,t){return t.domain(e.domain()).range(e.range()).interpolate(e.interpolate()).clamp(e.clamp()).unknown(e.unknown())}function Kr(){var e=zr,t=zr,n=Fr,r,i,a,o=Br,s,c,l;function u(){var n=Math.min(e.length,t.length);return o!==Br&&(o=Hr(e[0],e[n-1])),s=n>2?Wr:Ur,c=l=null,d}function d(i){return i==null||isNaN(i=+i)?a:(c||(c=s(e.map(r),t,n)))(r(o(i)))}return d.invert=function(n){return o(i((l||(l=s(t,e.map(r),Or)))(n)))},d.domain=function(t){return arguments.length?(e=Array.from(t,Rr),u()):e.slice()},d.range=function(e){return arguments.length?(t=Array.from(e),u()):t.slice()},d.rangeRound=function(e){return t=Array.from(e),n=Ir,u()},d.clamp=function(e){return arguments.length?(o=e?!0:Br,u()):o!==Br},d.interpolate=function(e){return arguments.length?(n=e,u()):n},d.unknown=function(e){return arguments.length?(a=e,d):a},function(e,t){return r=e,i=t,u()}}function qr(){return Kr()(Br,Br)}function Jr(e){return Math.abs(e=Math.round(e))>=1e21?e.toLocaleString(`en`).replace(/,/g,``):e.toString(10)}function Yr(e,t){if(!isFinite(e)||e===0)return null;var n=(e=t?e.toExponential(t-1):e.toExponential()).indexOf(`e`),r=e.slice(0,n);return[r.length>1?r[0]+r.slice(2):r,+e.slice(n+1)]}function Xr(e){return e=Yr(Math.abs(e)),e?e[1]:NaN}function Zr(e,t){return function(n,r){for(var i=n.length,a=[],o=0,s=e[0],c=0;i>0&&s>0&&(c+s+1>r&&(s=Math.max(1,r-c)),a.push(n.substring(i-=s,i+s)),!((c+=s+1)>r));)s=e[o=(o+1)%e.length];return a.reverse().join(t)}}function Qr(e){return function(t){return t.replace(/[0-9]/g,function(t){return e[+t]})}}var $r=/^(?:(.)?([<>=^]))?([+\\-( ])?([$#])?(0)?(\\d+)?(,)?(\\.\\d+)?(~)?([a-z%])?$/i;function ei(e){if(!(t=$r.exec(e)))throw Error(`invalid format: `+e);var t;return new ti({fill:t[1],align:t[2],sign:t[3],symbol:t[4],zero:t[5],width:t[6],comma:t[7],precision:t[8]&&t[8].slice(1),trim:t[9],type:t[10]})}ei.prototype=ti.prototype;function ti(e){this.fill=e.fill===void 0?` `:e.fill+``,this.align=e.align===void 0?`>`:e.align+``,this.sign=e.sign===void 0?`-`:e.sign+``,this.symbol=e.symbol===void 0?``:e.symbol+``,this.zero=!!e.zero,this.width=e.width===void 0?void 0:+e.width,this.comma=!!e.comma,this.precision=e.precision===void 0?void 0:+e.precision,this.trim=!!e.trim,this.type=e.type===void 0?``:e.type+``}ti.prototype.toString=function(){return this.fill+this.align+this.sign+this.symbol+(this.zero?`0`:``)+(this.width===void 0?``:Math.max(1,this.width|0))+(this.comma?`,`:``)+(this.precision===void 0?``:`.`+Math.max(0,this.precision|0))+(this.trim?`~`:``)+this.type};function ni(e){out:for(var t=e.length,n=1,r=-1,i;n<t;++n)switch(e[n]){case`.`:r=i=n;break;case`0`:r===0&&(r=n),i=n;break;default:if(!+e[n])break out;r>0&&(r=0);break}return r>0?e.slice(0,r)+e.slice(i+1):e}var ri;function ii(e,t){var n=Yr(e,t);if(!n)return ri=void 0,e.toPrecision(t);var r=n[0],i=n[1],a=i-(ri=Math.max(-8,Math.min(8,Math.floor(i/3)))*3)+1,o=r.length;return a===o?r:a>o?r+Array(a-o+1).join(`0`):a>0?r.slice(0,a)+`.`+r.slice(a):`0.`+Array(1-a).join(`0`)+Yr(e,Math.max(0,t+a-1))[0]}function ai(e,t){var n=Yr(e,t);if(!n)return e+``;var r=n[0],i=n[1];return i<0?`0.`+Array(-i).join(`0`)+r:r.length>i+1?r.slice(0,i+1)+`.`+r.slice(i+1):r+Array(i-r.length+2).join(`0`)}var oi={\"%\":(e,t)=>(e*100).toFixed(t),b:e=>Math.round(e).toString(2),c:e=>e+``,d:Jr,e:(e,t)=>e.toExponential(t),f:(e,t)=>e.toFixed(t),g:(e,t)=>e.toPrecision(t),o:e=>Math.round(e).toString(8),p:(e,t)=>ai(e*100,t),r:ai,s:ii,X:e=>Math.round(e).toString(16).toUpperCase(),x:e=>Math.round(e).toString(16)};function si(e){return e}var ci=Array.prototype.map,li=[`y`,`z`,`a`,`f`,`p`,`n`,`µ`,`m`,``,`k`,`M`,`G`,`T`,`P`,`E`,`Z`,`Y`];function ui(e){var t=e.grouping===void 0||e.thousands===void 0?si:Zr(ci.call(e.grouping,Number),e.thousands+``),n=e.currency===void 0?``:e.currency[0]+``,r=e.currency===void 0?``:e.currency[1]+``,i=e.decimal===void 0?`.`:e.decimal+``,a=e.numerals===void 0?si:Qr(ci.call(e.numerals,String)),o=e.percent===void 0?`%`:e.percent+``,s=e.minus===void 0?`−`:e.minus+``,c=e.nan===void 0?`NaN`:e.nan+``;function l(e,l){e=ei(e);var u=e.fill,d=e.align,f=e.sign,p=e.symbol,m=e.zero,h=e.width,g=e.comma,_=e.precision,v=e.trim,y=e.type;y===`n`?(g=!0,y=`g`):oi[y]||(_===void 0&&(_=12),v=!0,y=`g`),(m||u===`0`&&d===`=`)&&(m=!0,u=`0`,d=`=`);var b=(l&&l.prefix!==void 0?l.prefix:``)+(p===`$`?n:p===`#`&&/[boxX]/.test(y)?`0`+y.toLowerCase():``),x=(p===`$`?r:/[%p]/.test(y)?o:``)+(l&&l.suffix!==void 0?l.suffix:``),S=oi[y],C=/[defgprs%]/.test(y);_=_===void 0?6:/[gprs]/.test(y)?Math.max(1,Math.min(21,_)):Math.max(0,Math.min(20,_));function w(e){var n=b,r=x,o,l,p;if(y===`c`)r=S(e)+r,e=``;else{e=+e;var w=e<0||1/e<0;if(e=isNaN(e)?c:S(Math.abs(e),_),v&&(e=ni(e)),w&&+e==0&&f!==`+`&&(w=!1),n=(w?f===`(`?f:s:f===`-`||f===`(`?``:f)+n,r=(y===`s`&&!isNaN(e)&&ri!==void 0?li[8+ri/3]:``)+r+(w&&f===`(`?`)`:``),C){for(o=-1,l=e.length;++o<l;)if(p=e.charCodeAt(o),48>p||p>57){r=(p===46?i+e.slice(o+1):e.slice(o))+r,e=e.slice(0,o);break}}}g&&!m&&(e=t(e,1/0));var T=n.length+e.length+r.length,E=T<h?Array(h-T+1).join(u):``;switch(g&&m&&(e=t(E+e,E.length?h-r.length:1/0),E=``),d){case`<`:e=n+e+r+E;break;case`=`:e=n+E+e+r;break;case`^`:e=E.slice(0,T=E.length>>1)+n+e+r+E.slice(T);break;default:e=E+n+e+r;break}return a(e)}return w.toString=function(){return e+``},w}function u(e,t){var n=Math.max(-8,Math.min(8,Math.floor(Xr(t)/3)))*3,r=10**-n,i=l((e=ei(e),e.type=`f`,e),{suffix:li[8+n/3]});return function(e){return i(r*e)}}return{format:l,formatPrefix:u}}var di,fi,pi;mi({thousands:`,`,grouping:[3],currency:[`$`,``]});function mi(e){return di=ui(e),fi=di.format,pi=di.formatPrefix,di}function hi(e){return Math.max(0,-Xr(Math.abs(e)))}function gi(e,t){return Math.max(0,Math.max(-8,Math.min(8,Math.floor(Xr(t)/3)))*3-Xr(Math.abs(e)))}function _i(e,t){return e=Math.abs(e),t=Math.abs(t)-e,Math.max(0,Xr(t)-Xr(e))+1}function vi(e,t,n,r){var i=Ln(e,t,n),a;switch(r=ei(r??`,f`),r.type){case`s`:var o=Math.max(Math.abs(e),Math.abs(t));return r.precision==null&&!isNaN(a=gi(i,o))&&(r.precision=a),pi(r,o);case``:case`e`:case`g`:case`p`:case`r`:r.precision==null&&!isNaN(a=_i(i,Math.max(Math.abs(e),Math.abs(t))))&&(r.precision=a-(r.type===`e`));break;case`f`:case`%`:r.precision==null&&!isNaN(a=hi(i))&&(r.precision=a-(r.type===`%`)*2);break}return fi(r)}function yi(e){var t=e.domain;return e.ticks=function(e){var n=t();return Fn(n[0],n[n.length-1],e??10)},e.tickFormat=function(e,n){var r=t();return vi(r[0],r[r.length-1],e??10,n)},e.nice=function(n){n??(n=10);var r=t(),i=0,a=r.length-1,o=r[i],s=r[a],c,l,u=10;for(s<o&&(l=o,o=s,s=l,l=i,i=a,a=l);u-- >0;){if(l=In(o,s,n),l===c)return r[i]=o,r[a]=s,t(r);if(l>0)o=Math.floor(o/l)*l,s=Math.ceil(s/l)*l;else if(l<0)o=Math.ceil(o*l)/l,s=Math.floor(s*l)/l;else break;c=l}return e},e}function bi(){var e=qr();return e.copy=function(){return Gr(e,bi())},Rn.apply(e,arguments),yi(e)}function xi(e){let t,n;for(let r of e)r!=null&&(t===void 0?r>=r&&(t=n=r):(t>r&&(t=r),n<r&&(n=r)));return[t,n]}function*Si(e){for(let t of e)yield*t}function Ci(e){return Array.from(Si(e))}function wi(e,t){let n=t.length,r=-1;for(;++r<n;){let n=Ti(e,t[r]);if(n)return n}return 0}function Ti(e,t){let n=t[0],r=t[1],i=-1;for(let a=0,o=e.length,s=o-1;a<o;s=a++){let o=e[a],c=o[0],l=o[1],u=e[s],d=u[0],f=u[1];if(Ei(o,u,t))return 0;l>r!=f>r&&n<(d-c)*(r-l)/(f-l)+c&&(i=-i)}return i}function Ei(e,t,n){let r;return Di(e,t,n)&&Oi(e[r=+(e[0]===t[0])],n[r],t[r])}function Di(e,t,n){return(t[0]-e[0])*(n[1]-e[1])===(n[0]-e[0])*(t[1]-e[1])}function Oi(e,t,n){return e<=t&&t<=n||n<=t&&t<=e}function ki(e){let t=0,n=e.length,r=e[n-1][1]*e[0][0]-e[n-1][0]*e[0][1];for(;++t<n;)r+=e[t-1][1]*e[t][0]-e[t-1][0]*e[t][1];return r}function Ai(e){let t=[],n=[];for(let r of e)ki(r)>0?t.push([r]):n.push(r);return n.forEach(function(e){for(let n=0,r=t.length,i;n<r;++n)if(wi((i=t[n])[0],e)!==-1){i.push(e);return}}),t}function ji(){let e=e=>e[0],t=e=>e[1],n=e=>isFinite(+e[2])?+e[2]:0,r=xn.from,i=(e,t,n)=>{let{points:r}=c,i=[r[2*e],r[2*e+1]],a=[r[2*t],r[2*t+1]];return[n*a[0]+(1-n)*i[0],n*a[1]+(1-n)*i[1]]},a=Ai,o,s,c;function l(i){c=r(i,e,t),s=Array.from(i,n),typeof o!=`object`&&(o=bi().domain(xi(s)).nice().ticks(o))}function*u(e){l(e);for(let e of o)yield{type:`MultiPolygon`,coordinates:g(c,s,e),value:e}}function d(e,t){return l(e),{type:`MultiPolygon`,coordinates:g(c,s,t),value:t}}function*f(e){l(e);let t,n,r;for(let e of o)n&&(t=n),n=Ci(g(c,s,e)),t&&(yield{type:`MultiPolygon`,coordinates:a(t.concat(n.map(e=>e.slice().reverse()))),value:r,valueMax:e}),r=e}let p=function(e){return[...u(e)]};return p.x=t=>t?(e=t,p):e,p.y=e=>e?(t=e,p):t,p.value=e=>e?(n=e,p):n,p.thresholds=e=>e?(o=e,p):o,p.triangulate=e=>e?(r=e,p):r,p.pointInterpolate=e=>e?(i=e,p):i,p.ringsort=e=>e?(a=e,p):a,p.contours=u,p.contour=d,p.isobands=f,p._values=()=>s,p._triangulation=()=>c,p;function m(e){return e%3==2?e-2:e+1}function h(e){return e%3==0?e+2:e-1}function g(e,t,n=0){for(let e of t)if(!isFinite(e))throw[`Invalid value`,e];let{halfedges:r,inedges:o,triangles:s}=e,c=t.length,l=new Map;r.forEach((e,t)=>{e===-1&&l.set(s[t],s[t+(t%3==2?-2:1)])});function u(e){return d(s[e],s[m(e)])}function d(e,r){let i=t[e],a=t[r];if(i<=n&&a>=n&&i<a)return(n-i)/(a-i)}let f=[],p=new Uint8Array(r.length).fill(0),g,_,v,y,b;for(y=0;y<r.length;y++)if(!p[y]){for(_=y,g=[];(b=u(_))>0;){let[e,i]=[s[_],s[v=m(_)]];if(g.length&&e===g[0].ti&&i===g[0].tj||g.length>2*c)break;if(p[_]=1,g.push({ti:e,tj:i,a:b}),(v=r[_])>-1){if(u(v=m(v))>0){_=v;continue}if(u(v=m(v))>0){_=v;continue}}else{let e=s[_];for(;t[e]<n;)e=l.get(e);for(;t[e]>=n;)g.push({ti:e,tj:e,a:0}),e=l.get(e);if(v=o[e],g.push({ti:e,tj:s[v],a:d(e,s[v])}),u(_=m(v))>0||u(_=h(v))>0)continue}}g.length&&(g.push(g[0]),f.push(g.map(({ti:e,tj:t,a:n})=>i(e,t,n))))}do{let e=[],r=l.keys().next().value;do{let t=l.get(r);e.push(r),l.delete(r),r=t}while(l.has(r));e.every(e=>t[e]>=n)&&(e.push(e[0]),f.push(e.map(e=>i(e,e,0))))}while(l.size);return a(f)}}function Mi(e,t=1e-12){let n=Array.isArray(e)?e.length:0;if(n===0)return{coords:new Float64Array,n:0,bbox:[0,0,0,0],eps:t};let r=n>1&&Math.abs(e[0][0]-e[n-1][0])<=t&&Math.abs(e[0][1]-e[n-1][1])<=t?n-1:n;if(r<3)return{coords:new Float64Array,n:0,bbox:[0,0,0,0],eps:t};let i=new Float64Array(2*r),a=1/0,o=1/0,s=-1/0,c=-1/0;for(let t=0;t<r;t++){let n=+e[t][0],r=+e[t][1];i[2*t]=n,i[2*t+1]=r,n<a&&(a=n),n>s&&(s=n),r<o&&(o=r),r>c&&(c=r)}return{coords:i,n:r,bbox:[a,o,s,c],eps:t}}function Ni(e,t,n,r,i,a,o){let s=(i-e)*(r-t)-(a-t)*(n-e);return!(Math.abs(s)>o||i<Math.min(e,n)-o||i>Math.max(e,n)+o||a<Math.min(t,r)-o||a>Math.max(t,r)+o)}function Pi(e,t,n,{inclusive:r=!0}={}){if(!n||n.n===0)return!1;let[i,a,o,s]=n.bbox;if(e<i||e>o||t<a||t>s)return!1;let c=n.coords,l=n.n,u=n.eps||1e-12,d=!1,f=l-1;for(let n=0;n<l;n++){let i=c[2*n],a=c[2*n+1],o=c[2*f],s=c[2*f+1];if(Ni(i,a,o,s,e,t,u))return!!r;a>t!=s>t&&e<i+(t-a)*(o-i)/(s-a)&&(d=!d),f=n}return d}function Fi(e,t,n){let r=Mi(t,n&&n.eps);return Pi(e[0],e[1],r,n)}function Ii(e,{inclusive:t=!0,gridSize:n=3,eps:r}={}){let i=e&&e.coords?e:Mi(e,r);if(!i||i.n===0)return null;let a=i.coords,o=i.n,[s,c,l,u]=i.bbox,d=(e,n)=>Pi(e,n,i,{inclusive:t}),f=(s+l)/2,p=(c+u)/2;if(d(f,p))return[f,p];let m=0,h=0;for(let e=0;e<o;e++)m+=a[2*e],h+=a[2*e+1];let g=m/o,_=h/o;if(d(g,_))return[g,_];let v=0,y=0,b=0;for(let e=0;e<o;e++){let t=(e+1)%o,n=a[2*e],r=a[2*e+1],i=a[2*t],s=a[2*t+1],c=n*s-i*r;v+=c,y+=(n+i)*c,b+=(r+s)*c}if(Math.abs(v)>(i.eps||1e-12)){let e=y/(3*v),t=b/(3*v);if(d(e,t))return[e,t]}for(let e=0;e<o;e++){let t=e,n=(e+1)%o,r=(e+2)%o,s=a[2*t],c=a[2*t+1],l=a[2*n],u=a[2*n+1],f=a[2*r],p=a[2*r+1],m=(l-s)*(p-c)-(u-c)*(f-s);if(Math.abs(m)<=(i.eps||1e-12))continue;let h=(s+l+f)/3,g=(c+u+p)/3;if(d(h,g))return[h,g]}for(let e=1;e<o-1;e++){let t=a[0],n=a[1],r=a[2*e],o=a[2*e+1],s=a[2*(e+1)],c=a[2*(e+1)+1],l=(r-t)*(c-n)-(o-n)*(s-t);if(Math.abs(l)<=(i.eps||1e-12))continue;let u=(t+r+s)/3,f=(n+o+c)/3;if(d(u,f))return[u,f]}let x=l-s,S=u-c;if(x>0&&S>0){let e=n+1;for(let t=1;t<=n;t++){let r=c+t/e*S;for(let t=1;t<=n;t++){let n=s+t/e*x;if(d(n,r))return[n,r]}}}return null}function Li(e){let t=1/0,n=1/0,r=-1/0,i=-1/0;for(let a of e){let e=a[0],o=a[1];e<t&&(t=e),o<n&&(n=o),e>r&&(r=e),o>i&&(i=o)}return{minX:t,minY:n,maxX:r,maxY:i}}function Ri(e,t){let n=Math.max(0,Math.min(e.maxX,t.maxX)-Math.max(e.minX,t.minX))*Math.max(0,Math.min(e.maxY,t.maxY)-Math.max(e.minY,t.minY)),r=(e.maxX-e.minX)*(e.maxY-e.minY)+(t.maxX-t.minX)*(t.maxY-t.minY)-n;return r===0?0:n/r}function zi(e){if(!Array.isArray(e)||e.length===0)return null;let t=e[0],n=e[e.length-1];return t[0]===n[0]&&t[1]===n[1]?e.slice():null}function Bi(e){let t=Array.from(new Map(e.map(e=>[`${e[0]},${e[1]}`,e])).values());if(t.length<=1)return t;t.sort((e,t)=>e[0]-t[0]||e[1]-t[1]);let n=(e,t,n)=>(t[0]-e[0])*(n[1]-e[1])-(t[1]-e[1])*(n[0]-e[0]),r=[];for(let e of t){for(;r.length>=2&&n(r[r.length-2],r[r.length-1],e)<=0;)r.pop();r.push(e)}let i=[];for(let e=t.length-1;e>=0;e--){let r=t[e];for(;i.length>=2&&n(i[i.length-2],i[i.length-1],r)<=0;)i.pop();i.push(r)}i.pop(),r.pop();let a=r.concat(i);return a.length===0?[]:(a.push(a[0]),a)}function Vi(e){return Math.abs(Me(e))}function Hi(e,t,n=1e-6){if(!t||t.length<3)return!1;let r=zi(e);if(!r||r.length<4)return!1;let i=zi(t);if(!i||i.length<4)return!1;let a=Vi(i);if(a===0)return!1;if(r.length===i.length){let e=r.length-1,t=(e,t)=>Math.abs(e[0]-t[0])<=n&&Math.abs(e[1]-t[1])<=n;for(let n=0;n<e;n++){let a=!0;for(let o=0;o<e;o++)if(!t(r[(o+n)%e],i[o])){a=!1;break}if(a)return!0}let a=i.slice(0,-1).slice().reverse();for(let n=0;n<e;n++){let i=!0;for(let o=0;o<e;o++)if(!t(r[(o+n)%e],a[o])){i=!1;break}if(i)return!0}return!1}let o=Vi(r);return!(Math.abs(o-a)/a>.02||Ri(Li(r),Li(i))<.985)}function Ui(e,t=[],n=`distance`){let r=ji(),i=0;t.length>0&&(r.thresholds(t),i=t.at(-1));let a=Array.from(r.isobands(e)).filter(e=>Array.isArray(e.coordinates)&&e.coordinates.length>0&&(i>0?e.valueMax<=i:!0)),o=Bi(e.map(e=>[e[0],e[1]]));if(!a||a.length===0){let n=e.map(e=>[e[0],e[1]]),r=null;if(Array.isArray(o)&&o.length>=4)r=o.slice();else if(n.length>=2){let e=n[0],t=n[1],i=t[0]-e[0],a=t[1]-e[1],o=Math.hypot(i,a)||1,s=1e-6,c=-(a/o)*s,l=i/o*s;r=[e,t,[(e[0]+t[0])/2+c,(e[1]+t[1])/2+l],e]}else if(n.length===1){let e=n[0],t=1e-6;r=[[e[0]-t,e[1]-t],[e[0]+t,e[1]-t],[e[0]+t,e[1]+t],[e[0]-t,e[1]+t],[e[0]-t,e[1]-t]]}return{type:`FeatureCollection`,features:[{type:`Feature`,properties:{value:0,valueMin:0,valueMax:t&&t.length?t[t.length-1]:0,bandIndex:0},geometry:{type:`Polygon`,coordinates:r?[r]:[]}}]}}return{type:`FeatureCollection`,features:a.map((e,t)=>{let r=[];for(let t of e.coordinates)if(Array.isArray(t))for(let e of t){let t=zi(e);t&&t.length>=4&&r.push(t)}if(r.length===0)return{type:`Feature`,properties:{value:e.value,valueMin:e.value,valueMax:e.valueMax,bandIndex:t},geometry:{type:`MultiPolygon`,coordinates:[]}};let i=r.filter(e=>!Hi(e,o));if(i.length===0)return{type:`Feature`,properties:{label:n===`distance`?`${e.valueMax} m`:`${Math.round(e.valueMax/60)} min`,valueMin:e.value,valueMax:e.valueMax,bandIndex:t},geometry:{type:`MultiPolygon`,coordinates:[]}};let a=i.map(e=>({ring:e,area:Math.abs(Me(e)),bbox:Li(e),parent:null,children:[]}));a.sort((e,t)=>t.area-e.area);function s(e,t){return e.minX<=t.minX&&e.minY<=t.minY&&e.maxX>=t.maxX&&e.maxY>=t.maxY}for(let e=0;e<a.length;e++){let t=a[e],n=Ii(t.ring)||t.ring[0],r=null,i=1/0;for(let o=0;o<a.length;o++){if(e===o)continue;let c=a[o];c.area<=t.area||s(c.bbox,t.bbox)&&Fi(n,c.ring)&&c.area<i&&(i=c.area,r=c)}t.parent=r,r&&r.children.push(t)}function c(e){let t=0,n=e.parent;for(;n;)t++,n=n.parent;return t}function l(e){return Me(e)>0?e:e.slice().reverse()}function u(e){return Me(e)<0?e:e.slice().reverse()}let d=[];for(let e of a)if(!(c(e)&1)){let t=[l(e.ring)];for(let n of e.children)(c(n)&1)==1&&t.push(u(n.ring));d.push(t)}return{type:`Feature`,properties:{label:n===`distance`?`${e.valueMax} m`:`${Math.round(e.valueMax/60)} min`,valueMin:e.value,valueMax:e.valueMax,bandIndex:t},geometry:d.length===1?{type:`Polygon`,coordinates:d[0]}:{type:`MultiPolygon`,coordinates:d}}})}}var Wi={url:self.location.href};async function Gi({point:e,direction:t=`from`,mode:n=`car`,costField:r=`distance`,graph:i,maxCost:a=1e3,snapMaxDistM:o=800,penalties:s={}}={}){if(!i||!(i.nodes instanceof Map)||!Array.isArray(i.edges))throw Error(`Invalid graph: expected object with nodes Map and edges array.`);if(!Array.isArray(e)||e.length!==2)throw Error(`Invalid point: expected [lng, lat]`);let c,l,u=It(e,i,[o],o);if(!u||!u.segmentSnap)throw Error(`Point did not project to any graph segment within snapMaxDistM`);c=Pt(i,u.segmentSnap),c.mode=n,l=c._lastAddedNodeId??c.nodes.size-1;let d=qt(c,r,s),{distances:f,reachable:p}=Pe(d,l,a,{outputUnscaled:!0,direction:t,mode:n}),m=typeof process<`u`?process.env?.DEBUG_ISOLINES:Wi===void 0?!1:void 0;m&&console.error(`DEBUG_ISOLINES reachable`,p,Array.from(f).map((e,t)=>[t,e]));let h=d.coordsArr||[],g=[];for(let e=0;e<f.length;e++){let t=f[e];if(!Number.isFinite(t)||t>a*3)continue;let n=h[e];!n||n.length<2||g.push([n[0],n[1],t])}let _=r===`distance`?je(0,a,7):je(0,Math.round(a/60),7).map(e=>e*60);return _=_.filter(e=>e<a),_.push(a),_.sort((e,t)=>e-t),m&&(console.error(`DEBUG_ISOLINES isoline points`,g.length,g),console.error(`DEBUG_ISOLINES breaks`,_)),g.length===0?{type:`FeatureCollection`,features:[]}:Ui(g,_,r)}self.addEventListener(`message`,async e=>{let t=e.data;if(!t||typeof t!=`object`)return;let{type:n,id:r,payload:i}=t;if(n===`compute`){try{let e=await Gi(i);self.postMessage({type:`result`,id:r,result:e})}catch(e){let t={message:e?.message?String(e.message):String(e||`Error`),stack:e?.stack??null,code:e?.code??null};self.postMessage({type:`error`,id:r,error:t})}return}if(n===`dispose`)try{self.close()}catch{}})})();", _c = typeof self < "u" && self.Blob && new Blob(["(self.URL || self.webkitURL).revokeObjectURL(self.location.href);", gc], { type: "text/javascript;charset=utf-8" });
 function vc(e) {
 	let t;
 	try {
@@ -11669,10 +11681,10 @@ function il(e, t) {
 }
 var al = class {
 	constructor(e = {}) {
-		this._options = rl(el, e), this._routeFunction = this._options.routeFunction ?? ml, this._getEngineWorkerStatus = this._options.getEngineWorkerStatus ?? ri, this._onEngineWorkerStatusChange = this._options.onEngineWorkerStatusChange ?? ii, this._cancelRunningEngine = this._options.cancelRunningEngine ?? ai, this._tileJsonUrl = this._options.tileJsonUrl, this._urlTemplate = this._options.urlTemplate || null, this._tileUrlTransform = this._options.tileUrlTransform, this._tileProxyTemplate = this._options.tileProxyTemplate, this._routeOptions = { ...this._options.routeOptions }, this._routeTimeoutMs = Number(this._options.routeTimeoutMs), this._theme = String(this._options.theme ?? "auto").toLowerCase(), this._panelClassName = typeof this._options.panelClassName == "string" ? this._options.panelClassName.trim() : "";
-		let t = this._options.locale ?? this._options.language, n = this._options.locale_override ?? this._options.localeOverride ?? (t && typeof t == "object" && !Array.isArray(t) ? t : void 0), r = bi(typeof t == "string" ? t : this._options.language ?? "auto");
-		if (this._locale = r, this._text = n ? il(_i[r] ?? _i.en, n) : _i[r] ?? _i.en, this._text.status = {
-			..._i.en.status,
+		this._options = rl(el, e), this._routeFunction = this._options.routeFunction ?? ml, this._getEngineWorkerStatus = this._options.getEngineWorkerStatus ?? ni, this._onEngineWorkerStatusChange = this._options.onEngineWorkerStatusChange ?? ri, this._cancelRunningEngine = this._options.cancelRunningEngine ?? ii, this._tileJsonUrl = this._options.tileJsonUrl, this._urlTemplate = this._options.urlTemplate || null, this._tileUrlTransform = this._options.tileUrlTransform, this._tileProxyTemplate = this._options.tileProxyTemplate, this._routeOptions = { ...this._options.routeOptions }, this._routeTimeoutMs = Number(this._options.routeTimeoutMs), this._theme = String(this._options.theme ?? "auto").toLowerCase(), this._panelClassName = typeof this._options.panelClassName == "string" ? this._options.panelClassName.trim() : "";
+		let t = this._options.locale ?? this._options.language, n = this._options.locale_override ?? this._options.localeOverride ?? (t && typeof t == "object" && !Array.isArray(t) ? t : void 0), r = yi(typeof t == "string" ? t : this._options.language ?? "auto");
+		if (this._locale = r, this._text = n ? il(gi[r] ?? gi.en, n) : gi[r] ?? gi.en, this._text.status = {
+			...gi.en.status,
 			...this._text.status
 		}, this._text.isoline = this._text.isoline || {}, this._text.tabs = this._text.tabs || {
 			routing: this._text.title || "Routing",
@@ -12009,7 +12021,7 @@ function ul(e, t) {
 }
 function dl() {
 	try {
-		si();
+		oi();
 	} catch {}
 	ol.clear(), sl.clear(), Ye();
 }
@@ -12043,7 +12055,7 @@ var ml = async (e, t, n, r, { zoom: i = 14, schema: a = "zxy", radius: o, maxAut
 		D || (D = await je(s, n, {
 			pool: S,
 			cache: ol
-		}), b && !D?.hasMissingTiles && sl.set(b, D)), w = D, C = await gi(e, t, D, {
+		}), b && !D?.hasMissingTiles && sl.set(b, D)), w = D, C = await hi(e, t, D, {
 			costField: l,
 			penalties: v,
 			engineId: c,
@@ -12114,4 +12126,4 @@ async function gl(e, t, { zoom: n = 14, schema: r = "zxy", urlTemplate: i = "", 
 	}), d && !f?.hasMissingTiles && sl.set(d, f)), f;
 }
 //#endregion
-export { al as MapLibreRoutingControl, mi as buildCH, gl as buildGraphForTiles, ll as buildTileURL, ai as cancelRunningEngine, gi as computeRoute, dl as dispose, ri as getEngineWorkerStatus, qt as nearestNode, ii as onEngineWorkerStatusChange, hi as queryRoute, ml as route, hl as routeBatch, fl as shutdown };
+export { al as MapLibreRoutingControl, pi as buildCH, gl as buildGraphForTiles, ll as buildTileURL, ii as cancelRunningEngine, hi as computeRoute, dl as dispose, ni as getEngineWorkerStatus, qt as nearestNode, ri as onEngineWorkerStatusChange, mi as queryRoute, ml as route, hl as routeBatch, fl as shutdown };

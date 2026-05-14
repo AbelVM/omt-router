@@ -19,6 +19,56 @@ import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerCache } from 'performance-helpers/powerCache';
 import { PowerPool } from 'performance-helpers/powerPool';
 import { haversineDistance as haversine } from '../utils/misc.js';
+
+// Work around a PowerPool worker-wrapper bug where plain-object messages
+// with `awaitResponse: true` and `zeroCopy: true` are re-encoded by the
+// wrapper, which loses transferred typed arrays.
+if (typeof PowerPool !== 'undefined' && PowerPool.prototype?._postToWorkerObj) {
+  const _originalPostToWorkerObj = PowerPool.prototype._postToWorkerObj;
+  PowerPool.prototype._postToWorkerObj = function (
+    obj,
+    prepared,
+    startTime,
+    wantResponse,
+    correlationKey,
+    pendingPromise,
+  ) {
+    const canBypassWrapper =
+      prepared &&
+      prepared.message &&
+      typeof prepared.message === 'object' &&
+      prepared.message !== null &&
+      !ArrayBuffer.isView(prepared.message) &&
+      !(prepared.message instanceof ArrayBuffer) &&
+      Array.isArray(prepared.transfer) &&
+      prepared.transfer.length > 0 &&
+      obj?.worker?.['_underlying']?.postMessage;
+
+    if (canBypassWrapper) {
+      try {
+        obj.worker._underlying.postMessage(prepared.message, prepared.transfer);
+        if (typeof obj._startTimes?.push === 'function') obj._startTimes.push(startTime);
+        obj.tasks++;
+        this._activeTasks++;
+        obj.lastActive = startTime;
+        if (this._isIdle) this._updateIdleState();
+        return wantResponse ? pendingPromise : true;
+      } catch (err) {
+        // Fallback to the original behavior if direct postMessage fails.
+      }
+    }
+
+    return _originalPostToWorkerObj.call(
+      this,
+      obj,
+      prepared,
+      startTime,
+      wantResponse,
+      correlationKey,
+      pendingPromise,
+    );
+  };
+}
 import {
   DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
   chooseEndpointCandidate,
@@ -102,7 +152,7 @@ const ENGINE_ID_ALIASES = Object.freeze({
 
 const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
 const ENGINE_WORKER_POOL_MAX_SIZE = Math.max(1, _hwConcurrency - 1);
-const ENGINE_WORKER_POOL_DEFAULT_SIZE = Math.min(4, ENGINE_WORKER_POOL_MAX_SIZE);
+const ENGINE_WORKER_POOL_DEFAULT_SIZE = Math.min(8, ENGINE_WORKER_POOL_MAX_SIZE);
 let _engineWorkerPool = null;
 let _engineWorkerPoolSize = 0;
 
@@ -515,7 +565,7 @@ async function getEngineWorkerPool(maxSize = null) {
 
   _engineWorkerPoolSize = desiredSize;
   _engineWorkerPool = new PowerPool(EngineMainWorker, {
-    size: Math.min(2, desiredSize),
+    size: Math.min(8, desiredSize),
     maxSize: desiredSize,
     lazy: true,
     autoScale: {
