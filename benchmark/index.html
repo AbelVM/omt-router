@@ -10,8 +10,13 @@
 <div class="page">
 
   <div class="header">
-    <h1>omt-router — Multi-Engine Benchmark</h1>
-    <p>Compares 4 routing engines (A★, Barrier SSP, Delta-Stepping, Dijkstra) across graph sizes and beeline distances to identify performance champions and conditional winners.</p>
+    <div class="header-copy">
+      <h1>omt-router — Multi-Engine Benchmark</h1>
+      <p>Compares 4 routing engines (A★, Barrier SSP, Delta-Stepping, Dijkstra) across graph sizes and beeline distances to identify performance champions and conditional winners.</p>
+    </div>
+    <div class="header-meta">
+      <div id="benchmark-stopwatch" class="stopwatch" hidden></div>
+    </div>
   </div>
 
   <!-- Config ──────────────────────────────────────────────────────────────── -->
@@ -165,25 +170,19 @@
         <thead>
           <tr>
             <th data-col="name">Route</th>
-            <th data-col="category">Category</th>
-            <th data-col="lengthCategory">Length</th>
-            <th data-col="beelineM" class="num">Beeline</th>
-            <th data-col="E" class="num">E</th>
-            <th data-col="N" class="num">N</th>
-            <th data-col="radius" class="num">r</th>
-            <th data-col="nRuns" class="num">R</th>
-            <th data-col="bidirectional_astar_ms" class="num">A★ (ms)</th>
-            <th data-col="adaptive_barrier_ms" class="num">Barrier (ms)</th>
-            <th data-col="adaptive_barrier_parallel" class="num">Barrier P</th>
-            <th data-col="delta_stepping_ms" class="num">Delta (ms)</th>
-            <th data-col="delta_stepping_parallel" class="num">Delta P</th>
-            <th data-col="ultra_dijkstra_ms" class="num">Dijkstra (ms)</th>
-            <th data-col="auto_engine_ms" class="num">Auto (ms)</th>
-            <th data-col="auto_engine">Pick</th>
-            <th data-col="winner">Winner</th>
-            <th data-col="auto_matches_winner" class="num">🎯</th>
-            <th data-col="auto_vs_winner_pct" class="num">Delta</th>
-            <th data-col="engine_errors">Engine Errors</th>
+          <th data-col="category">Category</th>
+          <th data-col="lengthCategory">Length</th>
+          <th data-col="bidirectional_astar_ms" class="num">A★ (ms)</th>
+          <th data-col="adaptive_barrier_ms" class="num">Barrier (ms)</th>
+          <th data-col="adaptive_barrier_parallel" class="num">Barrier P</th>
+          <th data-col="delta_stepping_ms" class="num">Delta (ms)</th>
+          <th data-col="delta_stepping_parallel" class="num">Delta P</th>
+          <th data-col="ultra_dijkstra_ms" class="num">Dijkstra (ms)</th>
+          <th data-col="auto_engine">Pick</th>
+          <th data-col="winner">Winner</th>
+          <th data-col="auto_matches_winner" class="num">🎯</th>
+          <th data-col="auto_vs_winner_pct" class="num">Regret</th>
+          <th>Engine Errors</th>
           </tr>
         </thead>
         <tbody id="results-tbody"></tbody>

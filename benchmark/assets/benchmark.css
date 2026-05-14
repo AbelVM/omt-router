@@ -10,6 +10,8 @@
       --accent:    #6366f1;
       --accent-lt: #eef2ff;
       --green:     #16a34a;
+      --blue:      #2563eb;
+      --orange:    #f97316;
       --red:       #dc2626;
       --radius:    8px;
     }
@@ -25,9 +27,31 @@
     /* ── Layout ──────────────────────────────────────────────────────────── */
     .page { max-width: 1400px; margin: 0 auto; padding: 24px 20px 60px; }
 
-    .header { margin-bottom: 24px; }
+    .header {
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .header-copy { min-width: 0; }
     .header h1 { font-size: 22px; font-weight: 700; color: var(--text); }
     .header p  { color: var(--subtext); margin-top: 4px; }
+    .header-meta { display: flex; flex-direction: column; align-items: flex-end; min-width: 200px; }
+    .stopwatch {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-end;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--text);
+    }
+    .stopwatch strong { font-size: 14px; }
 
     section {
       background: var(--surface);
@@ -349,6 +373,10 @@
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 900px) {
       .config-grid, .config-grid.wide { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 760px) {
+      .header { flex-direction: column; }
+      .header-meta { align-items: flex-start; min-width: auto; }
     }
     @media (max-width: 600px) {
       .config-grid, .config-grid.wide { grid-template-columns: 1fr; }

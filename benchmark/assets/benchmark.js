@@ -48,7 +48,7 @@ export function getSharedPool() {
   if (!_pool) {
     const hw = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
     const poolMaxSize = Math.min(8, Math.max(1, hw - 1));
-    const poolSize = poolMaxSize;
+    const poolSize = Math.min(2, poolMaxSize);
     _pool = new PowerPool(tilesWorker, {
       size: poolSize, maxSize: poolMaxSize, lazy: false,
       autoScale: {
@@ -258,9 +258,6 @@ async function runEngineQuery(startId, endId, prepared, {
   signal,
   engineRunTimeoutMs = 0,
   allowFallback = false,
-  useWorkerPool = false,
-  engineWorkerPoolSize = null,
-  engineWorkerMaxPoolSize = null,
 }) {
   if (isAbortSignalAborted(signal)) {
     cancelRunningEngine({ reason: 'benchmark_aborted' });
@@ -273,8 +270,6 @@ async function runEngineQuery(startId, endId, prepared, {
     useCache: false,
     allowFallback,
     forceSerialRouting,
-    useWorkerPool,
-    engineWorkerPoolSize: engineWorkerPoolSize ?? engineWorkerMaxPoolSize,
   });
 
   const guards = [routePromise];
@@ -469,8 +464,6 @@ function computeRadius(start, end, zoom) {
  * @param {string} mode        - 'car' | 'pedestrian' | 'bicycle'
  * @param {number} zoom
  * @param {number} nRuns       - measurement repetitions (excluding warm-up)
- *   Each route runs every engine once per round, so nRuns=10 produces 40 timed
- *   engine requests for the four engines, plus one warm-up run per engine.
  * @param {object} pool
  * @param {object} cache
  * @returns {object} result row with timings for all 4 engines
@@ -488,9 +481,6 @@ async function benchmarkSingleRoute(
     signal,
     engineRunTimeoutMs = 0,
     forceSerialRouting = false,
-    useWorkerPool = false,
-    engineWorkerPoolSize = null,
-    engineWorkerMaxPoolSize = null,
     onPhase,
   } = {},
 ) {
@@ -558,9 +548,6 @@ async function benchmarkSingleRoute(
         forceSerialRouting,
         signal,
         engineRunTimeoutMs,
-        useWorkerPool,
-        engineWorkerPoolSize,
-        engineWorkerMaxPoolSize,
         // Warm-up must exercise each engine without algorithm fallback so
         // benchmark results reflect the engine's own path correctness.
         allowFallback: false,
@@ -611,9 +598,6 @@ async function benchmarkSingleRoute(
           forceSerialRouting,
           signal,
           engineRunTimeoutMs,
-          useWorkerPool,
-          engineWorkerPoolSize,
-          engineWorkerMaxPoolSize,
           allowFallback: false,
         });
         let elapsedMs = performance.now() - t0;
@@ -630,9 +614,6 @@ async function benchmarkSingleRoute(
               forceSerialRouting,
               signal,
               engineRunTimeoutMs,
-              useWorkerPool,
-              engineWorkerPoolSize,
-              engineWorkerMaxPoolSize,
               allowFallback: false,
             });
           }
@@ -984,10 +965,6 @@ export async function runBenchmark(config, onProgress = () => {}) {
     nRuns = 10,
     costField = 'distance',
     routePauseMs = 0,
-    routeBatchConcurrency = 1,
-    useWorkerPool = false,
-    engineWorkerPoolSize = null,
-    engineWorkerMaxPoolSize = null,
     forceSerialRouting = false,
     clearCachesAfterEachRoute = false,
     clearCacheOnCategoryBoundary = true,
@@ -1013,12 +990,6 @@ export async function runBenchmark(config, onProgress = () => {}) {
   const cache = suppliedCache ?? getSharedCache();
   const graphCacheInstance = graphCache || null; // allow passing a graph cache if needed
   const results = [];
-  const resolvedEngineWorkerPoolSize = engineWorkerPoolSize ?? engineWorkerMaxPoolSize;
-  const resolvedUseWorkerPool = useWorkerPool || resolvedEngineWorkerPoolSize != null;
-  const normalizedRouteBatchConcurrency = Math.max(1, Math.floor(routeBatchConcurrency) || 1);
-  // Route batch concurrency controls how many routes are benchmarked in parallel.
-  // Each route still executes the four engines and nRuns internally, so with
-  // nRuns=10 that is 40 timed engine requests per route pass.
   const emitEngineStatus = (status) => {
     if (typeof onEngineStatus === 'function') {
       onEngineStatus(status);
@@ -1038,214 +1009,107 @@ export async function runBenchmark(config, onProgress = () => {}) {
   };
 
   try {
-    if (normalizedRouteBatchConcurrency <= 1) {
-      for (let i = 0; i < routes.length; i++) {
-        if (isAbortSignalAborted(signal)) {
-          cancelRunningEngine({ reason: 'benchmark_aborted' });
-          throw createAbortError();
-        }
-        await waitForResumeIfPaused();
-
-        const routeDef = routes[i];
-        onProgress({ current: i, total: routes.length, routeName: routeDef.name, results });
-
-        let result;
-        try {
-          result = await benchmarkSingleRoute(routeDef, urlTemplate, mode, zoom, nRuns, pool, cache, costField, {
-            signal,
-            engineRunTimeoutMs,
-            forceSerialRouting,
-            useWorkerPool: resolvedUseWorkerPool,
-            engineWorkerPoolSize: resolvedEngineWorkerPoolSize,
-            onPhase: (phaseInfo) => {
-              if (mutedPhases.has(phaseInfo?.phase)) return;
-              onProgress({
-                current: i,
-                total: routes.length,
-                routeName: routeDef.name,
-                phase: phaseInfo?.phase,
-                phaseInfo,
-                results,
-              });
-            },
-          });
-        } catch (err) {
-          if (err?.name === 'AbortError') {
-            throw err;
-          }
-          result = {
-            id: routeDef.id, name: routeDef.name,
-            category: routeDef.category, lengthCategory: routeDef.lengthCategory,
-            ...classifySelectorFeatures({
-              nodeCount: null,
-              edgeCount: null,
-              haversineDistance: Math.round(haversineDistance(routeDef.start, routeDef.end)),
-              sourceId: -1,
-              targetId: -1,
-              prepared: null,
-              graph: null,
-            }),
-            radius: null,
-            nRuns,
-            fetchMs: null,
-            bidirectional_astar_ms: null,
-            adaptive_barrier_ms: null,
-            adaptive_barrier_parallel: null,
-            delta_stepping_parallel: null,
-            delta_stepping_ms: null,
-            ultra_dijkstra_ms: null,
-            bidirectional_astar_cost: null,
-            adaptive_barrier_cost: null,
-            delta_stepping_cost: null,
-            ultra_dijkstra_cost: null,
-            auto_engine: null,
-            auto_engine_ms: null,
-            auto_vs_winner_pct: null,
-            auto_matches_winner: null,
-            costWinner: null,
-            winner: null,
-            error: normalizeEngineError(err),
-          };
-        }
-
-        results.push(result);
-        onProgress({ current: i + 1, total: routes.length, routeName: routeDef.name, result, results });
-
-        const nextCategory = (routes[i + 1]?.category) ?? null;
-        if (shouldClearCachesAfterEachRoute) {
-          cache.clear();
-          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
-        } else if (shouldClearCachesOnCategoryBoundary) {
-          if (routeDef.category !== prevCategory && prevCategory !== null) {
-            // Defensive: should not happen, but just in case
-            cache.clear();
-            if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
-          }
-          if (routeDef.category !== nextCategory) {
-            // Last route of this category
-            cache.clear();
-            if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
-          }
-        }
-        prevCategory = routeDef.category;
-
-        if (normalizedPauseMs > 0 && i < routes.length - 1) {
-          await waitForResumeIfPaused();
-          onProgress({
-            current: i + 1,
-            total: routes.length,
-            routeName: routeDef.name,
-            pauseMs: normalizedPauseMs,
-            phase: 'pausing',
-            results,
-          });
-          await sleep(normalizedPauseMs, signal);
-          await waitForResumeIfPaused();
-        }
+    for (let i = 0; i < routes.length; i++) {
+      if (isAbortSignalAborted(signal)) {
+        cancelRunningEngine({ reason: 'benchmark_aborted' });
+        throw createAbortError();
       }
-    } else {
-      if (shouldClearCachesAfterEachRoute || shouldClearCachesOnCategoryBoundary) {
-        throw new Error('Concurrent benchmark execution does not support cache clearing semantics. Use routeBatchConcurrency=1 or disable cache clearing.');
-      }
+      await waitForResumeIfPaused();
 
-      let nextIndex = 0;
-      let completed = 0;
+      const routeDef = routes[i];
+      onProgress({ current: i, total: routes.length, routeName: routeDef.name, results });
 
-      const worker = async () => {
-        while (true) {
-          const i = nextIndex;
-          nextIndex += 1;
-          if (i >= routes.length) break;
-
-          if (isAbortSignalAborted(signal)) {
-            cancelRunningEngine({ reason: 'benchmark_aborted' });
-            throw createAbortError();
-          }
-          await waitForResumeIfPaused();
-
-          const routeDef = routes[i];
-          onProgress({ current: completed, total: routes.length, routeName: routeDef.name, results });
-
-          let result;
-          try {
-            result = await benchmarkSingleRoute(routeDef, urlTemplate, mode, zoom, nRuns, pool, cache, costField, {
-              signal,
-              engineRunTimeoutMs,
-              forceSerialRouting,
-              useWorkerPool: resolvedUseWorkerPool,
-              engineWorkerPoolSize: resolvedEngineWorkerPoolSize,
-              onPhase: (phaseInfo) => {
-                if (mutedPhases.has(phaseInfo?.phase)) return;
-                onProgress({
-                  current: completed,
-                  total: routes.length,
-                  routeName: routeDef.name,
-                  phase: phaseInfo?.phase,
-                  phaseInfo,
-                  results,
-                });
-              },
-            });
-          } catch (err) {
-            if (err?.name === 'AbortError') {
-              throw err;
-            }
-            result = {
-              id: routeDef.id, name: routeDef.name,
-              category: routeDef.category, lengthCategory: routeDef.lengthCategory,
-              ...classifySelectorFeatures({
-                nodeCount: null,
-                edgeCount: null,
-                haversineDistance: Math.round(haversineDistance(routeDef.start, routeDef.end)),
-                sourceId: -1,
-                targetId: -1,
-                prepared: null,
-                graph: null,
-              }),
-              radius: null,
-              nRuns,
-              fetchMs: null,
-              bidirectional_astar_ms: null,
-              adaptive_barrier_ms: null,
-              adaptive_barrier_parallel: null,
-              delta_stepping_parallel: null,
-              delta_stepping_ms: null,
-              ultra_dijkstra_ms: null,
-              bidirectional_astar_cost: null,
-              adaptive_barrier_cost: null,
-              delta_stepping_cost: null,
-              ultra_dijkstra_cost: null,
-              auto_engine: null,
-              auto_engine_ms: null,
-              auto_vs_winner_pct: null,
-              auto_matches_winner: null,
-              costWinner: null,
-              winner: null,
-              error: normalizeEngineError(err),
-            };
-          }
-
-          results.push(result);
-          completed += 1;
-          onProgress({ current: completed, total: routes.length, routeName: routeDef.name, result, results });
-
-          if (normalizedPauseMs > 0 && completed < routes.length) {
-            await waitForResumeIfPaused();
+      let result;
+      try {
+        result = await benchmarkSingleRoute(routeDef, urlTemplate, mode, zoom, nRuns, pool, cache, costField, {
+          signal,
+          engineRunTimeoutMs,
+          forceSerialRouting,
+          onPhase: (phaseInfo) => {
+            if (mutedPhases.has(phaseInfo?.phase)) return;
             onProgress({
-              current: completed,
+              current: i,
               total: routes.length,
               routeName: routeDef.name,
-              pauseMs: normalizedPauseMs,
-              phase: 'pausing',
+              phase: phaseInfo?.phase,
+              phaseInfo,
               results,
             });
-            await sleep(normalizedPauseMs, signal);
-            await waitForResumeIfPaused();
-          }
+          },
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          throw err;
         }
-      };
+        result = {
+          id: routeDef.id, name: routeDef.name,
+          category: routeDef.category, lengthCategory: routeDef.lengthCategory,
+          ...classifySelectorFeatures({
+            nodeCount: null,
+            edgeCount: null,
+            haversineDistance: Math.round(haversineDistance(routeDef.start, routeDef.end)),
+            sourceId: -1,
+            targetId: -1,
+            prepared: null,
+            graph: null,
+          }),
+          radius: null,
+          nRuns,
+          fetchMs: null,
+          bidirectional_astar_ms: null,
+          adaptive_barrier_ms: null,
+          adaptive_barrier_parallel: null,
+          delta_stepping_parallel: null,
+          delta_stepping_ms: null,
+          ultra_dijkstra_ms: null,
+          bidirectional_astar_cost: null,
+          adaptive_barrier_cost: null,
+          delta_stepping_cost: null,
+          ultra_dijkstra_cost: null,
+          auto_engine: null,
+          auto_engine_ms: null,
+          auto_vs_winner_pct: null,
+          auto_matches_winner: null,
+          costWinner: null,
+          winner: null,
+          error: normalizeEngineError(err),
+        };
+      }
 
-      await Promise.all(Array.from({ length: normalizedRouteBatchConcurrency }, () => worker()));
+      results.push(result);
+      onProgress({ current: i + 1, total: routes.length, routeName: routeDef.name, result, results });
+
+      const nextCategory = (routes[i + 1]?.category) ?? null;
+      if (shouldClearCachesAfterEachRoute) {
+        cache.clear();
+        if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
+      } else if (shouldClearCachesOnCategoryBoundary) {
+        if (routeDef.category !== prevCategory && prevCategory !== null) {
+          // Defensive: should not happen, but just in case
+          cache.clear();
+          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
+        }
+        if (routeDef.category !== nextCategory) {
+          // Last route of this category
+          cache.clear();
+          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
+        }
+      }
+      prevCategory = routeDef.category;
+
+      if (normalizedPauseMs > 0 && i < routes.length - 1) {
+        await waitForResumeIfPaused();
+        onProgress({
+          current: i + 1,
+          total: routes.length,
+          routeName: routeDef.name,
+          pauseMs: normalizedPauseMs,
+          phase: 'pausing',
+          results,
+        });
+        await sleep(normalizedPauseMs, signal);
+        await waitForResumeIfPaused();
+      }
     }
 
     onProgress({ current: routes.length, total: routes.length, done: true, results });

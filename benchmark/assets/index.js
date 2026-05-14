@@ -38,6 +38,7 @@ const autoSelectorCardsEl = root.getElementById('auto-selector-cards');
 const progressBarEl = root.getElementById('progress-bar');
 const progressTextEl = root.getElementById('progress-text');
 const resultsRunContextEl = root.getElementById('results-run-context');
+const benchmarkStopwatchEl = root.getElementById('benchmark-stopwatch');
 const scatterEl = root.getElementById('scatter');
 const densityEl = root.getElementById('density');
 const histogramEl = root.getElementById('histogram');
@@ -101,38 +102,10 @@ function getSelectedRoutes() {
 function updateRouteCount() {
   const n = getSelectedRoutes().length;
   const successThreshold = Math.max(0, parseInt(successRoutesInput.value, 10) || 0);
-  const selectedRoutes = successThreshold > 0 ? Math.min(n, successThreshold) : n;
   const thresholdText = successThreshold > 0
-    ? `, ${selectedRoutes.toLocaleString()} selected`
+    ? `, ${successThreshold.toLocaleString()} selected`
     : '';
   routeCountEl.textContent = `${n.toLocaleString()} routes available${thresholdText}`;
-}
-
-function detectHardwareConcurrency() {
-  return typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
-}
-
-function getBenchmarkRouteBatchConcurrency(routes) {
-  const hw = detectHardwareConcurrency();
-  // When engine worker pooling is enabled, each route still performs multiple
-  // engine queries and may spawn internal algorithm workers. Keep route-level
-  // concurrency conservative to avoid nested oversubscription.
-  const defaultConcurrency = Math.max(1, Math.floor(hw / 4));
-  return Math.min(routes.length, defaultConcurrency);
-}
-
-function getBenchmarkEngineWorkerMaxPoolSize(routes) {
-  const hw = detectHardwareConcurrency();
-
-  // Reserve one core for the main thread / browser, and reserve a small
-  // fixed tile-worker footprint because the shared tile pool is also active
-  // during graph build and may scale to multiple workers.
-  const totalWorkerBudget = Math.max(1, hw - 1);
-  const tileWorkerReserve = Math.min(2, totalWorkerBudget);
-  const availableForEngine = Math.max(1, totalWorkerBudget - tileWorkerReserve);
-
-  const targetPoolSize = Math.max(1, Math.min(8, availableForEngine));
-  return targetPoolSize;
 }
 
 function getReportVariantLabel(key) {
@@ -230,11 +203,13 @@ updateRouteCount();
 
 // ── State ─────────────────────────────────────────────────────────────────
 let _results = [];
-let _sortCol = 'E';
+let _sortCol = 'name';
 let _sortAsc  = true;
 let _stopped  = false;
 let _paused = false;
 let _pauseResolvers = [];
+let benchmarkStartTime = null;
+let _stopwatchRaf = null;
 let _cleanupTooltip = null;
 let _chartScatter = null;
 let _chartDensity = null;
@@ -303,27 +278,6 @@ function waitForBenchmarkResume(signal) {
     _pauseResolvers.push(onDone);
     if (signal?.addEventListener) {
       signal.addEventListener('abort', onAbort, { once: true });
-    }
-  });
-}
-
-function sleep(ms, signal) {
-  return new Promise((resolve) => {
-    const timeoutId = setTimeout(resolve, ms);
-    if (signal?.aborted) {
-      clearTimeout(timeoutId);
-      resolve();
-      return;
-    }
-    if (signal?.addEventListener) {
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timeoutId);
-          resolve();
-        },
-        { once: true }
-      );
     }
   });
 }
@@ -406,9 +360,6 @@ runBtn.addEventListener('click', async () => {
   const routePauseMs = Math.max(0, Number.isFinite(rawPauseMs) ? Math.floor(rawPauseMs) : 0);
   const maxSuccessRoutes = Math.max(0, parseInt(successRoutesInput.value, 10) || 0);
   const routes = getSelectedRoutes();
-  const effectiveRoutes = maxSuccessRoutes > 0 ? routes.slice(0, maxSuccessRoutes) : routes;
-  const routeBatchConcurrency = maxSuccessRoutes > 0 ? 1 : getBenchmarkRouteBatchConcurrency(effectiveRoutes);
-  const engineWorkerMaxPoolSize = getBenchmarkEngineWorkerMaxPoolSize(effectiveRoutes);
   const selectedCategories = getCheckedValues(categoryFiltersEl);
   const selectedLengths = getCheckedValues(lengthFiltersEl);
 
@@ -418,6 +369,8 @@ runBtn.addEventListener('click', async () => {
   }
 
   _stopped = false;
+  benchmarkStartTime = performance.now();
+  startBenchmarkStopwatch();
   _results = [];
   const sharedArrayBufferSupported = typeof SharedArrayBuffer !== 'undefined';
   const benchmarkTimestamp = makeBenchmarkTimestamp(new Date());
@@ -426,9 +379,7 @@ runBtn.addEventListener('click', async () => {
     mode,
     nRuns,
     routePauseMs,
-    routeBatchConcurrency,
-    engineWorkerMaxPoolSize,
-    routesSelected: effectiveRoutes.length,
+    routesSelected: routes.length,
     selectedCategories,
     selectedLengths,
     userAgent: navigator.userAgent,
@@ -492,11 +443,20 @@ runBtn.addEventListener('click', async () => {
   }));
 
   try {
-    const totalRoutes = effectiveRoutes.length;
+    const totalRoutes = routes.length;
     const totalTasks = totalRoutes * runPasses.length;
     let completedTasks = 0;
+    let startedTasks = 0;
+    let successfulRouteCount = 0;
+    let finishedEarly = false;
+    const successThreshold = maxSuccessRoutes > 0 ? maxSuccessRoutes : Infinity;
 
-    for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
+    outerRouteLoop:
+    for (let routeIndex = 0; routeIndex < totalRoutes; routeIndex++) {
+      if (_stopped) throw new Error('Benchmark stopped by user');
+      const routeDef = routes[routeIndex];
+
+      for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
         if (_stopped) throw new Error('Benchmark stopped by user');
         const pass = runPasses[passIndex];
         _runContext = {
@@ -508,52 +468,16 @@ runBtn.addEventListener('click', async () => {
           forceSerialRouting: pass.forceSerialRouting,
         };
 
-        const baseCompletedTasks = completedTasks;
-
-        const passPrefix = runPasses.length > 1
-          ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
-          : '';
-        const handleProgress = (progress) => {
-          if (_stopped) throw new Error('Benchmark stopped by user');
-
-          const { routeName: progressRouteName, result, pauseMs, phase, current } = progress;
-          const completedThisPass = Number.isFinite(current) ? current : 0;
-          const displayCompleted = baseCompletedTasks + completedThisPass;
-          const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
-          const statusSuffix = formatStatusSuffix(progress);
-          const activeTasks = Math.max(0, totalTasks - displayCompleted);
-          const pausedSuffix = _paused ? ' — paused' : '';
-
-          progressBarEl.style.width = `${pct}%`;
-          if (pauseStateEl) pauseStateEl.hidden = !_paused;
-          progressTextEl.textContent = progress.done
-            ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${progressRouteName ?? ''}${statusSuffix}`
-            : phase === 'pausing'
-              ? `${passPrefix}${displayCompleted}/${totalTasks} finished, ${activeTasks} active — ${progressRouteName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
-              : `${passPrefix}${displayCompleted}/${totalTasks} finished, ${activeTasks} active — ${progressRouteName ?? ''}${statusSuffix}${pausedSuffix}`;
-
-          if (result) {
-            const normalizedResult = normalizeBenchmarkRow(result);
-            completedTasks = displayCompleted;
-            _passResults[passIndex].push(normalizedResult);
-            _results.push(normalizedResult);
-            appendRow(normalizedResult);
-            _pendingSummaryUpdate = true;
-            _pendingChartRedraw = true;
-            scheduleUIUpdate();
-          }
-        };
+        startedTasks += 1;
 
         await runBenchmark(
           {
-            routes: effectiveRoutes,
+            routes: [routeDef],
             urlTemplate,
             mode,
             zoom,
             nRuns,
             routePauseMs,
-            routeBatchConcurrency,
-            engineWorkerMaxPoolSize,
             forceSerialRouting: pass.forceSerialRouting,
             clearCacheOnCategoryBoundary: false,
             clearCachesAfterEachRoute: false,
@@ -568,31 +492,56 @@ runBtn.addEventListener('click', async () => {
             },
             engineRunTimeoutMs: 20_000,
           },
-          handleProgress
+          (progress) => {
+            if (_stopped && !finishedEarly) throw new Error('Benchmark stopped by user');
+
+            const { routeName, result, pauseMs, phase } = progress;
+            const displayCompleted = completedTasks + (progress.done ? 1 : 0);
+            const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
+            const statusSuffix = formatStatusSuffix(progress);
+            const passPrefix = runPasses.length > 1
+              ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
+              : '';
+            const activeTasks = Math.max(0, startedTasks - displayCompleted);
+            const pausedSuffix = _paused ? ' — paused' : '';
+
+            progressBarEl.style.width = `${pct}%`;
+            if (pauseStateEl) pauseStateEl.hidden = !_paused;
+            progressTextEl.textContent = progress.done
+              ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
+              : phase === 'pausing'
+                ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
+                : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
+
+            if (result) {
+              _passResults[passIndex].push(result);
+              _results.push(result);
+              if (!result.error) successfulRouteCount += 1;
+              appendRow(result);
+              _pendingSummaryUpdate = true;
+              _pendingChartRedraw = true;
+              scheduleUIUpdate();
+              if (successfulRouteCount >= successThreshold) {
+                _stopped = true;
+                finishedEarly = true;
+              }
+            }
+
+            if (progress.done) {
+              completedTasks += 1;
+            }
+          }
         );
 
-        if (_stopped) break;
-
-        if (routePauseMs > 0 && passIndex < runPasses.length - 1) {
-          await waitForBenchmarkResume(_abortController.signal);
-          handleProgress({
-            current: completedTasks,
-            total: totalTasks,
-            routeName: '',
-            pauseMs: routePauseMs,
-            phase: 'pausing',
-            done: false,
-            results: _results,
-          });
-          await sleep(routePauseMs, _abortController.signal);
-          await waitForBenchmarkResume(_abortController.signal);
-        }
+        if (finishedEarly) break outerRouteLoop;
       }
+
+    }
 
     if (_passResults?.some((pass) => pass.length > 0)) {
       const combinedResults = runPasses.length === 1
         ? _passResults[0]
-        : _results;
+        : _passResults[0].concat(..._passResults.slice(1));
       _results = combinedResults;
       _reportVariants = createReportVariants();
       updateReportTypeControls();
@@ -616,6 +565,8 @@ runBtn.addEventListener('click', async () => {
   } catch (err) {
     if (!_stopped && err?.name !== 'AbortError') console.error('Benchmark error:', err);
   } finally {
+    stopBenchmarkStopwatch();
+    updateBenchmarkStopwatch();
     runBtn.disabled = false;
     stopBtn.disabled = true;
     if (pauseBtn) pauseBtn.disabled = true;
@@ -633,16 +584,7 @@ stopBtn.addEventListener('click', async () => {
   _abortController?.abort();
 
   if (_results.length > 0) {
-    if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
-      _reportVariants = createReportVariants();
-      if (!_reportVariants.some((variant) => variant.key === _reportSelection)) {
-        _reportSelection = 'combined';
-      }
-      updateReportTypeControls();
-      showReportVariant(getSelectedReportVariant());
-    } else {
-      showReport(_results, buildReportContext());
-    }
+    showReport(_results, buildReportContext());
     const savedPaths = [];
 
     if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
@@ -763,6 +705,76 @@ function fmtNum(v) {
   return Number(v).toLocaleString();
 }
 
+function engineBadge(engineId, label) {
+  if (!engineId) return '<span style="color:var(--muted)">—</span>';
+  const className = engineId === 'bidirectional-astar' ? 'badge-astar'
+    : engineId === 'adaptive-barrier' ? 'badge-barrier'
+    : engineId === 'delta-stepping' ? 'badge-delta'
+    : engineId === 'ultra-dijkstra' ? 'badge-dijkstra'
+    : 'badge-cpu';
+  return `<span class="badge ${className}">${label}</span>`;
+}
+
+function formatPickBadge(engineId) {
+  return engineId ? engineBadge(engineId, engineShortName(engineId)) : '<span style="color:var(--muted)">—</span>';
+}
+
+function formatHitIndicator(r) {
+  if (r.auto_matches_winner == null) return '<span style="color:var(--muted)">—</span>';
+  const hit = Number(r.auto_matches_winner) === 1
+    ? (Number(r.winner_tied) === 1 && r.auto_engine && r.auto_engine !== r.winner ? '≈' : '✓')
+    : '✗';
+  const color = hit === '✓' ? 'var(--green)' : hit === '✗' ? 'var(--red)' : 'var(--blue)';
+  return `<span style="color:${color}">${hit}</span>`;
+}
+
+function formatRegret(value) {
+  if (value == null) return '<span style="color:var(--muted)">—</span>';
+  const delta = Number(value);
+  const sign = delta > 0 ? '+' : '';
+  const color = delta <= 0 ? 'var(--green)' : delta < 30 ? 'var(--orange)' : 'var(--red)';
+  return `<span style="color:${color};font-weight:600">${sign}${delta.toFixed(1)}%</span>`;
+}
+
+function formatDuration(ms) {
+  const totalMs = Math.max(0, Math.round(ms));
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const tenths = Math.floor((totalMs % 1000) / 100);
+  if (minutes > 0) {
+    return `${minutes}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  }
+  return `${seconds}.${tenths}s`;
+}
+
+function updateBenchmarkStopwatch(endTime = performance.now()) {
+  if (!benchmarkStopwatchEl || benchmarkStartTime == null) return;
+  const elapsedMs = endTime - benchmarkStartTime;
+  const runCount = Math.max(0, _results.length);
+  const averageMs = runCount > 0 ? elapsedMs / runCount : 0;
+  benchmarkStopwatchEl.hidden = false;
+  benchmarkStopwatchEl.innerHTML = `
+    <strong>${formatDuration(elapsedMs)}</strong>
+    <span>${runCount.toLocaleString()} runs${runCount > 0 ? ` · avg ${averageMs.toFixed(1)} ms / run` : ''}</span>
+  `;
+}
+
+function startBenchmarkStopwatch() {
+  if (_stopwatchRaf != null) return;
+  function tick() {
+    updateBenchmarkStopwatch();
+    _stopwatchRaf = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+function stopBenchmarkStopwatch() {
+  if (_stopwatchRaf == null) return;
+  cancelAnimationFrame(_stopwatchRaf);
+  _stopwatchRaf = null;
+}
+
 function engineShortName(engineId) {
   return engineId === 'bidirectional-astar' ? 'A★'
     : engineId === 'adaptive-barrier' ? 'Barrier'
@@ -771,31 +783,17 @@ function engineShortName(engineId) {
     : engineId;
 }
 
-function engineBadgeClass(engineId) {
-  return engineId === 'bidirectional-astar' ? 'badge-astar'
-    : engineId === 'adaptive-barrier' ? 'badge-barrier'
-    : engineId === 'delta-stepping' ? 'badge-delta'
-    : engineId === 'ultra-dijkstra' ? 'badge-dijkstra'
-    : 'badge-cpu';
-}
-
 function winnerBadge(r) {
   if (r.error) return `<span class="badge badge-error" title="${r.error}">error</span>`;
   if (!r.winner) return `<span class="badge badge-na">—</span>`;
 
-  const className = engineBadgeClass(r.winner);
   const title = Number(r.winner_tied) === 1 && Array.isArray(r.winner_candidates) && r.winner_candidates.length > 1
     ? ` title="Within timing tolerance: ${r.winner_candidates.map(engineShortName).join(', ')}"`
     : '';
   const label = Number(r.winner_tied) === 1
     ? `${engineShortName(r.winner)} ≈`
     : engineShortName(r.winner);
-  return `<span class="badge ${className}"${title}>${label}</span>`;
-}
-
-function autoPickBadge(r) {
-  if (!r.auto_engine) return `<span class="badge badge-na">—</span>`;
-  return `<span class="badge ${engineBadgeClass(r.auto_engine)}">${engineShortName(r.auto_engine)}</span>`;
+  return `<span class="badge ${r.winner === 'bidirectional-astar' ? 'badge-astar' : r.winner === 'adaptive-barrier' ? 'badge-barrier' : r.winner === 'delta-stepping' ? 'badge-delta' : r.winner === 'ultra-dijkstra' ? 'badge-dijkstra' : 'badge-cpu'}"${title}>${label}</span>`;
 }
 
 function formatEngineErrors(r) {
@@ -806,19 +804,19 @@ function formatEngineErrors(r) {
     { id: 'ultra-dijkstra', label: 'Dijkstra', errorKey: 'ultra_dijkstra_error', warmKey: 'ultra_dijkstra_warm_error', timedKey: 'ultra_dijkstra_timed_error', resultSourceKey: 'ultra_dijkstra_result_source' },
   ];
 
-  const routeUnrecoverable = Boolean(r.error || r.routeError);
-
   const failures = engines.flatMap((engine) => {
     const entries = [];
     const recoveredWarmError = r[engine.warmKey] && r[engine.resultSourceKey] === 'timed';
-    const hasHardError = Boolean(r[engine.errorKey]);
-    const hasTimedError = Boolean(r[engine.timedKey]);
-    const hasWarmError = Boolean(r[engine.warmKey] && !recoveredWarmError);
-    const errorClass = routeUnrecoverable ? 'danger' : 'warning';
 
-    if (hasHardError) entries.push(`<span class="error-chip ${errorClass}">${engine.label}</span>`);
-    if (hasTimedError) entries.push(`<span class="error-chip ${errorClass}">${engine.label} (timed)</span>`);
-    if (hasWarmError) entries.push(`<span class="error-chip ${errorClass}">${engine.label} (warm)</span>`);
+    if (r[engine.errorKey]) {
+      entries.push({ label: engine.label, type: 'danger', title: `${engine.label} error` });
+    }
+    if (r[engine.timedKey]) {
+      entries.push({ label: `${engine.label} (timed)`, type: 'warning', title: `${engine.label} timed out` });
+    }
+    if (r[engine.warmKey] && !recoveredWarmError) {
+      entries.push({ label: `${engine.label} (warm)`, type: 'warning', title: `${engine.label} warmup error` });
+    }
     return entries;
   });
 
@@ -826,58 +824,39 @@ function formatEngineErrors(r) {
     return '<span style="color:var(--muted)">—</span>';
   }
 
-  return failures.join('');
+  return failures.map(({ label, type, title }) =>
+    `<span class="error-chip ${type}" title="${title}">${label}</span>`
+  ).join(' ');
 }
 
 function appendRow(r) {
-  const normalizedRow = normalizeBenchmarkRow(r);
   resultsSectionEl.hidden = false;
   const tr = document.createElement('tr');
-  tr.innerHTML = buildRowHTML(normalizedRow);
+  tr.innerHTML = buildRowHTML(r);
   resultsTbodyEl.appendChild(tr);
 }
 
 function buildRowHTML(r) {
   const barrierParallelFlag = r.adaptive_barrier_parallel ? '✓' : '—';
   const deltaParallelFlag = r.delta_stepping_parallel ? '✓' : '—';
-  const autoEqualsWinner = r.auto_engine && r.winner && r.auto_engine === r.winner;
-  const autoVsWinner = r.auto_vs_winner_pct == null
-    ? '<span style="color:var(--muted)">—</span>'
-    : (() => {
-        const delta = Number(r.auto_vs_winner_pct);
-        const sign = delta > 0 ? '+' : '';
-        const color = delta <= 0
-          ? 'var(--green)'
-          : delta > 30
-            ? 'var(--red)'
-            : 'orange';
-        return `<span style="color:${color};font-weight:600">${sign}${delta.toFixed(1)}%</span>`;
-      })();
-  const autoMatchesWinner = r.auto_matches_winner == null
-    ? '<span style="color:var(--muted)">—</span>'
-    : (Number(r.auto_matches_winner) === 1
-      ? (Number(r.winner_tied) === 1 && !autoEqualsWinner ? '≈' : '✓')
-      : '✗');
+  const pickBadge = formatPickBadge(r.auto_engine);
+  const winnerCell = winnerBadge(r);
+  const hitIndicator = formatHitIndicator(r);
+  const regretCell = formatRegret(r.auto_vs_winner_pct);
   return `
     <td>${r.name}</td>
     <td>${r.category}</td>
     <td>${r.lengthCategory}</td>
-    <td class="num">${r.beelineM != null ? r.beelineM.toLocaleString() + ' m' : '—'}</td>
-    <td class="num">${fmtNum(r.E)}</td>
-    <td class="num">${fmtNum(r.N)}</td>
-    <td class="num">${r.radius ?? '—'}</td>
-    <td class="num">${r.nRuns ?? '—'}</td>
     <td class="num">${fmtMs(r.bidirectional_astar_ms)}</td>
     <td class="num">${fmtMs(r.adaptive_barrier_ms)}</td>
     <td class="num">${barrierParallelFlag}</td>
     <td class="num">${fmtMs(r.delta_stepping_ms)}</td>
     <td class="num">${deltaParallelFlag}</td>
     <td class="num">${fmtMs(r.ultra_dijkstra_ms)}</td>
-    <td class="num">${fmtMs(r.auto_engine_ms)}</td>
-    <td>${autoPickBadge(r)}</td>
-    <td>${winnerBadge(r)}</td>
-    <td class="num">${autoMatchesWinner}</td>
-    <td class="num">${autoVsWinner}</td>
+    <td>${pickBadge}</td>
+    <td>${winnerCell}</td>
+    <td class="num">${hitIndicator}</td>
+    <td class="num">${regretCell}</td>
     <td>${formatEngineErrors(r)}</td>
   `;
 }
@@ -1101,7 +1080,8 @@ function showResults(results) {
   redrawCharts(results);
   renderSummaryTable(results);
   renderCostSummaryTable(results);
-  
+  updateBenchmarkStopwatch();
+
   // Hide threshold suggestion (no longer relevant for multi-engine comparison)
   suggestionWrapEl.hidden = true;
 }
