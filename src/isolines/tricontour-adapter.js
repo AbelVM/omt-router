@@ -9,29 +9,29 @@ import { signedArea } from '../utils/misc';
 import { pointInRing, findInteriorPoint } from '../utils/fastPointInRing';
 
 function computeBBox(points) {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const p of points) {
-        const x = p[0];
-        const y = p[1];
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-    }
-    return { minX, minY, maxX, maxY };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    const x = p[0];
+    const y = p[1];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 function bboxOverlapRatio(a, b) {
-    const ix = Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX));
-    const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
-    const intersection = ix * iy;
-    const areaA = (a.maxX - a.minX) * (a.maxY - a.minY);
-    const areaB = (b.maxX - b.minX) * (b.maxY - b.minY);
-    const union = areaA + areaB - intersection;
-    return union === 0 ? 0 : intersection / union;
+  const ix = Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX));
+  const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
+  const intersection = ix * iy;
+  const areaA = (a.maxX - a.minX) * (a.maxY - a.minY);
+  const areaB = (b.maxX - b.minX) * (b.maxY - b.minY);
+  const union = areaA + areaB - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 
 // helper: accept only already-closed rings; drop unclosed rings
@@ -133,170 +133,75 @@ function ringMatchesHull(ring, hull, eps = 1e-6) {
  * canonical ring keys.
  * @param {Array} points - Array of points with {x, y, value} for d3-tricontour input.
  * @param {Array} breaks - Array of threshold values for d3-tricontour isobands output.
+ * @param {'distance'|'travelTime'|'optimal'} [costField='distance'] - cost metric (units: meters or seconds).
  * @returns {Object} GeoJSON FeatureCollection with Polygon/MultiPolygon features.
  */
-export default function isobandsToFeatures(points, breaks = []) {
-    const tri = tricontour();
-    let maxCost = 0;
-    if (breaks.length > 0) {
-        tri.thresholds(breaks);
-        maxCost = breaks.at(-1);
-    }
-    const triOut = Array.from(tri.isobands(points));
-    // Filter out bands with no coordinates or that exceed maxCost (if specified)
-    const bands = triOut.filter(band => Array.isArray(band.coordinates) && band.coordinates.length > 0 && (maxCost > 0 ? band.valueMax <= maxCost : true));
+export default function isobandsToFeatures(points, breaks = [], costField = 'distance') {
+  const tri = tricontour();
+  let maxCost = 0;
+  if (breaks.length > 0) {
+    tri.thresholds(breaks);
+    maxCost = breaks.at(-1);
+  }
+  const triOut = Array.from(tri.isobands(points));
+  // Filter out bands with no coordinates or that exceed maxCost (if specified)
+  const bands = triOut.filter(band => Array.isArray(band.coordinates) && band.coordinates.length > 0 && (maxCost > 0 ? band.valueMax <= maxCost : true));
 
-    // no debug logging here
+  // no debug logging here
 
-    // compute domain hull from the input points once (map to [x,y])
-    const hull = convexHull(points.map(p => [p[0], p[1]]));
+  // compute domain hull from the input points once (map to [x,y])
+  const hull = convexHull(points.map(p => [p[0], p[1]]));
 
-    // If tricontour produced no polygon geometry for any band, fall back
-    // to a simple polygon built from the domain hull or reachable points.
-    if (!bands || bands.length === 0) {
-      const coords2 = points.map(p => [p[0], p[1]]);
-      let ring = null;
-      if (Array.isArray(hull) && hull.length >= 4) {
-        ring = hull.slice();
-      } else if (coords2.length >= 2) {
-        const a = coords2[0];
-        const b = coords2[1];
-        const dx = b[0] - a[0];
-        const dy = b[1] - a[1];
-        const norm = Math.hypot(dx, dy) || 1;
-        const eps = 1e-6;
-        const px = -(dy / norm) * eps;
-        const py = (dx / norm) * eps;
-        const c = [(a[0] + b[0]) / 2 + px, (a[1] + b[1]) / 2 + py];
-        ring = [a, b, c, a];
-      } else if (coords2.length === 1) {
-        const a = coords2[0];
-        const eps = 1e-6;
-        ring = [[a[0] - eps, a[1] - eps], [a[0] + eps, a[1] - eps], [a[0] + eps, a[1] + eps], [a[0] - eps, a[1] + eps], [a[0] - eps, a[1] - eps]];
-      }
-
-      const maxVal = (breaks && breaks.length) ? breaks[breaks.length - 1] : 0;
-      const feature = {
-        type: 'Feature',
-        properties: { value: 0, valueMin: 0, valueMax: maxVal, bandIndex: 0 },
-        geometry: { type: 'Polygon', coordinates: ring ? [ring] : [] }
-      };
-      return { type: 'FeatureCollection', features: [feature] };
+  // If tricontour produced no polygon geometry for any band, fall back
+  // to a simple polygon built from the domain hull or reachable points.
+  if (!bands || bands.length === 0) {
+    const coords2 = points.map(p => [p[0], p[1]]);
+    let ring = null;
+    if (Array.isArray(hull) && hull.length >= 4) {
+      ring = hull.slice();
+    } else if (coords2.length >= 2) {
+      const a = coords2[0];
+      const b = coords2[1];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const norm = Math.hypot(dx, dy) || 1;
+      const eps = 1e-6;
+      const px = -(dy / norm) * eps;
+      const py = (dx / norm) * eps;
+      const c = [(a[0] + b[0]) / 2 + px, (a[1] + b[1]) / 2 + py];
+      ring = [a, b, c, a];
+    } else if (coords2.length === 1) {
+      const a = coords2[0];
+      const eps = 1e-6;
+      ring = [[a[0] - eps, a[1] - eps], [a[0] + eps, a[1] - eps], [a[0] + eps, a[1] + eps], [a[0] - eps, a[1] + eps], [a[0] - eps, a[1] - eps]];
     }
 
-    // Convert each band to a GeoJSON Feature with cleaned geometry.
-    // Strategy:
-    // 1) Flatten all rings emitted for the band (all polygons -> rings)
-    // 2) Remove hull artifacts (rings approximating the domain hull)
-    // 3) Rebuild containment topology (parent-child) by area + PIP
-    // 4) Emit polygons with outer shells and holes (respecting winding)
-    const features = bands.map((band, bandIndex) => {
-      // 1) flatten rings
-      const rings = [];
-      for (const poly of band.coordinates) {
-        if (!Array.isArray(poly)) continue;
-        for (const r of poly) {
-          const cr = closeRing(r);
-          if (cr && cr.length >= 4) rings.push(cr);
-        }
+    const maxVal = (breaks && breaks.length) ? breaks[breaks.length - 1] : 0;
+    const feature = {
+      type: 'Feature',
+      properties: { value: 0, valueMin: 0, valueMax: maxVal, bandIndex: 0 },
+      geometry: { type: 'Polygon', coordinates: ring ? [ring] : [] }
+    };
+    return { type: 'FeatureCollection', features: [feature] };
+  }
+
+  // Convert each band to a GeoJSON Feature with cleaned geometry.
+  // Strategy:
+  // 1) Flatten all rings emitted for the band (all polygons -> rings)
+  // 2) Remove hull artifacts (rings approximating the domain hull)
+  // 3) Rebuild containment topology (parent-child) by area + PIP
+  // 4) Emit polygons with outer shells and holes (respecting winding)
+  const features = bands.map((band, bandIndex) => {
+    // 1) flatten rings
+    const rings = [];
+    for (const poly of band.coordinates) {
+      if (!Array.isArray(poly)) continue;
+      for (const r of poly) {
+        const cr = closeRing(r);
+        if (cr && cr.length >= 4) rings.push(cr);
       }
-      if (rings.length === 0) {
-        return {
-          type: 'Feature',
-          properties: {
-            value: band.value,
-            valueMin: band.value,
-            valueMax: band.valueMax,
-            bandIndex
-          },
-          geometry: {
-            type: 'MultiPolygon',
-            coordinates: []
-          }
-        };
-      }
-
-      // 2) remove hull artifacts (rings that match domain hull)
-      const goodRings = rings.filter(r => !ringMatchesHull(r, hull));
-      if (goodRings.length === 0) {
-        return {
-          type: 'Feature',
-          properties: {
-            value: band.value,
-            valueMin: band.value,
-            valueMax: band.valueMax,
-            bandIndex
-          },
-          geometry: {
-            type: 'MultiPolygon',
-            coordinates: []
-          }
-        };
-      }
-
-      // 3) build nodes and containment tree
-      const nodes = goodRings.map(r => ({
-        ring: r,
-        area: Math.abs(signedArea(r)),
-        bbox: computeBBox(r),
-        parent: null,
-        children: []
-      }));
-
-      // sort by descending area
-      nodes.sort((a, b) => b.area - a.area);
-
-      // helper bboxContains
-      function bboxContains(a, b) {
-        return a.minX <= b.minX && a.minY <= b.minY && a.maxX >= b.maxX && a.maxY >= b.maxY;
-      }
-
-      for (let i = 0; i < nodes.length; i++) {
-        const child = nodes[i];
-        const testPoint = findInteriorPoint(child.ring) || child.ring[0];
-        let bestParent = null;
-        let bestArea = Infinity;
-        for (let j = 0; j < nodes.length; j++) {
-          if (i === j) continue;
-          const parent = nodes[j];
-          if (parent.area <= child.area) continue;
-          if (!bboxContains(parent.bbox, child.bbox)) continue;
-          if (!pointInRing(testPoint, parent.ring)) continue;
-          if (parent.area < bestArea) {
-            bestArea = parent.area;
-            bestParent = parent;
-          }
-        }
-        child.parent = bestParent;
-        if (bestParent) bestParent.children.push(child);
-      }
-
-      // 4) parity topology -> build polygons (outer shells with holes)
-      function nodeDepth(node) {
-        let depth = 0; let p = node.parent;
-        while (p) { depth++; p = p.parent; }
-        return depth;
-      }
-
-      function ensureCCW(ring) { return signedArea(ring) > 0 ? ring : ring.slice().reverse(); }
-      function ensureCW(ring) { return signedArea(ring) < 0 ? ring : ring.slice().reverse(); }
-
-      const polygons = [];
-      for (const node of nodes) {
-        const depth = nodeDepth(node);
-        // even depth => shell
-        if ((depth & 1) === 0) {
-          const poly = [ ensureCCW(node.ring) ];
-          for (const child of node.children) {
-            const childDepth = nodeDepth(child);
-            if ((childDepth & 1) === 1) {
-              poly.push(ensureCW(child.ring));
-            }
-          }
-          polygons.push(poly);
-        }
-      }
-
+    }
+    if (rings.length === 0) {
       return {
         type: 'Feature',
         properties: {
@@ -305,9 +210,105 @@ export default function isobandsToFeatures(points, breaks = []) {
           valueMax: band.valueMax,
           bandIndex
         },
-        geometry: polygons.length === 1 ? { type: 'Polygon', coordinates: polygons[0] } : { type: 'MultiPolygon', coordinates: polygons }
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: []
+        }
       };
-    });
-    // return final FeatureCollection
-    return { type: 'FeatureCollection', features };
+    }
+
+    // 2) remove hull artifacts (rings that match domain hull)
+    const goodRings = rings.filter(r => !ringMatchesHull(r, hull));
+    if (goodRings.length === 0) {
+      return {
+        type: 'Feature',
+        properties: {
+          label: costField === 'distance' ? `${band.valueMax} m` : `${Math.round(band.valueMax / 60)} min`,
+          valueMin: band.value,
+          valueMax: band.valueMax,
+          bandIndex
+        },
+        geometry: {
+          type: 'MultiPolygon',
+          coordinates: []
+        }
+      };
+    }
+
+    // 3) build nodes and containment tree
+    const nodes = goodRings.map(r => ({
+      ring: r,
+      area: Math.abs(signedArea(r)),
+      bbox: computeBBox(r),
+      parent: null,
+      children: []
+    }));
+
+    // sort by descending area
+    nodes.sort((a, b) => b.area - a.area);
+
+    // helper bboxContains
+    function bboxContains(a, b) {
+      return a.minX <= b.minX && a.minY <= b.minY && a.maxX >= b.maxX && a.maxY >= b.maxY;
+    }
+
+    for (let i = 0; i < nodes.length; i++) {
+      const child = nodes[i];
+      const testPoint = findInteriorPoint(child.ring) || child.ring[0];
+      let bestParent = null;
+      let bestArea = Infinity;
+      for (let j = 0; j < nodes.length; j++) {
+        if (i === j) continue;
+        const parent = nodes[j];
+        if (parent.area <= child.area) continue;
+        if (!bboxContains(parent.bbox, child.bbox)) continue;
+        if (!pointInRing(testPoint, parent.ring)) continue;
+        if (parent.area < bestArea) {
+          bestArea = parent.area;
+          bestParent = parent;
+        }
+      }
+      child.parent = bestParent;
+      if (bestParent) bestParent.children.push(child);
+    }
+
+    // 4) parity topology -> build polygons (outer shells with holes)
+    function nodeDepth(node) {
+      let depth = 0; let p = node.parent;
+      while (p) { depth++; p = p.parent; }
+      return depth;
+    }
+
+    function ensureCCW(ring) { return signedArea(ring) > 0 ? ring : ring.slice().reverse(); }
+    function ensureCW(ring) { return signedArea(ring) < 0 ? ring : ring.slice().reverse(); }
+
+    const polygons = [];
+    for (const node of nodes) {
+      const depth = nodeDepth(node);
+      // even depth => shell
+      if ((depth & 1) === 0) {
+        const poly = [ensureCCW(node.ring)];
+        for (const child of node.children) {
+          const childDepth = nodeDepth(child);
+          if ((childDepth & 1) === 1) {
+            poly.push(ensureCW(child.ring));
+          }
+        }
+        polygons.push(poly);
+      }
+    }
+
+    return {
+      type: 'Feature',
+      properties: {
+        label: costField === 'distance' ? `${band.valueMax} m` : `${Math.round(band.valueMax / 60)} min`,
+        valueMin: band.value,
+        valueMax: band.valueMax,
+        bandIndex
+      },
+      geometry: polygons.length === 1 ? { type: 'Polygon', coordinates: polygons[0] } : { type: 'MultiPolygon', coordinates: polygons }
+    };
+  });
+  // return final FeatureCollection
+  return { type: 'FeatureCollection', features };
 }

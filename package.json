@@ -67,6 +67,7 @@
     "@vitest/coverage-v8": "^4.1.6",
     "chart.js": "^4.5.1",
     "cssnano": "^8.0.1",
+    "depcheck": "^1.4.7",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.6.0",

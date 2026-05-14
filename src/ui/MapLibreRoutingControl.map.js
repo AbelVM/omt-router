@@ -97,7 +97,7 @@ export function setupRouteSource(ctrl) {
         source: ctrl._options.isolineSourceId,
         layout: {
           'symbol-placement': 'point',
-          'text-field': ['to-string', ['get', 'valueMax']],
+          'text-field': ['to-string', ['get', 'label']],
           'text-font': ['Open Sans Regular'],
           'text-size': 12,
         },

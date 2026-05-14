@@ -91,15 +91,15 @@ export async function isoline({
 	// Pass full prepared graph and let isoPHAST handle direction and mode.
 	const { distances, reachable } = isoPHAST(prepared, startId, maxCost, { outputUnscaled: true, direction, mode });
 
-    const DEBUG_ISOLINES = typeof process !== 'undefined'
-      ? process.env?.DEBUG_ISOLINES
-      : typeof import.meta !== 'undefined'
-        ? import.meta.env?.DEBUG_ISOLINES
-        : false;
+	const DEBUG_ISOLINES = typeof process !== 'undefined'
+		? process.env?.DEBUG_ISOLINES
+		: typeof import.meta !== 'undefined'
+			? import.meta.env?.DEBUG_ISOLINES
+			: false;
 
-    if (DEBUG_ISOLINES) {
-      console.error('DEBUG_ISOLINES reachable', reachable, Array.from(distances).map((d,i)=>[i,d]));
-    }
+	if (DEBUG_ISOLINES) {
+		console.error('DEBUG_ISOLINES reachable', reachable, Array.from(distances).map((d, i) => [i, d]));
+	}
 
 
 	// Use d3-tricontour to build contour geometries. Build a simple
@@ -109,9 +109,6 @@ export async function isoline({
 	// Exclude values strictly greater than the threshold + epsilon so tricontour
 	// only receives points within the requested isoband range.
 	const factor = 1.5; // 50% epsilon to prevent floating point "almost there" issues
-	let breaks = prettyBreaks(0, maxCost, 7).filter(k => k < maxCost);
-	breaks.push(maxCost);
-	breaks.sort((a, b) => a - b);
 	for (let i = 0; i < distances.length; i++) {
 		const v = distances[i];
 		if (!Number.isFinite(v)) continue;
@@ -121,14 +118,22 @@ export async function isoline({
 		points.push([coord[0], coord[1], v]);
 	}
 
-  if (DEBUG_ISOLINES) {
-    console.error('DEBUG_ISOLINES isoline points', points.length, points);
-    console.error('DEBUG_ISOLINES breaks', breaks);
-  }
+	const NUMBER_OF_BREAKS = 7; // default number of breaks for isobands
+	let breaks = (costField === 'distance') ? 
+		prettyBreaks(0, maxCost, NUMBER_OF_BREAKS) : 
+		prettyBreaks(0, Math.round(maxCost / 60), NUMBER_OF_BREAKS).map(b => b * 60);
+	breaks = breaks.filter(k => k < maxCost);
+	breaks.push(maxCost);
+	breaks.sort((a, b) => a - b);
+
+	if (DEBUG_ISOLINES) {
+		console.error('DEBUG_ISOLINES isoline points', points.length, points);
+		console.error('DEBUG_ISOLINES breaks', breaks);
+	}
 
 	// Compute isobands via d3-tricontour adapter and return GeoJSON.
 	if (points.length === 0) return { type: 'FeatureCollection', features: [] };
-	return isobandsToFeatures(points, breaks);
+	return isobandsToFeatures(points, breaks, costField);
 }
 
 export default isoline;
