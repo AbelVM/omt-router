@@ -25,7 +25,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 from sklearn.linear_model import Ridge
+from sklearn.linear_model import RidgeCV
+from sklearn.metrics import make_scorer
 from sklearn.model_selection import train_test_split
+from sklearn.multioutput import MultiOutputRegressor
 
 
 ENGINE_IDS = [
@@ -109,55 +112,46 @@ PROFILE_REGRESSION_ALPHA_SEARCH = {
 }
 VALIDATION_FRACTION = 0.2
 RANDOM_SPLITS = [42, 77, 99, 123, 202]
-GOOD_ENOUGH_TOLERANCE = 0.05
-MIN_GOOD_ENOUGH_RATE = 0.58
-MIN_HIT_RATE = 0.40
-HIT_WEIGHT = 0.15
-GOOD_ENOUGH_WEIGHT = 0.14
-CONFIDENCE_WEIGHT = 0.05
-MARGIN_WEIGHT = 0.06
-REGRET_WEIGHT = 1.2
 REGRET_TOLERANCE = 0.002
 MARGIN_NORMALIZATION = 0.05
+DEFAULT_FALLBACK_ENGINE = "ultra-dijkstra"
+
+
+@dataclass
+class TrainingConfig:
+    good_enough_tolerance: float = 0.05
+    min_good_enough_rate: float = 0.58
+    min_hit_rate: float = 0.40
+    alpha_grid: Optional[List[float]] = None
+    cv_split_seeds: Tuple[int, ...] = tuple(RANDOM_SPLITS)
+    regret_tail_weight: float = 0.75
+    regret_percentile_weight: float = 0.25
+    regret_percentile: float = 0.9
+    use_holdout_splits: bool = True
+
 
 PROFILE_OBJECTIVE_CONFIG = {
     "sabOff": {
-        "hit_weight": 0.12,
-        "good_enough_weight": 0.20,
-        "confidence_weight": 0.05,
-        "margin_weight": 0.06,
-        "regret_weight": 1.4,
         "min_good_enough_rate": 0.60,
-        "min_hit_rate": 0.40,
+        "min_hit_rate": 0.35,
     },
     "sabOn": {
-        "hit_weight": 0.16,
-        "good_enough_weight": 0.12,
-        "confidence_weight": 0.06,
-        "margin_weight": 0.06,
-        "regret_weight": 1.2,
         "min_good_enough_rate": 0.58,
-        "min_hit_rate": 0.40,
+        "min_hit_rate": 0.35,
     },
 }
 
 
-def objective_weights(profile: str) -> Tuple[float, float, float, float, float]:
-    config = PROFILE_OBJECTIVE_CONFIG.get(profile, {})
+def profile_thresholds(profile: str, config: Optional[TrainingConfig] = None) -> Tuple[float, float]:
+    profile_config = PROFILE_OBJECTIVE_CONFIG.get(profile, {})
+    if config is None:
+        return (
+            profile_config.get("min_good_enough_rate", 0.58),
+            profile_config.get("min_hit_rate", 0.40),
+        )
     return (
-        config.get("hit_weight", HIT_WEIGHT),
-        config.get("good_enough_weight", GOOD_ENOUGH_WEIGHT),
-        config.get("confidence_weight", CONFIDENCE_WEIGHT),
-        config.get("margin_weight", MARGIN_WEIGHT),
-        config.get("regret_weight", REGRET_WEIGHT),
-    )
-
-
-def profile_thresholds(profile: str) -> Tuple[float, float]:
-    config = PROFILE_OBJECTIVE_CONFIG.get(profile, {})
-    return (
-        config.get("min_good_enough_rate", MIN_GOOD_ENOUGH_RATE),
-        config.get("min_hit_rate", MIN_HIT_RATE),
+        profile_config.get("min_good_enough_rate", config.min_good_enough_rate),
+        profile_config.get("min_hit_rate", config.min_hit_rate),
     )
 
 
@@ -172,6 +166,40 @@ def safe_stratify(y: np.ndarray) -> Optional[np.ndarray]:
     if any(count < 2 for count in counts.values()):
         return None
     return y
+
+
+def build_validation_splits(
+    complete_items: List[dict],
+    y_true: np.ndarray,
+    training_config: TrainingConfig,
+) -> List[Tuple[np.ndarray, np.ndarray]]:
+    splits: List[Tuple[np.ndarray, np.ndarray]] = []
+    file_indices = np.array(
+        [item.get("benchmarkFileIndex", 0) for item in complete_items],
+        dtype=np.int64,
+    )
+    unique_files = np.unique(file_indices)
+
+    if training_config.use_holdout_splits and len(unique_files) == 2:
+        for test_file in unique_files:
+            train_idx = np.where(file_indices != test_file)[0]
+            test_idx = np.where(file_indices == test_file)[0]
+            if train_idx.size and test_idx.size:
+                splits.append((train_idx, test_idx))
+
+    for split_seed in training_config.cv_split_seeds:
+        idx_all = np.arange(len(complete_items))
+        stratify = safe_stratify(y_true)
+        train_idx, test_idx = train_test_split(
+            idx_all,
+            test_size=VALIDATION_FRACTION,
+            random_state=split_seed,
+            shuffle=True,
+            stratify=stratify,
+        )
+        splits.append((train_idx, test_idx))
+
+    return splits
 
 
 @dataclass
@@ -872,6 +900,15 @@ def regret_for_prediction(pred_engine: str, item: dict) -> float:
     return max(0.0, (pred_t - best) / max(best, 1e-9))
 
 
+def is_training_candidate(item: dict) -> bool:
+    row = item["row"]
+    if bool(row.get("any_engine_error")):
+        return False
+    if not bool(row.get("all_engines_found")) or not bool(row.get("all_engines_timed")):
+        return False
+    return True
+
+
 def build_xy_for_profile(runs: List[DatasetRun], profile: str):
     profile_runs = [r for r in runs if r.profile == profile]
     if not profile_runs:
@@ -884,12 +921,22 @@ def build_xy_for_profile(runs: List[DatasetRun], profile: str):
 
     class_idx = {engine: i for i, engine in enumerate(ENGINE_IDS)}
 
-    for run in profile_runs:
+    filtered = 0
+    total = 0
+    for run_index, run in enumerate(profile_runs):
         for item in run.rows:
+            total += 1
+            if not is_training_candidate(item):
+                filtered += 1
+                continue
+            item["benchmarkFileName"] = str(run.file_path.name)
+            item["benchmarkFileIndex"] = run_index
             X.append(feature_vector(item["row"]))
             y.append(class_idx[item["winner"]])
             w.append(sample_weight(item, run.quality))
             items.append(item)
+    if filtered:
+        print(f"Profile {profile}: filtered {filtered} / {total} noisy or ambiguous routes from training data")
 
     if not X:
         return None
@@ -903,7 +950,12 @@ def build_xy_for_profile(runs: List[DatasetRun], profile: str):
     }
 
 
-def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: bool = True):
+def fit_runtime_models(
+    profile_data: dict,
+    profile: str,
+    use_feature_selection: bool = True,
+    training_config: TrainingConfig = TrainingConfig(),
+):
     """Train a per-engine runtime regressor and export a small runtime model."""
     X = profile_data["X"]
     w = profile_data["w"]
@@ -931,25 +983,22 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
         dtype=np.int64,
     )
 
-    def evaluate_alpha(alpha, feature_indices: Optional[List[int]] = None):
+    validation_splits = build_validation_splits(complete_items, y_true, training_config)
+    alpha_grid = training_config.alpha_grid or PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH)
+    alpha_search_results = []
+
+    def evaluate_alpha(alpha: float, feature_indices: Optional[List[int]] = None) -> dict:
         scores = []
         regrets = []
+        regret_tails = []
+        regret_tail_squared = []
+        regret_p90 = []
         hit_rates = []
         good_enough_rates = []
         confidences = []
         margins = []
 
-        for split_seed in RANDOM_SPLITS:
-            idx_all = np.arange(len(complete_items))
-            stratify = safe_stratify(y_true)
-            idx_train, idx_val = train_test_split(
-                idx_all,
-                test_size=VALIDATION_FRACTION,
-                random_state=split_seed,
-                shuffle=True,
-                stratify=stratify,
-            )
-
+        for split_index, (idx_train, idx_val) in enumerate(validation_splits):
             if feature_indices is None or len(feature_indices) == X_complete.shape[1]:
                 X_train = X_complete[idx_train]
                 X_val = X_complete[idx_val]
@@ -992,31 +1041,44 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
                 if pred_idx == y_val[pos]:
                     split_hit_rate += 1
                 if is_good_enough_prediction(
-                    pred_engine, complete_items[sample_idx], tolerance=GOOD_ENOUGH_TOLERANCE
+                    pred_engine,
+                    complete_items[sample_idx],
+                    tolerance=training_config.good_enough_tolerance,
                 ):
                     split_good_enough += 1
 
                 sorted_p = np.sort(probs[pos])
                 split_confidences.append(float(sorted_p[-1]))
-                split_margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
+                split_margins.append(
+                    float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1])
+                )
 
             split_mean_regret = float(np.mean(split_regrets)) if split_regrets else 1.0
-            split_regret_tail = float(np.mean([max(0.0, r - GOOD_ENOUGH_TOLERANCE) for r in split_regrets])) if split_regrets else 0.0
+            split_regret_tail = float(
+                np.mean([max(0.0, r - training_config.good_enough_tolerance) for r in split_regrets])
+            ) if split_regrets else 0.0
+            split_regret_tail_squared = float(
+                np.mean([max(0.0, r - training_config.good_enough_tolerance) ** 2 for r in split_regrets])
+            ) if split_regrets else 0.0
+            split_regret_p90 = float(
+                np.percentile(split_regrets, training_config.regret_percentile * 100)
+            ) if split_regrets else 0.0
             split_hit_rate = float(split_hit_rate / len(idx_val)) if len(idx_val) else 0.0
             split_good_enough_rate = float(split_good_enough / len(idx_val)) if len(idx_val) else 0.0
             split_confidence_p50 = float(np.median(split_confidences)) if split_confidences else 0.5
             split_margin_p50 = float(np.median(split_margins)) if split_margins else 0.0
-            hit_w, good_enough_w, conf_w, margin_w, regret_w = objective_weights(profile)
             split_score = (
-                regret_w * (split_mean_regret + 0.75 * split_regret_tail)
-                - hit_w * split_hit_rate
-                - good_enough_w * split_good_enough_rate
-                - conf_w * split_confidence_p50
-                - margin_w * min(split_margin_p50 / MARGIN_NORMALIZATION, 1.0)
+                split_mean_regret
+                + training_config.regret_tail_weight * split_regret_tail
+                + training_config.regret_percentile_weight * split_regret_p90
+                + 0.25 * split_regret_tail_squared
             )
 
             scores.append(split_score)
             regrets.append(split_mean_regret)
+            regret_tails.append(split_regret_tail)
+            regret_tail_squared.append(split_regret_tail_squared)
+            regret_p90.append(split_regret_p90)
             hit_rates.append(split_hit_rate)
             good_enough_rates.append(split_good_enough_rate)
             confidences.extend(split_confidences)
@@ -1025,33 +1087,14 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
         return {
             "score": float(np.mean(scores)),
             "mean_regret": float(np.mean(regrets)),
+            "regret_tail": float(np.mean(regret_tails)),
+            "regret_tail_squared": float(np.mean(regret_tail_squared)),
+            "regret_p90": float(np.mean(regret_p90)),
             "hit_rate": float(np.mean(hit_rates)),
             "good_enough_rate": float(np.mean(good_enough_rates)),
             "confidence_p50": float(np.median(confidences)) if confidences else 0.5,
             "margin_p50": float(np.median(margins)) if margins else 0.0,
         }
-
-    best = None
-    for alpha in PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH):
-        try:
-            result = evaluate_alpha(alpha)
-            if best is None or result["score"] < best["score"]:
-                best = {
-                    "score": result["score"],
-                    "alpha": alpha,
-                    "mean_regret": result["mean_regret"],
-                    "hit_rate": result["hit_rate"],
-                    "good_enough_rate": result["good_enough_rate"],
-                    "confidence_p50": result["confidence_p50"],
-                    "margin_p50": result["margin_p50"],
-                }
-        except Exception:
-            continue
-
-    if best is None:
-        raise RuntimeError(f"Runtime regression training failed for profile {profile}")
-
-    X_scaled, means, scales = standardize_features(X_complete)
 
     def train_ridge(alpha: float, feature_indices: List[int], embed_full: bool = True) -> dict:
         regressors = {}
@@ -1071,109 +1114,136 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
             }
         return regressors
 
-    def evaluate_feature_subset(feature_indices: List[int]) -> dict:
-        scores = []
-        regrets = []
-        hit_rates = []
-        good_enough_rates = []
-        confidences = []
-        margins = []
-
-        for split_seed in RANDOM_SPLITS:
-            idx_all = np.arange(len(complete_items))
-            stratify = y_true if len(set(y_true.tolist())) > 1 else None
-            idx_train, idx_val = train_test_split(
-                idx_all,
-                test_size=VALIDATION_FRACTION,
-                random_state=split_seed,
-                shuffle=True,
-                stratify=stratify,
-            )
-
-            X_train = X_scaled[idx_train][:, feature_indices] if len(feature_indices) != X_scaled.shape[1] else X_scaled[idx_train]
-            X_val = X_scaled[idx_val][:, feature_indices] if len(feature_indices) != X_scaled.shape[1] else X_scaled[idx_val]
-            w_train = w_complete[idx_train]
-            y_val = y_true[idx_val]
-
-            engine_models = {}
-            for engine in classes:
-                model = Ridge(alpha=best["alpha"])
-                model.fit(X_train, y_by_engine[engine][idx_train], sample_weight=w_train)
-                engine_models[engine] = model
-
-            preds = np.column_stack(
-                [engine_models[engine].predict(X_val) for engine in classes]
-            )
-            probs = np.exp(-preds - np.max(-preds, axis=1, keepdims=True))
-            probs = probs / np.sum(probs, axis=1, keepdims=True)
-
-            split_regrets = []
-            split_hit_rate = 0
-            split_good_enough = 0
-            split_confidences = []
-            split_margins = []
-
-            for pos, sample_idx in enumerate(idx_val):
-                pred_idx = int(np.argmin(preds[pos]))
-                pred_engine = classes[pred_idx]
-                split_regrets.append(regret_for_prediction(pred_engine, complete_items[sample_idx]))
-                if pred_idx == y_val[pos]:
-                    split_hit_rate += 1
-                if is_good_enough_prediction(
-                    pred_engine, complete_items[sample_idx], tolerance=GOOD_ENOUGH_TOLERANCE
-                ):
-                    split_good_enough += 1
-
-                sorted_p = np.sort(probs[pos])
-                split_confidences.append(float(sorted_p[-1]))
-                split_margins.append(float(sorted_p[-1] - sorted_p[-2]) if len(sorted_p) > 1 else float(sorted_p[-1]))
-
-            split_mean_regret = float(np.mean(split_regrets)) if split_regrets else 1.0
-            split_regret_tail = float(np.mean([max(0.0, r - GOOD_ENOUGH_TOLERANCE) for r in split_regrets])) if split_regrets else 0.0
-            split_hit_rate = float(split_hit_rate / len(idx_val)) if len(idx_val) else 0.0
-            split_good_enough_rate = float(split_good_enough / len(idx_val)) if len(idx_val) else 0.0
-            split_confidence_p50 = float(np.median(split_confidences)) if split_confidences else 0.5
-            split_margin_p50 = float(np.median(split_margins)) if split_margins else 0.0
-            hit_w, good_enough_w, conf_w, margin_w, regret_w = objective_weights(profile)
-            split_score = (
-                regret_w * (split_mean_regret + 0.75 * split_regret_tail)
-                - hit_w * split_hit_rate
-                - good_enough_w * split_good_enough_rate
-                - conf_w * split_confidence_p50
-                - margin_w * min(split_margin_p50 / MARGIN_NORMALIZATION, 1.0)
-            )
-
-            scores.append(split_score)
-            regrets.append(split_mean_regret)
-            hit_rates.append(split_hit_rate)
-            good_enough_rates.append(split_good_enough_rate)
-            confidences.extend(split_confidences)
-            margins.extend(split_margins)
-
-        return {
-            "score": float(np.mean(scores)),
-            "mean_regret": float(np.mean(regrets)),
-            "hit_rate": float(np.mean(hit_rates)),
-            "good_enough_rate": float(np.mean(good_enough_rates)),
-            "confidence_p50": float(np.median(confidences)) if confidences else 0.5,
-            "margin_p50": float(np.median(margins)) if margins else 0.0,
-        }
-
     def evaluate_best_alpha_for_subset(feature_indices: List[int]) -> dict:
-        best_result = None
-        best_alpha = None
-        for alpha in PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH):
+        candidates = []
+        for alpha in alpha_grid:
             try:
-                candidate = evaluate_alpha(alpha, feature_indices)
+                result = evaluate_alpha(alpha, feature_indices)
             except Exception:
                 continue
-            if best_result is None or candidate["score"] < best_result["score"]:
-                best_result = candidate
-                best_alpha = alpha
-        if best_result is None:
+            candidates.append({
+                "alpha": alpha,
+                "score": result["score"],
+                "mean_regret": result["mean_regret"],
+                "regret_tail": result["regret_tail"],
+                "regret_tail_squared": result["regret_tail_squared"],
+                "regret_p90": result["regret_p90"],
+                "hit_rate": result["hit_rate"],
+                "good_enough_rate": result["good_enough_rate"],
+                "confidence_p50": result["confidence_p50"],
+                "margin_p50": result["margin_p50"],
+            })
+        if not candidates:
             raise RuntimeError(f"Feature subset evaluation failed for profile {profile}")
-        best_result["alpha"] = best_alpha
+        best_result = choose_candidate(
+            candidates,
+            require_hit_rate=False,
+            profile=profile,
+            training_config=training_config,
+        )
         return best_result
+
+    X_scaled, means, scales = standardize_features(X_complete)
+
+    def refine_alpha_candidates(best_alpha: float, alphas: List[float]) -> List[float]:
+        sorted_alphas = sorted(set(alphas))
+        if best_alpha not in sorted_alphas:
+            return []
+        idx = sorted_alphas.index(best_alpha)
+        refined = []
+        if idx > 0:
+            lower = sorted_alphas[idx - 1]
+            refined.extend(list(np.linspace(lower, best_alpha, num=5, endpoint=False))[1:])
+        if idx < len(sorted_alphas) - 1:
+            upper = sorted_alphas[idx + 1]
+            refined.extend(list(np.linspace(best_alpha, upper, num=5, endpoint=False))[1:])
+        if idx == 0 and len(sorted_alphas) > 1:
+            step = sorted_alphas[1] - sorted_alphas[0]
+            refined.append(max(sorted_alphas[0] - step / 2.0, 1e-6))
+        if idx == len(sorted_alphas) - 1 and len(sorted_alphas) > 1:
+            step = sorted_alphas[-1] - sorted_alphas[-2]
+            refined.append(sorted_alphas[-1] + step / 2.0)
+        return sorted(set(refined) - set(sorted_alphas))
+
+    candidates = []
+    for alpha in alpha_grid:
+        try:
+            result = evaluate_alpha(alpha)
+        except Exception:
+            continue
+        candidate = {
+            "alpha": alpha,
+            "score": result["score"],
+            "mean_regret": result["mean_regret"],
+            "regret_tail": result["regret_tail"],
+            "regret_tail_squared": result["regret_tail_squared"],
+            "regret_p90": result["regret_p90"],
+            "hit_rate": result["hit_rate"],
+            "good_enough_rate": result["good_enough_rate"],
+            "confidence_p50": result["confidence_p50"],
+            "margin_p50": result["margin_p50"],
+        }
+        alpha_search_results.append({
+            "alpha": alpha,
+            "score": candidate["score"],
+            "meanRegret": candidate["mean_regret"],
+            "regretTail": candidate["regret_tail"],
+            "regretP90": candidate["regret_p90"],
+            "hitRate": candidate["hit_rate"],
+            "goodEnoughRate": candidate["good_enough_rate"],
+            "confidenceP50": candidate["confidence_p50"],
+            "marginP50": candidate["margin_p50"],
+        })
+        candidates.append(candidate)
+
+    if not candidates:
+        raise RuntimeError(f"Runtime regression training failed for profile {profile}")
+
+    best = choose_candidate(
+        candidates,
+        require_hit_rate=True,
+        profile=profile,
+        training_config=training_config,
+    )
+
+    refinement_alphas = refine_alpha_candidates(best["alpha"], alpha_grid)
+    for alpha in refinement_alphas:
+        try:
+            result = evaluate_alpha(alpha)
+        except Exception:
+            continue
+        candidate = {
+            "alpha": alpha,
+            "score": result["score"],
+            "mean_regret": result["mean_regret"],
+            "regret_tail": result["regret_tail"],
+            "regret_tail_squared": result["regret_tail_squared"],
+            "regret_p90": result["regret_p90"],
+            "hit_rate": result["hit_rate"],
+            "good_enough_rate": result["good_enough_rate"],
+            "confidence_p50": result["confidence_p50"],
+            "margin_p50": result["margin_p50"],
+        }
+        alpha_search_results.append({
+            "alpha": alpha,
+            "score": candidate["score"],
+            "meanRegret": candidate["mean_regret"],
+            "regretTail": candidate["regret_tail"],
+            "regretP90": candidate["regret_p90"],
+            "hitRate": candidate["hit_rate"],
+            "goodEnoughRate": candidate["good_enough_rate"],
+            "confidenceP50": candidate["confidence_p50"],
+            "marginP50": candidate["margin_p50"],
+        })
+        candidates.append(candidate)
+
+    if refinement_alphas:
+        best = choose_candidate(
+            candidates,
+            require_hit_rate=True,
+            profile=profile,
+            training_config=training_config,
+        )
 
     initial_regressors = train_ridge(best["alpha"], list(range(X_scaled.shape[1])))
     importance = compute_feature_importance({"regressors": initial_regressors}, FEATURE_ORDER)
@@ -1202,36 +1272,25 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
             if count >= best_subset["count"]:
                 continue
             candidate_indices = ranked_indices[:count]
-            best_candidate = None
-            for alpha in PROFILE_REGRESSION_ALPHA_SEARCH.get(profile, REGRESSION_ALPHA_SEARCH):
-                try:
-                    candidate = evaluate_alpha(alpha, candidate_indices)
-                except Exception:
-                    continue
-                if best_candidate is None or candidate["score"] < best_candidate["score"]:
-                    best_candidate = {"score": candidate["score"], "alpha": alpha}
-            if best_candidate is None:
-                continue
-
+            candidate = evaluate_best_alpha_for_subset(candidate_indices)
             feature_selection_candidates.append(
                 {
                     "candidateCount": count,
                     "selectedFeatures": [FEATURE_ORDER[i] for i in candidate_indices],
-                    "score": best_candidate["score"],
-                    "scoreGain": round(best["score"] - best_candidate["score"], 6),
-                    "alpha": best_candidate["alpha"],
+                    "score": candidate["score"],
+                    "scoreGain": round(best["score"] - candidate["score"], 6),
+                    "alpha": candidate["alpha"],
                 }
             )
-
-            if best_candidate["score"] < best_subset["score"] - 1e-6 or (
-                abs(best_candidate["score"] - best_subset["score"]) < 1e-6
+            if candidate["score"] < best_subset["score"] - 1e-6 or (
+                abs(candidate["score"] - best_subset["score"]) < 1e-6
                 and count < best_subset["count"]
             ):
                 best_subset = {
                     "indices": candidate_indices,
                     "count": count,
-                    "score": best_candidate["score"],
-                    "alpha": best_candidate["alpha"],
+                    "score": candidate["score"],
+                    "alpha": candidate["alpha"],
                 }
 
         if best_subset["count"] < len(FEATURE_ORDER):
@@ -1242,7 +1301,6 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
             feature_selection_gain = best["score"] - best_subset["score"]
             best["alpha"] = best_subset["alpha"]
 
-        # Try a small backward-elimination ablation pass on the least important features.
         if len(best_subset["indices"]) > 20:
             current_indices = best_subset["indices"].copy()
             least_important_indices = [
@@ -1252,11 +1310,7 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
             ]
             for removal_index in least_important_indices[:10]:
                 subset_indices = [i for i in current_indices if i != removal_index]
-                try:
-                    candidate = evaluate_best_alpha_for_subset(subset_indices)
-                except Exception:
-                    continue
-
+                candidate = evaluate_best_alpha_for_subset(subset_indices)
                 feature_selection_candidates.append(
                     {
                         "candidateCount": len(subset_indices),
@@ -1268,7 +1322,6 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
                         "alpha": candidate["alpha"],
                     }
                 )
-
                 if candidate["score"] < best_subset["score"] - 1e-6 or (
                     abs(candidate["score"] - best_subset["score"]) < 1e-6
                     and len(subset_indices) < best_subset["count"]
@@ -1298,12 +1351,10 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
     runtime_scaler_scale = [scales[i] for i in selected_indices] if len(selected_indices) != len(FEATURE_ORDER) else scales
 
     class_counts = Counter(item["winner"] for item in complete_items)
-    fallback_engine = class_counts.most_common(1)[0][0]
-    min_conf = float(np.clip(best["confidence_p50"] * 0.94, 0.36, 0.90))
-    min_margin = float(np.clip(best["margin_p50"] * 0.88, 0.04, 0.28))
+    fallback_engine = DEFAULT_FALLBACK_ENGINE if DEFAULT_FALLBACK_ENGINE in class_counts else class_counts.most_common(1)[0][0]
+    min_conf = float(np.clip(best["confidence_p50"] * 0.94, 0.38, 0.90))
+    min_margin = float(np.clip(best["margin_p50"] * 0.90, 0.05, 0.28))
 
-    # If validation shows a high near-tie rate, soften thresholds slightly so the model
-    # can still make useful predictions rather than defaulting too often.
     if best["good_enough_rate"] < 0.55:
         min_conf = float(np.clip(min_conf * 0.95, 0.36, 0.88))
         min_margin = float(np.clip(min_margin * 0.95, 0.04, 0.26))
@@ -1326,6 +1377,8 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
         "runtimeRegressors": runtime_regressors,
         "metrics": {
             "validationMeanRegret": best["mean_regret"],
+            "validationRegretTail": best["regret_tail"],
+            "validationRegretP90": best["regret_p90"],
             "validationHitRate": best["hit_rate"],
             "validationGoodEnoughRate": best["good_enough_rate"],
             "validationConfidenceP50": best["confidence_p50"],
@@ -1335,12 +1388,39 @@ def fit_runtime_models(profile_data: dict, profile: str, use_feature_selection: 
             "featureSelectionApplied": feature_selection_applied,
             "featureSelectionScoreGain": round(feature_selection_gain, 6),
             "samples": int(len(complete_items)),
+            "validationSplitCount": len(validation_splits),
+            "alphaSearchResults": alpha_search_results,
+            "trainingConfig": {
+                "goodEnoughTolerance": training_config.good_enough_tolerance,
+                "minGoodEnoughRate": training_config.min_good_enough_rate,
+                "minHitRate": training_config.min_hit_rate,
+                "alphaGrid": alpha_grid,
+                "regretTailWeight": training_config.regret_tail_weight,
+                "regretPercentileWeight": training_config.regret_percentile_weight,
+                "regretPercentile": training_config.regret_percentile,
+                "useHoldoutSplits": training_config.use_holdout_splits,
+            },
         },
     }
 
 
-def choose_candidate(candidates: list, require_hit_rate: bool = False, profile: str | None = None) -> dict:
-    min_good_enough_rate, min_hit_rate = profile_thresholds(profile) if profile else (MIN_GOOD_ENOUGH_RATE, MIN_HIT_RATE)
+def candidate_regret_objective(candidate: dict, training_config: TrainingConfig) -> float:
+    tail = candidate.get("regret_tail", 0.0)
+    return (
+        candidate["mean_regret"]
+        + training_config.regret_tail_weight * tail
+        + training_config.regret_percentile_weight * candidate.get("regret_p90", 0.0)
+        + 0.25 * candidate.get("regret_tail_squared", 0.0)
+    )
+
+
+def choose_candidate(
+    candidates: list,
+    require_hit_rate: bool = False,
+    profile: str | None = None,
+    training_config: TrainingConfig = TrainingConfig(),
+) -> dict:
+    min_good_enough_rate, min_hit_rate = profile_thresholds(profile, training_config)
     if require_hit_rate:
         hit_candidates = [c for c in candidates if c["hit_rate"] >= min_hit_rate]
         if hit_candidates:
@@ -1348,8 +1428,26 @@ def choose_candidate(candidates: list, require_hit_rate: bool = False, profile: 
 
     eligible = [c for c in candidates if c["good_enough_rate"] >= min_good_enough_rate]
     if eligible:
-        best_regret = min(c["mean_regret"] for c in eligible)
-        close = [c for c in eligible if c["mean_regret"] <= best_regret + REGRET_TOLERANCE]
+        best_p90 = min(c.get("regret_p90", c.get("regret_tail", 0.0)) for c in eligible)
+        p90_close = [
+            c
+            for c in eligible
+            if c.get("regret_p90", c.get("regret_tail", 0.0)) <= best_p90 + REGRET_TOLERANCE
+        ]
+        best_tail = min(c.get("regret_tail", 0.0) for c in p90_close)
+        tail_close = [
+            c
+            for c in p90_close
+            if c.get("regret_tail", 0.0) <= best_tail + REGRET_TOLERANCE
+        ]
+        best_objective = min(
+            candidate_regret_objective(c, training_config) for c in tail_close
+        )
+        close = [
+            c
+            for c in tail_close
+            if candidate_regret_objective(c, training_config) <= best_objective + REGRET_TOLERANCE
+        ]
         best_good_enough = max(c["good_enough_rate"] for c in close)
         finalists = [
             c
@@ -1359,6 +1457,9 @@ def choose_candidate(candidates: list, require_hit_rate: bool = False, profile: 
         return min(
             finalists,
             key=lambda c: (
+                c.get("regret_p90", c.get("regret_tail", 0.0)),
+                c.get("regret_tail", 0.0),
+                candidate_regret_objective(c, training_config),
                 c["mean_regret"],
                 -c["good_enough_rate"],
                 -c["hit_rate"],
@@ -1370,12 +1471,22 @@ def choose_candidate(candidates: list, require_hit_rate: bool = False, profile: 
     return min(candidates, key=lambda c: c["score"])
 
 
-def fit_profile_model(profile_data: dict, profile: str, use_feature_selection: bool = True):
+def fit_profile_model(
+    profile_data: dict,
+    profile: str,
+    use_feature_selection: bool = True,
+    training_config: TrainingConfig = TrainingConfig(),
+):
     """Train the runtime-linear model for the given profile."""
-    return fit_runtime_models(profile_data, profile, use_feature_selection)
+    return fit_runtime_models(profile_data, profile, use_feature_selection, training_config)
 
 
-def build_model_payload(runs: List[DatasetRun], root: Path, use_feature_selection: bool = True) -> dict:
+def build_model_payload(
+    runs: List[DatasetRun],
+    root: Path,
+    use_feature_selection: bool = True,
+    training_config: TrainingConfig = TrainingConfig(),
+) -> dict:
     compute_consensus_agreement(runs)
 
     by_profile = {
@@ -1388,7 +1499,10 @@ def build_model_payload(runs: List[DatasetRun], root: Path, use_feature_selectio
         if pdata is None:
             continue
         profiles[profile_name] = fit_profile_model(
-            pdata, profile_name, use_feature_selection=use_feature_selection
+            pdata,
+            profile_name,
+            use_feature_selection=use_feature_selection,
+            training_config=training_config,
         )
 
     if "sabOff" not in profiles and profiles:
@@ -1586,7 +1700,7 @@ def write_analysis_report(payload: dict, out_file: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Train OMP Router ML engine selector")
+    parser = argparse.ArgumentParser(description="Train OMT Router ML engine selector")
     parser.add_argument("--root", default=".", help="Repository root")
     parser.add_argument(
         "--out-js",
@@ -1598,43 +1712,11 @@ def main() -> int:
         default="benchmark/results/analysis/engine_selector_ml_latest.json",
         help="Path to analysis report",
     )
-    global GOOD_ENOUGH_TOLERANCE, HIT_WEIGHT, GOOD_ENOUGH_WEIGHT, REGRET_WEIGHT, MIN_GOOD_ENOUGH_RATE, MIN_HIT_RATE
-
     parser.add_argument(
         "--good-enough-tolerance",
         type=float,
         default=0.05,
         help="Regret tolerance used to count near-tie predictions as good enough",
-    )
-    parser.add_argument(
-        "--hit-weight",
-        type=float,
-        default=0.15,
-        help="Weight applied to exact hit rate in the search score",
-    )
-    parser.add_argument(
-        "--good-enough-weight",
-        type=float,
-        default=0.14,
-        help="Weight applied to good-enough rate in the search score",
-    )
-    parser.add_argument(
-        "--confidence-weight",
-        type=float,
-        default=0.05,
-        help="Weight applied to validation confidence in the search score",
-    )
-    parser.add_argument(
-        "--margin-weight",
-        type=float,
-        default=0.06,
-        help="Weight applied to validation margin in the search score",
-    )
-    parser.add_argument(
-        "--regret-weight",
-        type=float,
-        default=1.2,
-        help="Weight applied to regret in the search score",
     )
     parser.add_argument(
         "--min-good-enough-rate",
@@ -1655,34 +1737,26 @@ def main() -> int:
         help="Disable feature importance-based pruning for runtime-linear training.",
     )
     args = parser.parse_args()
+    training_config = TrainingConfig(
+        good_enough_tolerance=args.good_enough_tolerance,
+        min_good_enough_rate=args.min_good_enough_rate,
+        min_hit_rate=args.min_hit_rate,
+    )
 
-    GOOD_ENOUGH_TOLERANCE = args.good_enough_tolerance
-    MIN_GOOD_ENOUGH_RATE = args.min_good_enough_rate
-    MIN_HIT_RATE = args.min_hit_rate
-    HIT_WEIGHT = args.hit_weight
-    GOOD_ENOUGH_WEIGHT = args.good_enough_weight
-    CONFIDENCE_WEIGHT = args.confidence_weight
-    MARGIN_WEIGHT = args.margin_weight
-    REGRET_WEIGHT = args.regret_weight
-
-    root = Path(args.root).resolve()
+    root = Path(args.root)
     runs = load_runs(root)
-    if not runs:
-        raise SystemExit("No benchmark runs found to train model.")
-
-    payload = build_model_payload(runs, root, use_feature_selection=args.use_feature_selection)
-    if not payload.get("profiles"):
-        raise SystemExit("Model training failed: no profiles were trained.")
+    payload = build_model_payload(
+        runs,
+        root,
+        use_feature_selection=args.use_feature_selection,
+        training_config=training_config,
+    )
 
     write_js_model(payload, root / args.out_js)
     write_analysis_report(payload, root / args.out_report)
 
-    print("ML model trained successfully")
-    print(f"Profiles: {', '.join(sorted(payload['profiles'].keys()))}")
-    print(f"Model file: {args.out_js}")
-    print(f"Report file: {args.out_report}")
-    print(f"Selected runs: {len(payload.get('selectedRuns') or [])}")
-
+    print(f"Trained engine selector and wrote model to {root / args.out_js}")
+    print(f"Analysis report written to {root / args.out_report}")
     return 0
 
 

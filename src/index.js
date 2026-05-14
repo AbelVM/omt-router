@@ -57,6 +57,9 @@ import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
  * @property {Object} [penalties]
  * @property {number} [maxAcceptableSnapDistanceM]
  * @property {string} [engineId]
+ * @property {boolean} [useWorkerPool]
+ * @property {number} [engineWorkerPoolSize]
+ * @property {number} [engineWorkerMaxPoolSize]
  * @property {(rawURL: string, tile: object) => string} [tileUrlTransform]
  * @property {string} [tileProxyTemplate]
  * @property {boolean} [includeGraph]
@@ -189,6 +192,9 @@ export const route = async (
     engineId = 'auto',
     costField = 'distance',
     penalties = {},
+    useWorkerPool = false,
+    engineWorkerPoolSize = null,
+    engineWorkerMaxPoolSize = null,
     maxAcceptableSnapDistanceM,
     tileUrlTransform,
     tileProxyTemplate,
@@ -290,6 +296,8 @@ export const route = async (
       costField,
       penalties: normalizedPenalties,
       engineId,
+      useWorkerPool,
+      engineWorkerPoolSize: engineWorkerPoolSize ?? engineWorkerMaxPoolSize,
       maxAcceptableSnapDistanceM,
     });
 
@@ -342,6 +350,39 @@ export const route = async (
   const result = includeGraph ? { ...lastResult, graph: lastGraph } : lastResult;
   return { ...result, ...partialGraphStatus };
 };
+
+/**
+ * Compute multiple routes in parallel using the same public route() flow.
+ * @param {Array<{start:LatLng,end:LatLng,mode:string,costField?:CostField}>} requests
+ * @param {string} urlTemplate
+ * @param {RouteOptions} [options]
+ * @returns {Promise<Array<RouteResult>>}
+ */
+export async function routeBatch(requests, urlTemplate, options = {}) {
+  if (!Array.isArray(requests) || requests.length === 0) {
+    throw new Error('routeBatch requires a non-empty array of requests');
+  }
+
+  if (typeof urlTemplate !== 'string' || urlTemplate.length === 0) {
+    throw new Error('routeBatch requires a valid urlTemplate string');
+  }
+
+  return await Promise.all(requests.map((request, index) => {
+    if (!request || typeof request !== 'object') {
+      throw new Error(`routeBatch request at index ${index} must be an object with start, end, and mode`);
+    }
+    const { start, end, mode, costField } = request;
+    validateRouteCoordinates(start, `requests[${index}].start`);
+    validateRouteCoordinates(end, `requests[${index}].end`);
+    if (typeof mode !== 'string' || mode.length === 0) {
+      throw new Error(`routeBatch request at index ${index} must include a valid mode`);
+    }
+    if (costField !== undefined) {
+      validateCostField(costField);
+    }
+    return route(start, end, mode, urlTemplate, { ...options, costField });
+  }));
+}
 
 /**
  * Build a merged graph for an arbitrary tile list using the shared

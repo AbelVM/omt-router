@@ -1442,7 +1442,7 @@ export function generateCopilotReport(results, context = {}) {
     });
 
   const lines = [];
-  lines.push('# OMP Router Benchmark Report');
+  lines.push('# OMT Router Benchmark Report');
   lines.push('');
   lines.push('## Run Context');
   lines.push(`- generated_at: ${context.generatedAt ?? new Date().toISOString()}`);

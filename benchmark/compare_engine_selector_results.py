@@ -2,7 +2,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def load_report(path: Path) -> Dict[str, Any]:
@@ -14,10 +14,10 @@ def load_report(path: Path) -> Dict[str, Any]:
         raise SystemExit(f"Failed to parse JSON report {path}: {exc}")
 
 
-def find_latest_baseline(report_dir: Path) -> Path:
+def find_latest_baseline(report_dir: Path) -> Optional[Path]:
     baseline_files = sorted(report_dir.glob("engine_selector_ml_latest_baseline_*.json"))
     if not baseline_files:
-        raise SystemExit(f"No baseline report found in {report_dir}")
+        return None
     return baseline_files[-1]
 
 
@@ -137,6 +137,12 @@ def main() -> None:
     )
 
     print(f"Newest report: {new_report_path}")
+    if baseline_report_path is None:
+        print("Baseline report: <none found>")
+        print()
+        print("No baseline report found; this appears to be the first train run.")
+        return
+
     print(f"Baseline report: {baseline_report_path}")
     print()
 

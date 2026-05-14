@@ -372,6 +372,43 @@ High-level convenience function. Fetches the necessary tiles, builds the graph, 
 
 The route result also includes runtime metadata fields such as `engine`, optional `fallback`, `startSnapDistanceM`, `endSnapDistanceM`, and diagnostic fields `partialGraph`, `hasMissingTiles`, and `missingTileErrors`. `partialGraph` is `true` whenever the route was calculated against a graph with missing tiles. On failure the result includes a `reason` (for example `no_path`, `no_node`, `poor_snap`, `incomplete_path`, `tile_cors`).
 
+### `routeBatch(requests, urlTemplate, options?)`
+
+Batch routing helper that runs multiple `route()` requests in parallel. Useful when you need to compute many independent routes in the same session while reusing the shared tile cache and worker pool.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `requests` | `Array<Object>` | — | Array of route request objects. Each item must include `start`, `end`, `mode`, and may include `costField`. |
+| `urlTemplate` | `string` | — | Tile URL template with `{z}`, `{x}`, `{y}` placeholders. |
+| `options` | `object` | `undefined` | Same options as `route()`, including `useWorkerPool` (`false`), `engineWorkerPoolSize` (`undefined`), and `engineWorkerMaxPoolSize` (`undefined`). |
+
+Each request object has the shape:
+
+- `start`: `[lng, lat]`
+- `end`: `[lng, lat]`
+- `mode`: `'car' | 'pedestrian' | 'bicycle'` (required; no default)
+- `costField`: `'distance' | 'travelTime' | 'optimal'` (default: `'distance'`)
+
+`engineWorkerMaxPoolSize` is an alias for `engineWorkerPoolSize` when provided.
+
+Returns a `Promise` resolving to an array of `RouteResult` objects in the same order as the input requests.
+
+Example:
+
+```js
+const batch = [
+  { start: [-3.7038, 40.4168], end: [-3.6937, 40.4101], mode: 'car', costField: 'distance' },
+  { start: [-3.7020, 40.4080], end: [-3.7050, 40.4150], mode: 'pedestrian', costField: 'travelTime' },
+];
+
+const results = await routeBatch(batch, urlTemplate, {
+  useWorkerPool: true,
+  engineWorkerPoolSize: 3,
+});
+
+console.log(results[0].found, results[1].found);
+```
+
 ### CORS and `MissingAllowOriginHeader`
 
 If `route()` returns `reason: 'tile_cors'` with `code: 'MissingAllowOriginHeader'`, the browser blocked a cross-origin uncached tile request.

@@ -9,6 +9,7 @@ Its real target is to build a deployable selection policy that:
 - chooses a good engine by route/graph profile instead of one global winner,
 - supports both `sabOff` (serial runtime) and `sabOn` (parallel-capable runtime),
 - controls risk (regret and misses), not only average runtime,
+- handles noisy benchmark data and near-tie cases explicitly,
 - emits a ready-to-use runtime tuning artifact consumed by `src/tuning/tuning.js`.
 
 ## Available benchmark tools
@@ -31,11 +32,12 @@ Purpose:
 - Trains direct ML engine selectors from paired benchmark outputs.
 - Learns two route-level models: `sabOff` for serial runtime, `sabOn` for parallel runtime.
 - Exports a dependency-free JS model artifact consumable by `src/tuning/tuning.js`.
-Due to model size
+
 What it does:
 - Loads exactly two benchmark JSON files from `benchmark/results` (one serial and one parallel).
 - Parses route rows, features, and fastest-engine labels for each profile.
 - Scores runs by quality, agreement, coverage, and recency.
+- Down-weights noisy or drifted benchmark runs and preserves near-tie signals.
 - Trains the runtime-linear selector using sklearn Ridge regression.
 - Writes a generated JS model artifact and a JSON analysis report.
 

@@ -17,6 +17,7 @@
  */
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerCache } from 'performance-helpers/powerCache';
+import { PowerPool } from 'performance-helpers/powerPool';
 import { haversineDistance as haversine } from '../utils/misc.js';
 import {
   DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
@@ -57,6 +58,8 @@ import { getAllGraphMetrics } from '../graphs/graphMetrics.js';
  * @property {boolean} [useCache]
  * @property {boolean} [allowFallback]
  * @property {boolean} [forceSerialRouting]
+ * @property {boolean} [useWorkerPool]
+ * @property {number} [engineWorkerPoolSize]
  *
  * @typedef {Object} RouteResult
  * @property {boolean} found
@@ -96,6 +99,12 @@ const ENGINE_ID_ALIASES = Object.freeze({
   deltaStepping: 'delta-stepping',
   ultraDijkstra: 'ultra-dijkstra',
 });
+
+const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
+const ENGINE_WORKER_POOL_MAX_SIZE = Math.max(1, _hwConcurrency - 1);
+const ENGINE_WORKER_POOL_DEFAULT_SIZE = Math.min(4, ENGINE_WORKER_POOL_MAX_SIZE);
+let _engineWorkerPool = null;
+let _engineWorkerPoolSize = 0;
 
 export const RouteFailureReason = Object.freeze({
   MISSING_RESULT: 'missing_result',
@@ -407,14 +416,31 @@ function attachPreparedWorkerTransferMethods(prepared) {
   return prepared;
 }
 
-function restorePreparedFromWorkerBackup(prepared) {
-  prepared.reclaimFromWorker?.();
-}
-
 function serializePreparedForEngineWorker(prepared) {
   attachPreparedWorkerTransferMethods(prepared);
   const serializedPrepared = prepared.transferToWorker({ preserveMainThread: true });
   return serializedPrepared;
+}
+
+function clonePreparedForEngineWorker(prepared) {
+  attachPreparedWorkerTransferMethods(prepared);
+  ensurePreparedCoordsArrays(prepared);
+  return {
+    preparedId: getEngineWorkerPreparedId(prepared),
+    adjPtr: prepared.adjPtr.slice(),
+    adjTo: prepared.adjTo.slice(),
+    adjCost: prepared.adjCost.slice(),
+    revAdjPtr: prepared.revAdjPtr.slice(),
+    revAdjFrom: prepared.revAdjFrom.slice(),
+    revAdjCost: prepared.revAdjCost.slice(),
+    N: prepared.N,
+    E: prepared.E,
+    coordsX: prepared._coordsX.slice(),
+    coordsY: prepared._coordsY.slice(),
+    costField: prepared.costField,
+    distScale: prepared.distScale,
+    coordsAreGeographic: prepared.coordsAreGeographic,
+  };
 }
 
 function getPreparedWorkerTransferables(serializedPrepared) {
@@ -466,6 +492,48 @@ async function runEngineDirect(selectedEngine, startId, endId, prepared, beeline
       logger.warn(`unknown selectedEngine: ${selectedEngine}, falling back to ultra-dijkstra`);
       return ultraDijkstraRouter(startId, endId, prepared);
   }
+}
+
+async function getEngineWorkerPool(maxSize = null) {
+  if (typeof Worker === 'undefined') return null;
+  const desiredSize = Number.isFinite(Number(maxSize)) && Number(maxSize) > 0
+    ? Math.min(Math.max(1, Math.floor(Number(maxSize))), ENGINE_WORKER_POOL_MAX_SIZE)
+    : ENGINE_WORKER_POOL_DEFAULT_SIZE;
+
+  if (_engineWorkerPool && _engineWorkerPoolSize >= desiredSize) {
+    return _engineWorkerPool;
+  }
+
+  if (_engineWorkerPool) {
+    try {
+      _engineWorkerPool.shutdown();
+    } catch {
+      // best effort
+    }
+    _engineWorkerPool = null;
+  }
+
+  _engineWorkerPoolSize = desiredSize;
+  _engineWorkerPool = new PowerPool(EngineMainWorker, {
+    size: Math.min(2, desiredSize),
+    maxSize: desiredSize,
+    lazy: true,
+    autoScale: {
+      intervalMs: 350,
+      targetMs: 55,
+      alpha: 0.32,
+      cooldownMs: 1200,
+      hysteresis: 0.2,
+      stepUp: 1,
+      stepDown: 1,
+      backoffFactor: 1.5,
+      backoffMaxMultiplier: 4,
+      backoffResetMs: 6000,
+    },
+    idleTimeout: 30_000,
+  });
+
+  return _engineWorkerPool;
 }
 
 async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
@@ -520,6 +588,42 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
   });
 }
 
+async function runEngineInWorkerPool(selectedEngine, startId, endId, prepared, {
+  forceSerialRouting = false,
+  parallelPolicy = null,
+  engineWorkerPoolSize = null,
+} = {}) {
+  const pool = await getEngineWorkerPool(engineWorkerPoolSize);
+  if (!pool) throw makeEngineError('engine worker pool is unavailable', EngineErrorCode.ENGINE_WORKER_UNAVAILABLE);
+
+  const requestId = `request-${++_engineWorkerRequestId}`;
+  const serializedPrepared = clonePreparedForEngineWorker(prepared);
+  const transferables = getPreparedWorkerTransferables(serializedPrepared);
+  const response = await pool.postMessage(
+    {
+      type: 'prepareAndRun',
+      requestId,
+      engineId: selectedEngine,
+      startId,
+      endId,
+      prepared: serializedPrepared,
+      forceSerialRouting,
+      parallelPolicy,
+    },
+    transferables,
+    { awaitResponse: true, zeroCopy: true },
+  );
+
+  if (!response || response.ok !== true) {
+    throw makeEngineError(
+      `engine worker pool failed: ${response?.error?.message ?? 'unknown error'}`,
+      EngineErrorCode.ENGINE_WORKER_FAILED,
+    );
+  }
+
+  return response.result;
+}
+
 export function getEngineWorkerStatus() {
   return { ..._engineWorkerStatus };
 }
@@ -559,6 +663,16 @@ export function cancelRunningEngine(reason = 'cancelled') {
   return true;
 }
 
+function disposeEngineWorkerPool() {
+  if (!_engineWorkerPool) return;
+  try {
+    _engineWorkerPool.shutdown();
+  } finally {
+    _engineWorkerPool = null;
+    _engineWorkerPoolSize = 0;
+  }
+}
+
 export function shutdownEngineWorker(reason = 'shutdown') {
   if (_engineWorkerJobs.size > 0) {
     emitEngineWorkerStatus({
@@ -572,6 +686,7 @@ export function shutdownEngineWorker(reason = 'shutdown') {
   }
 
   terminateEngineWorker();
+  disposeEngineWorkerPool();
   emitEngineWorkerStatus({
     state: ENGINE_WORKER_STATES.IDLE,
     running: false,
@@ -921,6 +1036,9 @@ export async function queryRoute(startId, endId, prepared, {
   useCache = true,
   allowFallback = true,
   forceSerialRouting = false,
+  useWorkerPool = false,
+  engineWorkerPoolSize = null,
+  engineWorkerMaxPoolSize = null,
 } = {}) {
   if (!Number.isInteger(startId) || startId < 0) {
     throw new Error('Invalid startId: expected a non-negative integer.');
@@ -1002,28 +1120,56 @@ export async function queryRoute(startId, endId, prepared, {
 
   let result;
   let fallback = null;
-  if (typeof Worker === 'undefined') {
-    result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
-      forceSerialRouting: resolvedForceSerialRouting,
-      parallelPolicy,
-    });
-  } else {
-    try {
-      result = await runEngineInWorker(normalizedSelectedEngine, startId, endId, prepared, {
-        forceSerialRouting: resolvedForceSerialRouting,
-        parallelPolicy,
-      });
-    } catch (error) {
-      if (error?.code === EngineErrorCode.ENGINE_CANCELLED || error?.code === EngineErrorCode.ENGINE_WORKER_BUSY) {
-        throw error;
-      }
-      logger.warn(
-        `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`,
-      );
+  if (typeof Worker === 'undefined' || !useWorkerPool) {
+    if (typeof Worker === 'undefined') {
       result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
         forceSerialRouting: resolvedForceSerialRouting,
         parallelPolicy,
       });
+    } else {
+      try {
+        result = await runEngineInWorker(normalizedSelectedEngine, startId, endId, prepared, {
+          forceSerialRouting: resolvedForceSerialRouting,
+          parallelPolicy,
+        });
+      } catch (error) {
+        if (error?.code === EngineErrorCode.ENGINE_CANCELLED || error?.code === EngineErrorCode.ENGINE_WORKER_BUSY) {
+          throw error;
+        }
+        logger.warn(
+          `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`,
+        );
+        result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
+          forceSerialRouting: resolvedForceSerialRouting,
+          parallelPolicy,
+        });
+      }
+    }
+  } else {
+    try {
+      result = await runEngineInWorkerPool(normalizedSelectedEngine, startId, endId, prepared, {
+        forceSerialRouting: resolvedForceSerialRouting,
+        parallelPolicy,
+        engineWorkerPoolSize,
+      });
+    } catch (error) {
+      if (error?.code === EngineErrorCode.ENGINE_CANCELLED) {
+        throw error;
+      }
+      logger.warn(
+        `engine worker pool unavailable (${error?.code ?? 'unknown_error'}), falling back to route worker singleton or main thread`,
+      );
+      try {
+        result = await runEngineInWorker(normalizedSelectedEngine, startId, endId, prepared, {
+          forceSerialRouting: resolvedForceSerialRouting,
+          parallelPolicy,
+        });
+      } catch (_fallbackError) {
+        result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
+          forceSerialRouting: resolvedForceSerialRouting,
+          parallelPolicy,
+        });
+      }
     }
   }
 
@@ -1222,6 +1368,8 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     graphCategory = '',
     maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
     engineId = 'auto',
+    engineWorkerPoolSize = null,
+    engineWorkerMaxPoolSize = null,
   } = options;
   const normalizedCostField = validateCostField(costField);
   validateEngineId(engineId);
@@ -1347,7 +1495,13 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   const prepared = getPreparedGraph(workingGraph, costField, normalizedPenalties, startId, endId);
 
   logger.log('dispatching route query...');
-  const result = await queryRoute(startId, endId, prepared, { engineId, graphCategory, costField });
+  const result = await queryRoute(startId, endId, prepared, {
+    engineId,
+    graphCategory,
+    costField,
+    useWorkerPool: options.useWorkerPool,
+    engineWorkerPoolSize: engineWorkerPoolSize ?? engineWorkerMaxPoolSize,
+  });
 
   if (!result.found) {
     const canFallbackWithStartSnap = startSegmentSnap && !startSnapApplied && startSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;

@@ -35,6 +35,7 @@ vi.mock('../src/engines/router.js', async () => {
 });
 
 let route;
+let routeBatch;
 let buildTileURL;
 let disposeFn;
 let shutdownFn;
@@ -45,6 +46,7 @@ beforeEach(async () => {
   mockGetTilesAlongLine.mockReturnValue([{ z: 14, x: 8200, y: 5600 }]);
   const module = await import('../src/index.js');
   route = module.route;
+  routeBatch = module.routeBatch;
   buildTileURL = module.buildTileURL;
   disposeFn = module.dispose;
   shutdownFn = module.shutdown;
@@ -190,6 +192,47 @@ describe('index module route and tile URL helpers', () => {
     expect(result.found).toBe(false);
     expect(result.reason).toBe('unsupported_mode');
     expect(mockComputeRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it('processes a batch of route requests in parallel', async () => {
+    mockBuildGraphAsync.mockResolvedValue({ hasMissingTiles: false, missingTileErrors: [] });
+    mockComputeRoute
+      .mockResolvedValueOnce({ found: true, cost: 10, path: [0], coordinates: [[0, 0]] })
+      .mockResolvedValueOnce({ found: true, cost: 20, path: [1], coordinates: [[1, 1]] });
+
+    const requests = [
+      { start: [0, 0], end: [0.001, 0], mode: 'car', costField: 'distance' },
+      { start: [0.002, 0], end: [0.003, 0], mode: 'pedestrian', costField: 'travelTime' },
+    ];
+
+    const results = await routeBatch(requests, 'https://example.com/{z}/{x}/{y}.pbf');
+
+    expect(results).toHaveLength(2);
+    expect(results[0].cost).toBe(10);
+    expect(results[1].cost).toBe(20);
+    expect(mockComputeRoute).toHaveBeenCalledTimes(2);
+    expect(mockComputeRoute.mock.calls[0][0]).toEqual([0, 0]);
+    expect(mockComputeRoute.mock.calls[1][0]).toEqual([0.002, 0]);
+  });
+
+  it('accepts engineWorkerMaxPoolSize as an alias for engineWorkerPoolSize', async () => {
+    mockBuildGraphAsync.mockResolvedValue({ hasMissingTiles: false, missingTileErrors: [] });
+    mockComputeRoute.mockResolvedValue({ found: true, cost: 10, path: [0], coordinates: [[0, 0]] });
+
+    const requests = [
+      { start: [0, 0], end: [0.001, 0], mode: 'car' },
+    ];
+
+    const results = await routeBatch(requests, 'https://example.com/{z}/{x}/{y}.pbf', {
+      useWorkerPool: true,
+      engineWorkerMaxPoolSize: 3,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].cost).toBe(10);
+    expect(mockComputeRoute).toHaveBeenCalledTimes(1);
+    const computeRouteOptions = mockComputeRoute.mock.calls[0][3];
+    expect(computeRouteOptions.engineWorkerPoolSize).toBe(3);
   });
 });
 
