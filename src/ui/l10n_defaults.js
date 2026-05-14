@@ -44,6 +44,7 @@ const LOCALES = {
       incompletePath: 'Routing engine returned an incomplete path. This can happen when the graph data is inconsistent or a path is missing.',
       noRoute: 'No route found between these points. This can be caused by a disconnected graph, snapping issue, or another routing failure.',
       routeErrorPrefix: 'Routing error —',
+      partialGraph: 'Partial graph used for this route. Some segments may be missing because tiles were unavailable.',
     },
   },
   es: {

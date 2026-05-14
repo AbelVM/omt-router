@@ -90,4 +90,30 @@ describe('isoPHAST direction and pedestrian mode', () => {
     expect(prepared._chGraphIsUndirected).toBeTruthy();
     expect(pedRes2.reachable).toBeDefined();
   });
+
+  it('rebuilds the contraction hierarchy when costField or penaltyKey changes', () => {
+    const nodes = new Map();
+    nodes.set(0, { id: 0, coords: [0, 0] });
+    nodes.set(1, { id: 1, coords: [1, 0] });
+
+    const edges = [
+      { id: 0, source: 0, target: 1, length: 1, reverseCost: -1, cost: 1, speed: 10, travelTime: 1 / (10 / 3.6), properties: {} },
+    ];
+
+    const graph = { nodes, edges, mode: 'car' };
+    const prepared = buildCH(graph, 'distance');
+
+    isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    expect(prepared._chGraphCostField).toBe('distance');
+    expect(prepared._chGraphPenaltyKey).toBe('none');
+
+    prepared.costField = 'travelTime';
+    prepared.penaltyKey = 'none';
+    isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    expect(prepared._chGraphCostField).toBe('travelTime');
+
+    prepared.penaltyKey = 'i1';
+    isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    expect(prepared._chGraphPenaltyKey).toBe('i1');
+  });
 });

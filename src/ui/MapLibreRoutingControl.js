@@ -136,6 +136,11 @@ export class MapLibreRoutingControl {
       ? mergeLocaleText(LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE], localeOverride)
       : LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE];
 
+    this._text.status = {
+      ...LOCALES[DEFAULT_LOCALE].status,
+      ...this._text.status,
+    };
+
     // Use l10n defaults and any provided locale overrides. Keep minimal
     // fallbacks in-place if l10n entries are missing.
     this._text.isoline = this._text.isoline || {};

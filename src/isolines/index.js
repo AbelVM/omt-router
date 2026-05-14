@@ -108,7 +108,7 @@ export async function isoline({
 	const points = [];
 	// Exclude values strictly greater than the threshold + epsilon so tricontour
 	// only receives points within the requested isoband range.
-	const factor = 1.5; // 50% epsilon to prevent floating point "almost there" issues
+	const factor = 3; // x3 factor to ensure a convex hull big enough to build isolines
 	for (let i = 0; i < distances.length; i++) {
 		const v = distances[i];
 		if (!Number.isFinite(v)) continue;

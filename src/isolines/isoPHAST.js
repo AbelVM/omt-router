@@ -6,7 +6,7 @@
 
 import { Graph } from 'contraction-hierarchy-js';
 import { haversineDistance as haversine } from '../utils/misc.js';
-import { attachArrangeShim } from './chShim.js';
+import { attachArrangeShim } from '../shims/chShim.js';
 
 /**
  * Compute many-to-all distances up to a threshold using Contraction Hierarchies (CH).

@@ -319,8 +319,8 @@ export async function tryIsoline(ctrl) {
         ? Number(ctrl._isoline.maxCost) * (speedKmh / 3.6)
         : Number(ctrl._isoline.maxCost);
 
-      const multiplier = Number(ctrl._options.isolineTileSearchMultiplier ?? 1.6);
-      const extraMeters = Number(ctrl._options.isolineTileSearchExtraMeters ?? 200);
+      const multiplier = Number(ctrl._options.isolineTileSearchMultiplier ?? 2);
+      const extraMeters = Number(ctrl._options.isolineTileSearchExtraMeters ?? 500);
       const searchRadiusMeters = Math.max(radiusMeters * multiplier, radiusMeters + extraMeters);
 
       const tilesCoords = getTilesWithinRadius(point[0], point[1], zoom, searchRadiusMeters, 'zxy');
@@ -566,7 +566,11 @@ export async function tryRoute(ctrl) {
     }
 
     ctrl._showStats(result);
-    ctrl._setStatus('');
+    if (result.partialGraph) {
+      ctrl._setStatus(ctrl._text.status.partialGraph, 'error');
+    } else {
+      ctrl._setStatus('');
+    }
   } catch (err) {
     if (!ctrl._mounted || id !== ctrl._calcId) return;
     console.error('[omt-router] routing error:', err);
@@ -617,5 +621,7 @@ export function handleRouteFailure(ctrl, result) {
   ctrl._clearRoute();
   ctrl._clearGraph();
 }
+
+export { _ensureIsolineWorker, computeIsolineInWorker };
 
 // `parseCoords` is exported above via named export declarations.

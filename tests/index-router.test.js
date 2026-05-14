@@ -96,6 +96,7 @@ describe('index module route and tile URL helpers', () => {
 
     expect(result.found).toBe(true);
     expect(result.graph).toEqual({ hasMissingTiles: false, missingTileErrors: [] });
+    expect(result.partialGraph).toBe(false);
     expect(result.hasMissingTiles).toBe(false);
     expect(result.reason).toBe(null);
   });
@@ -119,7 +120,33 @@ describe('index module route and tile URL helpers', () => {
     expect(result.reason).toBe('tile_cors');
     expect(result.code).toBe('MissingAllowOriginHeader');
     expect(result.message).toBe('CORS blocked');
+    expect(result.partialGraph).toBe(true);
     expect(result.hasMissingTiles).toBe(true);
+  });
+
+  it('preserves partial graph metadata when a route is found', async () => {
+    const partialGraph = {
+      hasMissingTiles: true,
+      missingTileErrors: [{ code: 'TileFetchFailed', message: 'Tile missing' }],
+    };
+    mockBuildGraphAsync.mockResolvedValue(partialGraph);
+    mockComputeRoute.mockResolvedValue({
+      found: true,
+      cost: 42,
+      path: [0, 1],
+      coordinates: [[0, 0], [0, 1]],
+    });
+
+    const result = await route([0, 0], [0.001, 0], 'car', 'https://example.com/{z}/{x}/{y}.pbf', {
+      includeGraph: true,
+      tileUrlTransform: (url) => url,
+    });
+
+    expect(result.found).toBe(true);
+    expect(result.graph).toEqual(partialGraph);
+    expect(result.partialGraph).toBe(true);
+    expect(result.hasMissingTiles).toBe(true);
+    expect(result.missingTileErrors).toEqual(partialGraph.missingTileErrors);
   });
 
   it('retries on no_path and eventually returns a successful route', async () => {

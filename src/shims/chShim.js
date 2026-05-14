@@ -33,6 +33,7 @@ export function attachArrangeShim(Graph) {
           } else {
             const ep = self._edgeProperties[id];
             if (ep && Array.isArray(ep._id)) ids.push(...ep._id);
+            else simpleIds.push(id);
           }
         }
 
@@ -47,6 +48,7 @@ export function attachArrangeShim(Graph) {
           if (!links[e]) links[e] = [];
           links[e].push(id);
         });
+        Object.values(links).forEach(arr => arr.sort((a, b) => a - b));
 
         // trivial case
         if (simpleIds.length <= 1) {

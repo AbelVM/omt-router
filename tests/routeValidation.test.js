@@ -7,6 +7,11 @@ import {
   validateUrlTemplate,
   validateMaxAcceptableSnapDistance,
   validateRadius,
+  validateCostField,
+  validateEngineId,
+  validateTileUrlTransform,
+  validateTileProxyTemplate,
+  normalizePenalties,
 } from '../src/utils/routeValidation.js';
 
 describe('route input validation', () => {
@@ -59,5 +64,40 @@ describe('route input validation', () => {
     expect(validateRadius(2)).toBe(2);
     expect(() => validateRadius(0)).toThrow(/Invalid radius/);
     expect(() => validateRadius(1.5)).toThrow(/Invalid radius/);
+  });
+
+  it('validates cost field values', () => {
+    expect(validateCostField('distance')).toBe('distance');
+    expect(validateCostField('travelTime')).toBe('travelTime');
+    expect(validateCostField('optimal')).toBe('optimal');
+    expect(() => validateCostField('speed')).toThrow(/Unknown costField/);
+  });
+
+  it('validates engine id values', () => {
+    expect(validateEngineId('auto')).toBe('auto');
+    expect(validateEngineId('bidirectional-astar')).toBe('bidirectional-astar');
+    expect(() => validateEngineId('')).toThrow(/Invalid engineId/);
+    expect(() => validateEngineId(123)).toThrow(/Invalid engineId/);
+  });
+
+  it('validates tile URL transform value', () => {
+    expect(() => validateTileUrlTransform(() => 'x')).not.toThrow();
+    expect(() => validateTileUrlTransform(undefined)).not.toThrow();
+    expect(() => validateTileUrlTransform('not-a-function')).toThrow(/Invalid tileUrlTransform/);
+  });
+
+  it('validates tile proxy template values', () => {
+    expect(() => validateTileProxyTemplate('https://proxy.example.com/?url={url}')).not.toThrow();
+    expect(() => validateTileProxyTemplate(undefined)).not.toThrow();
+    expect(() => validateTileProxyTemplate(123)).toThrow(/Invalid tileProxyTemplate/);
+  });
+
+  it('normalizes penalty options and enforces non-negative finite values', () => {
+    expect(normalizePenalties({ intersectionPenaltySec: 3, turnPenaltySec: 4, turnAngleThresholdDeg: 45 }))
+      .toEqual({ intersectionPenaltySec: 3, turnPenaltySec: 4, turnAngleThresholdDeg: 45 });
+    expect(normalizePenalties({ intersectionPenaltySec: 1 })).toEqual({ intersectionPenaltySec: 1, turnPenaltySec: 0, turnAngleThresholdDeg: 25 });
+    expect(() => normalizePenalties({ intersectionPenaltySec: -1 })).toThrow(/Invalid penalties\.intersectionPenaltySec/);
+    expect(() => normalizePenalties({ turnPenaltySec: Infinity })).toThrow(/Invalid penalties\.turnPenaltySec/);
+    expect(() => normalizePenalties({ turnAngleThresholdDeg: NaN })).toThrow(/Invalid penalties\.turnAngleThresholdDeg/);
   });
 });

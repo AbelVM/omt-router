@@ -11,7 +11,11 @@ import {
   validateUrlTemplate,
   validateMaxAcceptableSnapDistance,
   validateRadius,
-  normalizePenalties
+  validateCostField,
+  validateEngineId,
+  validateTileUrlTransform,
+  validateTileProxyTemplate,
+  normalizePenalties,
 } from './utils/routeValidation.js';
 import {
   buildCH,
@@ -83,7 +87,6 @@ const _tileCache = new PowerCache({ maxEntries: 5000, defaultTTL: 300_000 });
 // (e.g. repeated route queries in the same area or after transportation-mode
 // toggle back to a previously used mode). 50 entries is enough for typical use.
 const _graphCache = new PowerCache({ maxEntries: 50, defaultTTL: 300_000 });
-const VALID_COST_FIELDS = new Set(['distance', 'travelTime', 'optimal']);
 const DEG_TO_RAD = Math.PI / 180;
 
 function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate } = {}) {
@@ -200,13 +203,10 @@ export const route = async (
   validateUrlTemplate(urlTemplate);
   validateMaxAcceptableSnapDistance(maxAcceptableSnapDistanceM);
   if (radius !== undefined) radius = validateRadius(radius);
-
-  if (!VALID_COST_FIELDS.has(costField)) {
-    throw new Error(
-      `Unknown costField: ${costField}. Expected "distance", "travelTime", or "optimal".`,
-    );
-  }
-
+  validateCostField(costField);
+  validateEngineId(engineId);
+  validateTileUrlTransform(tileUrlTransform);
+  validateTileProxyTemplate(tileProxyTemplate);
 
   const normalizedPenalties = normalizePenalties(penalties);
 
@@ -295,6 +295,7 @@ export const route = async (
 
     // Always surface partial graph status in the result
     const partialGraphStatus = {
+      partialGraph: graph?.hasMissingTiles ?? false,
       hasMissingTiles: graph?.hasMissingTiles ?? false,
       missingTileErrors: graph?.missingTileErrors ?? [],
     };
@@ -334,6 +335,7 @@ export const route = async (
 
   // Always surface partial graph status in the result
   const partialGraphStatus = {
+    partialGraph: lastGraph?.hasMissingTiles ?? false,
     hasMissingTiles: lastGraph?.hasMissingTiles ?? false,
     missingTileErrors: lastGraph?.missingTileErrors ?? [],
   };

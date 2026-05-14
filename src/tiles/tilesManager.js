@@ -1,3 +1,5 @@
+import { haversineDistanceCoords } from '../utils/misc.js';
+
 /**
  * Tile coordinate helpers for map tile selection and index conversion.
  * @module src/tiles/tilesManager
@@ -151,19 +153,6 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
     return (Math.atan(Math.sinh(Math.PI * ym)) * 180) / Math.PI;
   };
 
-  // Haversine distance helper
-  const RAD = Math.PI / 180;
-  const haversine = (aLng, aLat, bLng, bLat) => {
-    const dLat = (bLat - aLat) * RAD;
-    const dLng = (bLng - aLng) * RAD;
-    const lat1 = aLat * RAD;
-    const lat2 = bLat * RAD;
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-    const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-    return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
-  };
-
   for (let dx = -radiusTiles; dx <= radiusTiles; dx++) {
     for (let dy = -radiusTiles; dy <= radiusTiles; dy++) {
       const nx = center.x + dx;
@@ -175,7 +164,7 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
       // compute tile centre
       const cx = toLon(wrappedX + 0.5);
       const cy = toLat(finalY + 0.5);
-      const dist = haversine(lng, lat, cx, cy);
+      const dist = haversineDistanceCoords(lng, lat, cx, cy);
       if (dist <= (radiusMeters + tileHalfDiag)) {
         tiles.set(`${zoom}_${wrappedX}_${finalY}`, { z: zoom, x: wrappedX, y: finalY });
       }

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MapLibreRoutingControl, parseCoords } from '../src/ui/MapLibreRoutingControl.js';
+import * as IndexModule from '../src/index.js';
+import * as UI from '../src/ui/MapLibreRoutingControl.ui.js';
+import * as MapModule from '../src/ui/MapLibreRoutingControl.map.js';
 import { RouteFailureReason } from '../src/engines/router.js';
 
 class MarkerStub {
@@ -43,30 +46,143 @@ class LngLatBoundsStub {
   }
 }
 
-function createElementStub() {
+function createElementStub({ selectorMap = {}, querySelectorAllMap = {}, id = '' } = {}) {
+  const listeners = {};
   const element = {
+    id,
     className: '',
     hidden: false,
     innerHTML: '',
     textContent: '',
     value: '',
-    classList: {
-      add: vi.fn(),
-      toggle: vi.fn(),
-    },
     dataset: {},
     style: {},
-    addEventListener: vi.fn(),
+    listeners,
+    classList: {
+      add: vi.fn(),
+      remove: vi.fn(),
+      toggle: vi.fn(),
+    },
+    attributes: {},
+    addEventListener(event, callback) {
+      listeners[event] = callback;
+    },
+    removeEventListener(event) {
+      delete listeners[event];
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
+    querySelector(selector) {
+      return selectorMap[selector] ?? null;
+    },
+    querySelectorAll(selector) {
+      return querySelectorAllMap[selector] ?? [];
+    },
+    getElement() {
+      return element;
+    },
     remove: vi.fn(),
-    setAttribute: vi.fn(),
-    querySelector: vi.fn(() => null),
   };
   return element;
 }
 
-function createDocumentStub() {
+function createDocumentStub(panelStub = null) {
   return {
-    createElement: () => createElementStub(),
+    createElement: () => panelStub || createElementStub(),
+  };
+}
+
+function createPanelStub() {
+  const modeBtnA = createElementStub({ id: 'mode-car' });
+  const modeBtnB = createElementStub({ id: 'mode-bike' });
+  modeBtnA.dataset.mode = 'car';
+  modeBtnB.dataset.mode = 'bike';
+
+  const costBtnA = createElementStub({ id: 'cost-distance' });
+  const costBtnB = createElementStub({ id: 'cost-travelTime' });
+  costBtnA.dataset.costField = 'distance';
+  costBtnB.dataset.costField = 'travelTime';
+
+  const isoDirBtnFrom = createElementStub({ id: 'iso-dir-from' });
+  const isoDirBtnTo = createElementStub({ id: 'iso-dir-to' });
+  isoDirBtnFrom.dataset.direction = 'from';
+  isoDirBtnTo.dataset.direction = 'to';
+
+  const isoModeBtnA = createElementStub({ id: 'iso-mode-car' });
+  const isoModeBtnB = createElementStub({ id: 'iso-mode-bike' });
+  isoModeBtnA.dataset.mode = 'car';
+  isoModeBtnB.dataset.mode = 'bike';
+
+  const isoCostBtnA = createElementStub({ id: 'iso-cost-distance' });
+  const isoCostBtnB = createElementStub({ id: 'iso-cost-travelTime' });
+  isoCostBtnA.dataset.costField = 'distance';
+  isoCostBtnB.dataset.costField = 'travelTime';
+
+  const originInput = createElementStub({ id: 'rp-origin' });
+  const destInput = createElementStub({ id: 'rp-dest' });
+  const statusEl = createElementStub({ id: 'rp-status' });
+  const statusElIsoline = createElementStub({ id: 'rp-status-isoline' });
+  const swapBtn = createElementStub({ id: 'rp-swap-btn' });
+  const tabRoutingBtn = createElementStub({ id: 'rp-tab-routing' });
+  const tabIsolineBtn = createElementStub({ id: 'rp-tab-isoline' });
+  const isoPoint = createElementStub({ id: 'rp-isoline-point' });
+  const isoThreshold = createElementStub({ id: 'rp-isoline-threshold' });
+  const pointIcon = createElementStub({ id: 'rp-point-icon' });
+  pointIcon.classList = { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() };
+
+  const routePanel = createElementStub({ querySelectorAllMap: {
+    '.rp-mode-btn': [modeBtnA, modeBtnB],
+    '.rp-cost-btn': [costBtnA, costBtnB],
+  }});
+  const isoPanel = createElementStub({ selectorMap: {
+    '#rp-isoline-threshold': isoThreshold,
+  }, querySelectorAllMap: {
+    '.rp-mode-btn': [isoModeBtnA, isoModeBtnB],
+    '.rp-cost-btn': [isoCostBtnA, isoCostBtnB],
+  }});
+
+  const panel = createElementStub({ selectorMap: {
+    '#rp-routing-panel': routePanel,
+    '#rp-isoline-panel': isoPanel,
+    '#rp-origin': originInput,
+    '#rp-dest': destInput,
+    '#rp-status': statusEl,
+    '#rp-status-isoline': statusElIsoline,
+    '#rp-swap-btn': swapBtn,
+    '#rp-tab-routing': tabRoutingBtn,
+    '#rp-tab-isoline': tabIsolineBtn,
+    '#rp-isoline-point': isoPoint,
+    '#rp-isoline-threshold': isoThreshold,
+    '#rp-isoline-panel .rp-point-icon': pointIcon,
+  }, querySelectorAllMap: {
+    '.rp-isoline-direction-btn': [isoDirBtnFrom, isoDirBtnTo],
+  }});
+
+  return {
+    panel,
+    routePanel,
+    isoPanel,
+    modeBtnA,
+    modeBtnB,
+    costBtnA,
+    costBtnB,
+    originInput,
+    destInput,
+    statusEl,
+    statusElIsoline,
+    swapBtn,
+    tabRoutingBtn,
+    tabIsolineBtn,
+    isoPoint,
+    isoThreshold,
+    pointIcon,
+    isoDirBtnFrom,
+    isoDirBtnTo,
+    isoModeBtnA,
+    isoModeBtnB,
+    isoCostBtnA,
+    isoCostBtnB,
   };
 }
 
@@ -103,7 +219,7 @@ describe('MapLibreRoutingControl', () => {
         }
       },
       addSource(id, source) {
-        this.sources.set(id, { ...source, setData: vi.fn() });
+        this.sources.set(id, { ...source, setData: vi.fn(), getBounds: vi.fn(() => new LngLatBoundsStub([0, 0], [1, 1])) });
       },
       addLayer(layer) {
         this.layers.add(layer.id);
@@ -130,6 +246,232 @@ describe('MapLibreRoutingControl', () => {
     expect(parseCoords('12.34, 56.78')).toEqual([56.78, 12.34]);
     expect(parseCoords('foo, bar')).toBeNull();
     expect(parseCoords('100, 0')).toBeNull();
+  });
+
+  it('uses window.maplibregl when no maplibre option is passed', () => {
+    const originalWindow = global.window;
+    global.window = { maplibregl: fakeMaplibre };
+
+    const control = new MapLibreRoutingControl({ language: 'en' });
+
+    expect(control._maplibre).toBe(fakeMaplibre);
+
+    if (originalWindow === undefined) {
+      delete global.window;
+    } else {
+      global.window = originalWindow;
+    }
+  });
+
+  it('shows a loading spinner when setting status with loading class', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    control._statusEl = createElementStub();
+    control._statusElIsoline = createElementStub();
+    control._activeTab = 'routing';
+
+    control._setStatus('Waiting', 'loading');
+
+    expect(control._statusEl.innerHTML).toContain('rp-spinner');
+    expect(control._statusEl.innerHTML).toContain('Waiting');
+  });
+
+  it('binds panel routing controls and avoids recomputation for unchanged selections', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    const panelSet = createPanelStub();
+    global.document = createDocumentStub(panelSet.panel);
+    vi.spyOn(UI, 'syncModeAndCostUI').mockImplementation(() => {});
+    vi.spyOn(UI, 'resetOtherUI').mockImplementation(() => {});
+    control._panel = panelSet.panel;
+    control._mode = 'car';
+    control._costField = 'distance';
+    control._activeTab = 'routing';
+    control._originInput = panelSet.originInput;
+    control._destInput = panelSet.destInput;
+    control._tryRoute = vi.fn();
+    control._placeMarker = vi.fn();
+    control._reverseRoute = vi.fn();
+    control._clearIsoline = vi.fn();
+    control._clearRoute = vi.fn();
+
+    control._bindPanelEvents();
+
+    panelSet.modeBtnA.listeners.click();
+    expect(control._tryRoute).not.toHaveBeenCalled();
+
+    panelSet.modeBtnB.listeners.click();
+    expect(control._tryRoute).toHaveBeenCalledTimes(1);
+
+    panelSet.costBtnA.listeners.click();
+    expect(control._tryRoute).toHaveBeenCalledTimes(1);
+
+    panelSet.costBtnB.listeners.click();
+    expect(control._tryRoute).toHaveBeenCalledTimes(2);
+
+    panelSet.originInput.value = 'bad, input';
+    panelSet.originInput.listeners.change();
+    expect(control._placeMarker).toHaveBeenCalledTimes(0);
+
+    panelSet.originInput.value = '12.34, 56.78';
+    panelSet.originInput.listeners.change();
+    expect(control._placeMarker).toHaveBeenCalledTimes(1);
+    expect(control._tryRoute).toHaveBeenCalledTimes(3);
+
+    panelSet.destInput.value = '0, 0';
+    panelSet.destInput.listeners.change();
+    expect(control._placeMarker).toHaveBeenCalledTimes(2);
+    expect(control._tryRoute).toHaveBeenCalledTimes(4);
+
+    panelSet.swapBtn.listeners.click();
+    expect(control._reverseRoute).toHaveBeenCalled();
+
+    panelSet.tabIsolineBtn.listeners.click();
+    expect(control._activeTab).toBe('isoline');
+    expect(panelSet.routePanel.hidden).toBe(true);
+    expect(panelSet.isoPanel.hidden).toBe(false);
+
+    panelSet.tabRoutingBtn.listeners.click();
+    expect(control._activeTab).toBe('routing');
+    expect(panelSet.routePanel.hidden).toBe(false);
+    expect(panelSet.isoPanel.hidden).toBe(true);
+  });
+
+  it('binds isoline controls and updates threshold, direction, and mode changes', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    const panelSet = createPanelStub();
+    global.document = createDocumentStub(panelSet.panel);
+    vi.spyOn(UI, 'syncModeAndCostUI').mockImplementation(() => {});
+    control._panel = panelSet.panel;
+    control._mode = 'car';
+    control._costField = 'distance';
+    control._isoline = { point: [0, 0], direction: 'from', maxCost: 100 };
+    control._markers.isoline = { getElement: () => ({ style: {} }) };
+    control._placeIsolineMarker = vi.fn();
+    control._tryIsoline = vi.fn();
+    control._isolinePointInput = panelSet.isoPoint;
+
+    control._bindPanelEvents();
+
+    panelSet.isoDirBtnFrom.listeners.click();
+    expect(control._tryIsoline).not.toHaveBeenCalled();
+
+    panelSet.isoDirBtnTo.listeners.click();
+    expect(control._tryIsoline).toHaveBeenCalledTimes(1);
+
+    panelSet.isoPoint.value = '10.00, 20.00';
+    panelSet.isoPoint.listeners.change();
+    expect(control._placeIsolineMarker).toHaveBeenCalled();
+    expect(control._tryIsoline).toHaveBeenCalledTimes(2);
+
+    control._tryIsoline = vi.fn();
+    panelSet.isoModeBtnA.listeners.click();
+    expect(control._tryIsoline).not.toHaveBeenCalled();
+
+    panelSet.isoModeBtnB.listeners.click();
+    expect(control._tryIsoline).toHaveBeenCalledTimes(1);
+
+    control._tryIsoline = vi.fn();
+    panelSet.isoCostBtnA.listeners.click();
+    expect(control._tryIsoline).not.toHaveBeenCalled();
+
+    panelSet.isoCostBtnB.listeners.click();
+    expect(control._tryIsoline).toHaveBeenCalledTimes(1);
+
+    control._tryIsoline = vi.fn();
+    panelSet.isoThreshold.value = '-1';
+    panelSet.isoThreshold.listeners.input();
+    expect(control._tryIsoline).not.toHaveBeenCalled();
+
+    control._costField = 'distance';
+    panelSet.isoThreshold.value = '5';
+    panelSet.isoThreshold.listeners.input();
+    expect(control._isoline.maxCost).toBe(5);
+    expect(control._tryIsoline).toHaveBeenCalledTimes(1);
+
+    control._costField = 'travelTime';
+    panelSet.isoThreshold.value = '2';
+    panelSet.isoThreshold.listeners.input();
+    expect(control._isoline.maxCost).toBe(120);
+    expect(control._tryIsoline).toHaveBeenCalledTimes(2);
+  });
+
+  it('binds onAdd map click and contextmenu handlers and handles tile template failures', async () => {
+    const tileError = new Error('tile fail');
+    const cancelRunningEngine = vi.fn();
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      getEngineWorkerStatus: () => ({ running: false }),
+      onEngineWorkerStatusChange: (cb) => {
+        cb({ running: false });
+        return () => {};
+      },
+      cancelRunningEngine,
+      panelClassName: 'foo bar',
+      tileJsonUrl: 'https://example.com/tiles.json',
+    });
+
+    const panelSet = createPanelStub();
+    panelSet.panel.classList.add = vi.fn();
+    global.document = createDocumentStub(panelSet.panel);
+    vi.spyOn(UI, 'syncModeAndCostUI').mockImplementation(() => {});
+    vi.spyOn(MapModule, 'setupRouteSource').mockImplementation(() => {});
+    control._buildPanelMarkup = vi.fn(() => '');
+    control._loadTileTemplate = vi.fn(() => Promise.reject(tileError));
+    control._setStatus = vi.fn();
+
+    const panel = control.onAdd(fakeMap);
+
+    expect(panel).toBe(panelSet.panel);
+    expect(panelSet.panel.classList.add).toHaveBeenCalledWith('routing-panel--theme-light');
+    expect(panelSet.panel.classList.add).toHaveBeenCalledWith('foo', 'bar');
+    expect(fakeMap.eventHandlers.has('click')).toBe(true);
+    expect(fakeMap.eventHandlers.has('contextmenu')).toBe(true);
+    expect(control._unsubscribeEngineStatus).toBeTypeOf('function');
+    expect(control._engineBusy).toBe(false);
+
+    const clickHandler = fakeMap.eventHandlers.get('click');
+    vi.spyOn(control, 'setOriginFromMap').mockImplementation(() => {});
+    control._activeTab = 'routing';
+    clickHandler({ lngLat: { lng: 1, lat: 2 } });
+    expect(control.setOriginFromMap).toHaveBeenCalled();
+
+    const contextHandler = fakeMap.eventHandlers.get('contextmenu');
+    const originalEvent = { preventDefault: vi.fn() };
+    control._suppressNextMapPointerSet = true;
+    vi.spyOn(control, 'setDestFromMap').mockImplementation(() => {});
+    contextHandler({ lngLat: { lng: 3, lat: 4 }, originalEvent });
+    expect(originalEvent.preventDefault).toHaveBeenCalled();
+    expect(control.setDestFromMap).not.toHaveBeenCalled();
+    expect(control._suppressNextMapPointerSet).toBe(false);
+
+    control._activeTab = 'isoline';
+    contextHandler({ lngLat: { lng: 5, lat: 6 }, originalEvent });
+    expect(control.setDestFromMap).not.toHaveBeenCalled();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(control._loadTileTemplate).toHaveBeenCalled();
+    expect(control._setStatus).toHaveBeenCalledWith(control._text.status.tileMetadata, 'error');
+
+    control.onRemove();
+    expect(fakeMap.eventHandlers.has('click')).toBe(false);
+    expect(fakeMap.eventHandlers.has('contextmenu')).toBe(false);
+  });
+
+  it('calls shared dispose/shutdown when removed from the map', () => {
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      routeFunction: async () => ({}),
+      getEngineWorkerStatus: () => ({ running: false }),
+      onEngineWorkerStatusChange: () => () => {},
+    });
+    vi.spyOn(IndexModule, 'dispose');
+
+    control._panel = createElementStub();
+    control._map = fakeMap;
+    control._isolineWorker = null;
+
+    control.onRemove();
+
+    expect(IndexModule.dispose).toHaveBeenCalled();
   });
 
   it('shows routing stats for a valid route result', async () => {
@@ -372,6 +714,66 @@ describe('MapLibreRoutingControl', () => {
     await expect(control._loadTileTemplate()).rejects.toThrow('Tile metadata response does not contain a valid tiles array.');
   });
 
+  it('loads tile template and triggers routing retry when origin and destination are set', async () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    const oldFetch = global.fetch;
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ tiles: ['https://example.com/{z}/{x}/{y}.pbf'] }),
+    }));
+    control._origin = [0, 0];
+    control._dest = [1, 1];
+    control._tryRoute = vi.fn();
+    control._tileJsonUrl = 'https://example.com/tiles.json';
+
+    await expect(control._loadTileTemplate()).resolves.toBe('https://example.com/{z}/{x}/{y}.pbf');
+    expect(control._urlTemplate).toBe('https://example.com/{z}/{x}/{y}.pbf');
+    expect(control._tryRoute).toHaveBeenCalled();
+    global.fetch = oldFetch;
+  });
+
+  it('consumes map pointer suppression only once', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    control._suppressNextMapPointerSet = true;
+
+    expect(control._consumeMapPointerSuppression()).toBe(true);
+    expect(control._suppressNextMapPointerSet).toBe(false);
+    expect(control._consumeMapPointerSuppression()).toBe(false);
+  });
+
+  it('sets status for the active isoline tab and clears the routing status', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    control._activeTab = 'isoline';
+    control._statusEl = createElementStub();
+    control._statusElIsoline = createElementStub();
+
+    control._setStatus('Isoline error', 'error');
+
+    expect(control._statusElIsoline.textContent).toBe('Isoline error');
+    expect(control._statusElIsoline.className).toContain('error');
+    expect(control._statusEl.hidden).toBe(true);
+    expect(control._statusEl.textContent).toBe('');
+  });
+
+  it('reverses the route segment and triggers a reroute', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    control._origin = [1, 2];
+    control._dest = [3, 4];
+    control._originInput = createElementStub();
+    control._destInput = createElementStub();
+    control._placeMarker = vi.fn();
+    control._tryRoute = vi.fn();
+
+    control._reverseRoute();
+
+    expect(control._origin).toEqual([3, 4]);
+    expect(control._dest).toEqual([1, 2]);
+    expect(control._placeMarker).toHaveBeenCalledTimes(2);
+    expect(control._tryRoute).toHaveBeenCalled();
+    expect(control._originInput.value).toContain('4.000000');
+    expect(control._destInput.value).toContain('2.000000');
+  });
+
   it('handles additional route failure reasons and clears route/graph', () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
     control._statusEl = createElementStub();
@@ -449,7 +851,10 @@ describe('MapLibreRoutingControl', () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre, routeFunction });
     control._mounted = true;
     control._map = fakeMap;
-    fakeMap.sources.set(control._options.isolineSourceId, { setData: vi.fn() });
+    fakeMap.sources.set(control._options.isolineSourceId, {
+      setData: vi.fn(),
+      getBounds: vi.fn(() => new LngLatBoundsStub([0, 0], [1, 1])),
+    });
     control._isoline.point = [0, 0];
     control._urlTemplate = 'http://example.com/{z}/{x}/{y}.pbf';
 
@@ -472,7 +877,10 @@ describe('MapLibreRoutingControl', () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre, routeFunction });
     control._mounted = true;
     control._map = fakeMap;
-    fakeMap.sources.set(control._options.isolineSourceId, { setData: vi.fn() });
+    fakeMap.sources.set(control._options.isolineSourceId, {
+      setData: vi.fn(),
+      getBounds: vi.fn(() => new LngLatBoundsStub([0, 0], [1, 1])),
+    });
     control._isoline.direction = 'from';
     control._urlTemplate = 'http://example.com/{z}/{x}/{y}.pbf';
 

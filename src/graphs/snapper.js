@@ -6,6 +6,7 @@
  * graph around origin/destination coordinates without mutating the base graph.
  */
 import KDBush from 'kdbush';
+import RBush from 'rbush';
 import { haversineDistance as haversine } from '../utils/misc.js';
 
 export const DEG_TO_RAD = Math.PI / 180;
@@ -143,11 +144,9 @@ export function buildIncidentEdgeIndex(graph) {
 
 export function buildEdgeSpatialIndex(graph) {
   if (graph._edgeSpatialIndex) return graph._edgeSpatialIndex;
-  const index = new KDBush(graph.edges.length);
-  const edgeCenters = [];
-  const edgeRadiusDegs = [];
-  const edgeIndexByPointIndex = [];
-  let maxEdgeRadiusDeg = 0;
+
+  const tree = new RBush();
+  const edgeItems = [];
 
   for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex += 1) {
     const edge = graph.edges[edgeIndex];
@@ -157,46 +156,40 @@ export function buildEdgeSpatialIndex(graph) {
 
     const [sourceLng, sourceLat] = source.coords;
     const [targetLng, targetLat] = target.coords;
-    const centerLng = (sourceLng + targetLng) / 2;
-    const centerLat = (sourceLat + targetLat) / 2;
-    const cosCenterLat = safeCosLat(centerLat);
-    const halfDx = ((targetLng - sourceLng) * cosCenterLat) / 2;
-    const halfDy = (targetLat - sourceLat) / 2;
-    const halfRadiusDeg = Math.hypot(halfDx, halfDy);
+    const minX = Math.min(sourceLng, targetLng);
+    const minY = Math.min(sourceLat, targetLat);
+    const maxX = Math.max(sourceLng, targetLng);
+    const maxY = Math.max(sourceLat, targetLat);
 
-    edgeCenters.push([centerLng, centerLat]);
-    edgeRadiusDegs.push(halfRadiusDeg);
-    edgeIndexByPointIndex.push(edgeIndex);
-    index.add(centerLng, centerLat);
-    if (halfRadiusDeg > maxEdgeRadiusDeg) maxEdgeRadiusDeg = halfRadiusDeg;
+    edgeItems.push({
+      minX,
+      minY,
+      maxX,
+      maxY,
+      edgeIndex,
+    });
   }
 
-  index.finish();
-  graph._edgeSpatialIndex = {
-    index,
-    edgeCenters,
-    edgeRadiusDegs,
-    edgeIndexByPointIndex,
-    maxEdgeRadiusDeg,
-  };
+  tree.load(edgeItems);
+  graph._edgeSpatialIndex = { tree };
   return graph._edgeSpatialIndex;
 }
 
 export function getNearbyEdgeIds(graph, coords, maxDistM) {
-  const { index, edgeCenters, edgeRadiusDegs, edgeIndexByPointIndex, maxEdgeRadiusDeg } = buildEdgeSpatialIndex(graph);
+  const { tree } = buildEdgeSpatialIndex(graph);
   const [lng, lat] = coords;
   const cosLat = safeCosLat(lat);
-  const radiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
-  const searchRadius = radiusDeg + maxEdgeRadiusDeg;
+  const lonRadiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
+  const latRadiusDeg = maxDistM / LATITUDE_METERS;
 
-  return index.within(lng, lat, searchRadius).filter((pointIndex) => {
-    const center = edgeCenters[pointIndex];
-    if (!center) return false;
-    const dx = (center[0] - lng) * cosLat;
-    const dy = center[1] - lat;
-    const centerDistDeg = Math.hypot(dx, dy);
-    return centerDistDeg <= radiusDeg + edgeRadiusDegs[pointIndex];
-  }).map((pointIndex) => edgeIndexByPointIndex[pointIndex]);
+  return tree
+    .search({
+      minX: lng - lonRadiusDeg,
+      minY: lat - latRadiusDeg,
+      maxX: lng + lonRadiusDeg,
+      maxY: lat + latRadiusDeg,
+    })
+    .map((item) => item.edgeIndex);
 }
 
 /**
@@ -291,13 +284,6 @@ export function findClosestSegmentProjection(coords, graph, maxDistM, snapDistan
 
   for (const edgeIndex of candidateEdges) {
     scanEdge(edgeIndex);
-  }
-
-  if (candidateEdges.size < graph.edges.length) {
-    for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex++) {
-      if (candidateEdges.has(edgeIndex)) continue;
-      scanEdge(edgeIndex);
-    }
   }
 
   return best;
@@ -446,6 +432,7 @@ export function createAugmentedGraph(graph, snap) {
   };
   delete augmentedGraph._spatialIndex;
   delete augmentedGraph._incidentEdgeIndex;
+  delete augmentedGraph._edgeSpatialIndex;
   delete augmentedGraph._prepared;
   return augmentedGraph;
 }

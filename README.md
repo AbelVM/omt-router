@@ -184,6 +184,8 @@ The control exposes these helper methods:
 
 The control implements the MapLibre control interface via `onAdd(map)` and `onRemove()`, so it can be added with `map.addControl(control, position)`.
 
+When `map.removeControl(control)` is called, the control automatically shuts down its internal isoline worker and shared tile cache by invoking the shared `dispose()`/`shutdown()` lifecycle.
+
 ### Isolines (MapLibre control)
 
 - The `MapLibreRoutingControl` includes an integrated isoline (isoPHAST) UI that computes reachability polygons (GeoJSON) for a selected point.
@@ -339,6 +341,7 @@ The returned object:
 | `coordinates` | `[number, number][]` | `[lng, lat]` pairs ready for GeoJSON |
 | `cost` | `number` | Total route cost (`distance` in metres or `travelTime` in seconds) |
 | `costField` | `string` | Cost field used to optimize the route (`optimal` uses priority-weighted travel time) |
+| `partialGraph` | `boolean` | `true` when route was computed against a partial graph with missing tiles |
 
 ---
 
@@ -367,7 +370,7 @@ High-level convenience function. Fetches the necessary tiles, builds the graph, 
 | `options.tileProxyTemplate` | `string` | — | Optional same-origin proxy template. Supports `{url}` (encoded), or the template may be concatenated with the encoded tile URL; placeholders `{z}`, `{x}`, `{y}` are also supported. |
 | `options.tileUrlTransform` | `(rawUrl, tile) => string` | — | Optional per-tile URL rewrite hook. Must return a string; otherwise an error is thrown. |
 
-The route result also includes runtime metadata fields such as `engine`, optional `fallback`, `startSnapDistanceM`, `endSnapDistanceM`, and diagnostic flags `hasMissingTiles` and `missingTileErrors`. On failure the result includes a `reason` (for example `no_path`, `no_node`, `poor_snap`, `incomplete_path`, `tile_cors`).
+The route result also includes runtime metadata fields such as `engine`, optional `fallback`, `startSnapDistanceM`, `endSnapDistanceM`, and diagnostic fields `partialGraph`, `hasMissingTiles`, and `missingTileErrors`. `partialGraph` is `true` whenever the route was calculated against a graph with missing tiles. On failure the result includes a `reason` (for example `no_path`, `no_node`, `poor_snap`, `incomplete_path`, `tile_cors`).
 
 ### CORS and `MissingAllowOriginHeader`
 

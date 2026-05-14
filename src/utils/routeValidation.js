@@ -4,6 +4,7 @@
  */
 const VALID_ROUTE_MODES = new Set(['car', 'bicycle', 'pedestrian']);
 const VALID_TILE_SCHEMAS = new Set(['zxy', 'tms']);
+const VALID_COST_FIELDS = new Set(['distance', 'travelTime', 'optimal']);
 
 function isValidLngLatCoordinates(value) {
   return (
@@ -109,6 +110,38 @@ export function validateMaxAcceptableSnapDistance(maxAcceptableSnapDistanceM) {
  * @param {*} radius Radius input.
  * @returns {number} Normalized positive integer radius.
  */
+export function validateCostField(costField) {
+  if (typeof costField !== 'string' || !VALID_COST_FIELDS.has(costField)) {
+    throw new Error('Unknown costField: expected "distance", "travelTime", or "optimal".');
+  }
+
+  return costField;
+}
+
+export function validateEngineId(engineId) {
+  if (engineId === undefined || engineId === null) {
+    return 'auto';
+  }
+
+  if (typeof engineId !== 'string' || !engineId.trim()) {
+    throw new Error('Invalid engineId: expected a non-empty string or "auto".');
+  }
+
+  return engineId;
+}
+
+export function validateTileUrlTransform(tileUrlTransform) {
+  if (tileUrlTransform !== undefined && typeof tileUrlTransform !== 'function') {
+    throw new Error('Invalid tileUrlTransform: expected a function.');
+  }
+}
+
+export function validateTileProxyTemplate(tileProxyTemplate) {
+  if (tileProxyTemplate !== undefined && typeof tileProxyTemplate !== 'string') {
+    throw new Error('Invalid tileProxyTemplate: expected a string.');
+  }
+}
+
 export function validateRadius(radius) {
   if (!Number.isFinite(radius) || !Number.isInteger(radius) || radius < 1) {
     throw new Error('Invalid radius: expected a positive integer.');
@@ -119,6 +152,10 @@ export function validateRadius(radius) {
 
 /**
  * Normalize and validate routing penalty settings.
+ *
+ * This is the single source of truth for penalty validation across the
+ * public route API and engine preparation/query logic.
+ *
  * @param {object} [penalties={}] Penalty options object.
  * @param {number} [penalties.intersectionPenaltySec=0]
  * @param {number} [penalties.turnPenaltySec=0]

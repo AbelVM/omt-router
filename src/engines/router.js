@@ -36,7 +36,11 @@ import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
 import { deltaSteppingRouter } from './DeltaStepping/index.js';
 import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
 import { WAY_PRIORITIES } from '../utils/ways_defaults.js';
-import { normalizePenalties } from '../utils/routeValidation.js';
+import {
+  normalizePenalties,
+  validateCostField,
+  validateEngineId,
+} from '../utils/routeValidation.js';
 import EngineMainWorker from './engineMainWorker?worker&inline';
 import { getAllGraphMetrics } from '../graphs/graphMetrics.js'; 
 
@@ -328,21 +332,17 @@ function ensureWorkerPreparedBackup(prepared) {
   return prepared._engineWorkerBackup;
 }
 
-function restorePreparedFromWorkerBackup(prepared) {
-  const backup = prepared._engineWorkerBackup;
-  if (!backup) return;
-
-  prepared.adjPtr = backup.adjPtr;
-  prepared.adjTo = backup.adjTo;
-  prepared.adjCost = backup.adjCost;
-  prepared.revAdjPtr = backup.revAdjPtr;
-  prepared.revAdjFrom = backup.revAdjFrom;
-  prepared.revAdjCost = backup.revAdjCost;
+function isDetachedArray(view) {
+  return ArrayBuffer.isView(view) && view.buffer.byteLength === 0;
 }
 
-function serializePreparedForEngineWorker(prepared) {
-  // Cache coordsX/coordsY on prepared to avoid recomputation
-  if (!prepared._coordsX || !prepared._coordsY) {
+function ensurePreparedCoordsArrays(prepared) {
+  if (
+    !prepared._coordsX ||
+    !prepared._coordsY ||
+    isDetachedArray(prepared._coordsX) ||
+    isDetachedArray(prepared._coordsY)
+  ) {
     const coordsX = new Float32Array(prepared.N);
     const coordsY = new Float32Array(prepared.N);
     for (let i = 0; i < prepared.N; i += 1) {
@@ -353,23 +353,68 @@ function serializePreparedForEngineWorker(prepared) {
     prepared._coordsX = coordsX;
     prepared._coordsY = coordsY;
   }
+}
 
-  ensureWorkerPreparedBackup(prepared);
+function attachPreparedWorkerTransferMethods(prepared) {
+  if (prepared.transferToWorker && prepared.reclaimFromWorker) return prepared;
 
-  return {
-    preparedId: getEngineWorkerPreparedId(prepared),
-    adjPtr: prepared.adjPtr,
-    adjTo: prepared.adjTo,
-    adjCost: prepared.adjCost,
-    revAdjPtr: prepared.revAdjPtr,
-    revAdjFrom: prepared.revAdjFrom,
-    revAdjCost: prepared.revAdjCost,
-    N: prepared.N,
-    E: prepared.E,
-    coordsX: prepared._coordsX,
-    coordsY: prepared._coordsY,
-    costField: prepared.costField,
+  prepared.transferToWorker = function ({ preserveMainThread = true } = {}) {
+    ensurePreparedCoordsArrays(this);
+    if (preserveMainThread) {
+      ensureWorkerPreparedBackup(this);
+    }
+
+    return {
+      preparedId: getEngineWorkerPreparedId(this),
+      adjPtr: this.adjPtr,
+      adjTo: this.adjTo,
+      adjCost: this.adjCost,
+      revAdjPtr: this.revAdjPtr,
+      revAdjFrom: this.revAdjFrom,
+      revAdjCost: this.revAdjCost,
+      N: this.N,
+      E: this.E,
+      coordsX: this._coordsX,
+      coordsY: this._coordsY,
+      costField: this.costField,
+    };
   };
+
+  prepared.reclaimFromWorker = function () {
+    if (this._engineWorkerBackup) {
+      const backup = this._engineWorkerBackup;
+      this.adjPtr = backup.adjPtr;
+      this.adjTo = backup.adjTo;
+      this.adjCost = backup.adjCost;
+      this.revAdjPtr = backup.revAdjPtr;
+      this.revAdjFrom = backup.revAdjFrom;
+      this.revAdjCost = backup.revAdjCost;
+      this._engineWorkerBackup = null;
+    } else if (
+      isDetachedArray(this.adjPtr) ||
+      isDetachedArray(this.adjTo) ||
+      isDetachedArray(this.adjCost) ||
+      isDetachedArray(this.revAdjPtr) ||
+      isDetachedArray(this.revAdjFrom) ||
+      isDetachedArray(this.revAdjCost)
+    ) {
+      throw new Error('Prepared graph was transferred without a main-thread backup and cannot be reclaimed.');
+    }
+
+    ensurePreparedCoordsArrays(this);
+  };
+
+  return prepared;
+}
+
+function restorePreparedFromWorkerBackup(prepared) {
+  prepared.reclaimFromWorker?.();
+}
+
+function serializePreparedForEngineWorker(prepared) {
+  attachPreparedWorkerTransferMethods(prepared);
+  const serializedPrepared = prepared.transferToWorker({ preserveMainThread: true });
+  return serializedPrepared;
 }
 
 function getPreparedWorkerTransferables(serializedPrepared) {
@@ -389,6 +434,10 @@ async function runEngineDirect(selectedEngine, startId, endId, prepared, beeline
   forceSerialRouting = false,
   parallelPolicy = null,
 } = {}) {
+  if (prepared?.reclaimFromWorker) {
+    prepared.reclaimFromWorker();
+  }
+
   switch (selectedEngine) {
     case 'bidirectional-astar':
       logger.log(() => `bidirectional A* (E=${prepared.E}, beeline=${beelineM.toFixed(0)} m)`);
@@ -451,14 +500,10 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
     const preparedId = getEngineWorkerPreparedId(prepared);
     if (_engineWorkerPreparedIdInWorker !== preparedId) {
       const serializedPrepared = serializePreparedForEngineWorker(prepared);
-      try {
-        worker.postMessage(
-          { type: 'prepare', prepared: serializedPrepared },
-          getPreparedWorkerTransferables(serializedPrepared),
-        );
-      } finally {
-        restorePreparedFromWorkerBackup(prepared);
-      }
+      worker.postMessage(
+        { type: 'prepare', prepared: serializedPrepared },
+        getPreparedWorkerTransferables(serializedPrepared),
+      );
       _engineWorkerPreparedIdInWorker = preparedId;
     }
 
@@ -1178,8 +1223,10 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
     engineId = 'auto',
   } = options;
+  const normalizedCostField = validateCostField(costField);
+  validateEngineId(engineId);
   const normalizedPenalties = normalizePenalties(penalties);
-  if (isTravelTimeCostField(costField) && normalizedPenalties.turnPenaltySec > 0) {
+  if (isTravelTimeCostField(normalizedCostField) && normalizedPenalties.turnPenaltySec > 0) {
     logger.warn('turn penalties are currently ignored; using standard engine routing');
   }
 
