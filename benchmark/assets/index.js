@@ -18,6 +18,12 @@ import {
   generateCostSummary,
   generateCopilotReport,
 } from './benchmark.js';
+import {
+  prepareForRun,
+  saveResultToDB,
+  waitForPendingWrites,
+  disposeBenchDb,
+} from './bench-db.js';
 
 const root = document;
 const categoryFiltersEl = root.getElementById('category-filters');
@@ -128,9 +134,7 @@ function buildReportVariants() {
 }
 
 function createReportVariants() {
-  const combinedResults = Array.isArray(_passResults) && _passResults.length > 0
-    ? _passResults[0].concat(..._passResults.slice(1))
-    : _results;
+  const combinedResults = _results;
 
   const variants = [
     {
@@ -144,14 +148,14 @@ function createReportVariants() {
     },
   ];
 
-  if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
+  if (Array.isArray(_passContexts)) {
     _passContexts.forEach((context, index) => {
       if (!context) return;
       const key = context.sharedArrayBuffer ? 'sab_on' : 'sab_off';
       variants.push({
         key,
         label: getReportVariantLabel(key),
-        results: _passResults[index] ?? [],
+        results: _results.filter((r) => r._passIndex === index),
         context: {
           ...context,
           parallelOrSerial: key,
@@ -225,7 +229,6 @@ let _chartDensity = null;
 let _chartHistogram = null;
 let _chartBubble = null;
 let _runContext = null;
-let _passResults = null;
 let _passContexts = null;
 let _reportVariants = [];
 let _reportSelection = 'combined';
@@ -234,11 +237,9 @@ let _abortController = null;
 let _updateScheduled = false;
 let _pendingChartRedraw = false;
 let _pendingSummaryUpdate = false;
-window.__benchmarkResults = [];
 
 function resetBenchmarkRunState() {
   _runContext = null;
-  _passResults = null;
   _passContexts = null;
   _routeCompletionTimes = [];
   _pendingSummaryUpdate = false;
@@ -424,7 +425,6 @@ runBtn.addEventListener('click', async () => {
   _updateScheduled = false;
   _results = [];
   _routeCompletionTimes = [];
-  window.__benchmarkResults = _results;
   runBtn.disabled = true;
   stopBtn.disabled = false;
   if (pauseBtn) pauseBtn.disabled = false;
@@ -452,7 +452,6 @@ runBtn.addEventListener('click', async () => {
   if (_chartDensity) { _chartDensity.destroy(); _chartDensity = null; }
   if (_cleanupTooltip) { _cleanupTooltip(); _cleanupTooltip = null; }
 
-  _passResults = runPasses.map(() => []);
   _passContexts = runPasses.map((pass, passIndex) => ({
     ...baseRunContext,
     passIndex: passIndex + 1,
@@ -461,6 +460,9 @@ runBtn.addEventListener('click', async () => {
     sharedArrayBuffer: pass.sharedArrayBuffer,
     forceSerialRouting: pass.forceSerialRouting,
   }));
+
+  const runId = `${benchmarkTimestamp}-${Math.random().toString(36).slice(2, 10)}`;
+  await prepareForRun(runId, { clearAll: false });
 
   try {
     const totalRoutes = routes.length;
@@ -541,9 +543,12 @@ runBtn.addEventListener('click', async () => {
             if (result) {
               result._routeOrdinal = routeIndex + 1;
               result._sab = Boolean(_runContext?.sharedArrayBuffer);
+              result._passIndex = passIndex;
               result._insertedAt = performance.now();
-              _passResults[passIndex].push(result);
               _results.push(result);
+              void saveResultToDB(runId, passIndex, routeIndex, result).catch((saveErr) => {
+                console.warn('[benchmark] Failed to persist benchmark row:', saveErr);
+              });
               _routeCompletionTimes.push(performance.now());
               if (!result.error) successfulRouteCount += 1;
               appendRow(result);
@@ -567,20 +572,18 @@ runBtn.addEventListener('click', async () => {
 
     }
 
-    if (_passResults?.some((pass) => pass.length > 0)) {
-      const combinedResults = runPasses.length === 1
-        ? _passResults[0]
-        : _passResults[0].concat(..._passResults.slice(1));
-      _results = combinedResults;
+    if (_results.length > 0) {
       _reportVariants = createReportVariants();
       updateReportTypeControls();
       showResults(_results);
     }
 
     for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
-      if (_passResults[passIndex].length > 0) {
+      const passResults = _results.filter((r) => r._passIndex === passIndex);
+      const passContext = Array.isArray(_passContexts) ? _passContexts[passIndex] : null;
+      if (passResults.length > 0 && passContext) {
         try {
-          const saveResult = await saveBenchmarkArtifact(_passResults[passIndex], _passContexts[passIndex]);
+          const saveResult = await saveBenchmarkArtifact(passResults, passContext);
           console.log('[benchmark] Results saved:', saveResult?.path ?? saveResult);
         } catch (saveErr) {
           console.error('[benchmark] Failed to auto-save JSON artifact:', saveErr);
@@ -589,7 +592,6 @@ runBtn.addEventListener('click', async () => {
     }
 
     clearBenchmarkCache();
-    _passResults = null;
     _passContexts = null;
   } catch (err) {
     if (!_stopped && err?.name !== 'AbortError') console.error('Benchmark error:', err);
@@ -601,6 +603,7 @@ runBtn.addEventListener('click', async () => {
     if (pauseBtn) pauseBtn.disabled = true;
     _paused = false;
     resumePausedBenchmark();
+    await disposeBenchDb();
     _abortController = null;
     _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
     resetBenchmarkRunState();
@@ -613,45 +616,45 @@ stopBtn.addEventListener('click', async () => {
   if (stopBtn) stopBtn.disabled = true;
   resumePausedBenchmark();
   _abortController?.abort();
+  await waitForPendingWrites();
 
-if (Array.isArray(_results) && _results.length > 0) {
-      const combinedContext = { ...buildReportContext(), ..._runContext };
-      showReport(_results, combinedContext);
-      const savedPaths = [];
+  if (Array.isArray(_results) && _results.length > 0) {
+    const combinedContext = { ...buildReportContext(), ..._runContext };
+    showReport(_results, combinedContext);
+    const savedPaths = [];
 
-      if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
-        for (let passIndex = 0; passIndex < _passResults.length; passIndex++) {
-          const passResults = Array.isArray(_passResults) ? _passResults[passIndex] : null;
-          const passContext = Array.isArray(_passContexts) ? _passContexts[passIndex] : null;
-          if (Array.isArray(passResults) && passResults.length > 0 && passContext) {
-            try {
-              const saveResult = await saveBenchmarkArtifact(passResults, passContext);
-              if (saveResult?.path) savedPaths.push(saveResult.path);
-              console.log('[benchmark] Stop requested; pass saved:', saveResult?.path ?? saveResult);
-            } catch (err) {
-              console.error('[benchmark] Failed to save JSON report on stop:', err);
-              if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
-            }
-          }
-        }
-      }
-
-      if (savedPaths.length > 0) {
-        if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
-      } else {
+    const passContextCount = Array.isArray(_passContexts) ? _passContexts.length : 0;
+    for (let passIndex = 0; passIndex < passContextCount; passIndex++) {
+      const passResults = _results.filter((r) => r._passIndex === passIndex);
+      const passContext = _passContexts[passIndex];
+      if (passResults.length > 0 && passContext) {
         try {
-          const saveResult = await saveBenchmarkArtifact(_results, combinedContext);
-          if (saveResult?.path) {
-            if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${saveResult.path}`;
-          } else if (reportStatusEl) {
-            reportStatusEl.textContent = 'Report ready';
-          }
+          const saveResult = await saveBenchmarkArtifact(passResults, passContext);
+          if (saveResult?.path) savedPaths.push(saveResult.path);
+          console.log('[benchmark] Stop requested; pass saved:', saveResult?.path ?? saveResult);
         } catch (err) {
           console.error('[benchmark] Failed to save JSON report on stop:', err);
           if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
         }
       }
     }
+
+    if (savedPaths.length > 0) {
+      if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
+    } else {
+      try {
+        const saveResult = await saveBenchmarkArtifact(_results, combinedContext);
+        if (saveResult?.path) {
+          if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${saveResult.path}`;
+        } else if (reportStatusEl) {
+          reportStatusEl.textContent = 'Report ready';
+        }
+      } catch (err) {
+        console.error('[benchmark] Failed to save JSON report on stop:', err);
+        if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
+      }
+    }
+  }
 });
 
 // ── Download ──────────────────────────────────────────────────────────────

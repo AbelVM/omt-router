@@ -1,50 +1,36 @@
 /* Lightweight IndexedDB helper for benchmark result persistence */
 const DB_NAME = 'omp-benchmark-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_RESULTS = 'results';
 
+let _db = null;
 let _dbPromise = null;
 let _pendingWrites = new Set();
 
-// batching / retention defaults
-const BATCH_SIZE = 20;
-const FLUSH_MS = 200; // flush interval in ms
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours default retention
 
-let _buffer = [];
-let _flushTimer = null;
-
 function openDB() {
+  if (_db) return Promise.resolve(_db);
   if (_dbPromise) return _dbPromise;
+
   _dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (ev) => {
       const db = ev.target.result;
-      if (!db.objectStoreNames.contains(STORE_RESULTS)) {
-        const store = db.createObjectStore(STORE_RESULTS, { keyPath: 'id' });
-        store.createIndex('runId', 'runId', { unique: false });
-        store.createIndex('ts', 'ts', { unique: false });
-      } else {
-        // attempt to add missing indexes during upgrades
-        try {
-          const txStore = ev.target.transaction.objectStore(STORE_RESULTS);
-          if (!txStore.indexNames.contains('runId')) txStore.createIndex('runId', 'runId', { unique: false });
-          if (!txStore.indexNames.contains('ts')) txStore.createIndex('ts', 'ts', { unique: false });
-        } catch (_e) {
-          // ignore — best-effort index creation
-        }
+      if (db.objectStoreNames.contains(STORE_RESULTS)) {
+        db.deleteObjectStore(STORE_RESULTS);
       }
+      const store = db.createObjectStore(STORE_RESULTS, { autoIncrement: true });
+      store.createIndex('runId', 'runId', { unique: false });
+      store.createIndex('ts', 'ts', { unique: false });
     };
-    req.onsuccess = (ev) => resolve(ev.target.result);
+    req.onsuccess = (ev) => {
+      _db = ev.target.result;
+      resolve(_db);
+    };
     req.onerror = (ev) => reject(ev.target.error);
   });
   return _dbPromise;
-}
-
-function _makeId(runId, passIndex, routeIndex) {
-  const ri = Number.isFinite(routeIndex) ? routeIndex : 'x';
-  const pi = Number.isFinite(passIndex) ? passIndex : '0';
-  return `${runId}:${pi}:${ri}`;
 }
 
 function _defer() {
@@ -57,71 +43,8 @@ function _defer() {
   return { promise: p, resolve: res, reject: rej };
 }
 
-async function _flushBuffer() {
-  if (_flushTimer) {
-    clearTimeout(_flushTimer);
-    _flushTimer = null;
-  }
-  if (_buffer.length === 0) return;
-  const batch = _buffer.splice(0, _buffer.length);
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    try {
-      const tx = db.transaction(STORE_RESULTS, 'readwrite');
-      const store = tx.objectStore(STORE_RESULTS);
-      for (const item of batch) {
-        try {
-          store.put(item.payload);
-        } catch (err) {
-          // synchronous error for this item — reject it immediately
-          try {
-            item.deferred.reject(err);
-          } catch (_e) {
-            /* ignore */
-          }
-        }
-      }
-
-      tx.oncomplete = () => {
-        for (const item of batch) {
-          try {
-            item.deferred.resolve(item.payload.id);
-          } catch (_e) {
-            /* ignore */
-          }
-        }
-        resolve();
-      };
-
-      tx.onabort = tx.onerror = () => {
-        const err = tx.error || new Error('IndexedDB transaction error');
-        for (const item of batch) {
-          try {
-            item.deferred.reject(err);
-          } catch (_e) {
-            /* ignore */
-          }
-        }
-        reject(err);
-      };
-    } catch (err) {
-      for (const item of batch) {
-        try {
-          item.deferred.reject(err);
-        } catch (_e) {
-          /* ignore */
-        }
-      }
-      reject(err);
-    }
-  });
-}
-
 export async function saveResultToDB(runId, passIndex, routeIndex, result) {
-  const id = _makeId(runId, passIndex, routeIndex);
   const payload = {
-    id,
     runId,
     passIndex: Number(passIndex ?? 0),
     routeIndex: Number.isFinite(routeIndex) ? routeIndex : -1,
@@ -131,8 +54,7 @@ export async function saveResultToDB(runId, passIndex, routeIndex, result) {
 
   // Avoid holding a reference to the full `result` in an in-memory
   // batching buffer. Write each result to IndexedDB immediately using
-  // its own transaction so there is no long-lived JS-side reference
-  // to potentially huge diagnostic/graph objects.
+  // the open database connection and a dedicated transaction.
   const deferred = _defer();
   _pendingWrites.add(deferred.promise);
 
@@ -141,15 +63,18 @@ export async function saveResultToDB(runId, passIndex, routeIndex, result) {
       const db = await openDB();
       const tx = db.transaction(STORE_RESULTS, 'readwrite');
       const store = tx.objectStore(STORE_RESULTS);
-      try {
-        store.put(payload);
-      } catch (err) {
-        // synchronous structured-clone errors
-        deferred.reject(err);
-        return;
-      }
+      const request = store.add(payload);
+      let generatedId = null;
 
-      tx.oncomplete = () => deferred.resolve(payload.id);
+      request.onsuccess = (e) => {
+        generatedId = e.target.result;
+      };
+
+      request.onerror = () => {
+        deferred.reject(request.error || new Error('IndexedDB add error'));
+      };
+
+      tx.oncomplete = () => deferred.resolve(generatedId);
       tx.onabort = tx.onerror = () => {
         const err = tx.error || new Error('IndexedDB transaction error');
         deferred.reject(err);
@@ -205,15 +130,9 @@ export async function getRecordsForRun(runId) {
 }
 
 export async function waitForPendingWrites() {
-  // ensure any buffered items are flushed first
-  if (_buffer.length > 0) {
-    try {
-      await _flushBuffer();
-    } catch (e) {
-      console.warn('[bench-db] flush error in waitForPendingWrites:', e);
-    }
+  while (_pendingWrites.size > 0) {
+    await Promise.allSettled(Array.from(_pendingWrites));
   }
-  await Promise.allSettled(Array.from(_pendingWrites));
 }
 
 export async function deleteRunRecords(runId) {
@@ -274,6 +193,13 @@ export async function purgeOld(ttlMs = TTL_MS) {
 
 export async function prepareForRun(runId, options = {}) {
   const { clearAll: clear = false, ttlMs = TTL_MS } = options;
+
+  try {
+    await openDB();
+  } catch (e) {
+    console.warn('[bench-db] prepareForRun: openDB failed:', e);
+  }
+
   // flush any buffered writes first
   try {
     await waitForPendingWrites();
@@ -329,19 +255,20 @@ function _maybePurgeOnLoad() {
 }
 
 export async function disposeBenchDb() {
-  if (_flushTimer) {
-    clearTimeout(_flushTimer);
-    _flushTimer = null;
-  }
-
-  _buffer.length = 0;
-
   try {
     await waitForPendingWrites();
   } catch (e) {
     console.warn('[bench-db] disposeBenchDb: waitForPendingWrites error:', e);
   }
 
+  if (_db) {
+    try {
+      _db.close();
+    } catch (_e) {
+      /* ignore */
+    }
+    _db = null;
+  }
   _dbPromise = null;
 }
 

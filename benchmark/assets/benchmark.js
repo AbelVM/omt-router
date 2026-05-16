@@ -231,16 +231,29 @@ function summarizeSamples(samples) {
 
 function sleep(ms, signal) {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+
+    const cleanup = () => {
+      if (signal?.removeEventListener) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    };
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      resolve();
+    };
+
     if (signal?.aborted) {
       clearTimeout(timer);
       resolve();
       return;
     }
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
+
     if (signal?.addEventListener) {
       signal.addEventListener('abort', onAbort, { once: true });
     }
