@@ -37,14 +37,21 @@ const LOCALES = {
       calculating: 'Calculating route…',
       timedOut: 'Routing timed out and was cancelled. Try a shorter route or retry.',
       cancelled: 'Routing was cancelled.',
-      tileCors: 'Tile request blocked. Check that your tile server allows requests from this origin.',
-      poorSnap: 'No route found because one or both points snapped poorly. Try placing points closer to roads.',
-      noNode: 'No route found because one endpoint could not snap to the loaded graph. Try moving the points closer to roads or a different area.',
-      noPath: 'No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.',
-      incompletePath: 'Routing engine returned an incomplete path. This can happen when the graph data is inconsistent or a path is missing.',
-      noRoute: 'No route found between these points. This can be caused by a disconnected graph, snapping issue, or another routing failure.',
+      tileCors:
+        'Tile request blocked. Check that your tile server allows requests from this origin.',
+      poorSnap:
+        'No route found because one or both points snapped poorly. Try placing points closer to roads.',
+      noNode:
+        'No route found because one endpoint could not snap to the loaded graph. Try moving the points closer to roads or a different area.',
+      noPath:
+        'No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.',
+      incompletePath:
+        'Routing engine returned an incomplete path. This can happen when the graph data is inconsistent or a path is missing.',
+      noRoute:
+        'No route found between these points. This can be caused by a disconnected graph, snapping issue, or another routing failure.',
       routeErrorPrefix: 'Routing error —',
-      partialGraph: 'Partial graph used for this route. Some segments may be missing because tiles were unavailable.',
+      partialGraph:
+        'Partial graph used for this route. Some segments may be missing because tiles were unavailable.',
     },
   },
   es: {
@@ -81,14 +88,20 @@ const LOCALES = {
       tileUrl: 'URL de mosaico no disponible. Proporciona urlTemplate o tileJsonUrl válido.',
       engineBusy: 'Motor ocupado. Esperando a que termine la ruta actual…',
       calculating: 'Calculando ruta…',
-      timedOut: 'El enrutamiento agotó el tiempo y fue cancelado. Prueba una ruta más corta o reintenta.',
+      timedOut:
+        'El enrutamiento agotó el tiempo y fue cancelado. Prueba una ruta más corta o reintenta.',
       cancelled: 'Enrutamiento cancelado.',
-      tileCors: 'Solicitud de mosaico bloqueada. Comprueba que el servidor permita solicitudes desde este origen.',
-      poorSnap: 'No se encontró ruta porque uno o ambos puntos encajaron mal. Acerca los puntos a las vías.',
-      noNode: 'No se encontró ruta porque un punto no pudo enlazar con la red cargada. Mueve los puntos más cerca de vías o a otra zona.',
+      tileCors:
+        'Solicitud de mosaico bloqueada. Comprueba que el servidor permita solicitudes desde este origen.',
+      poorSnap:
+        'No se encontró ruta porque uno o ambos puntos encajaron mal. Acerca los puntos a las vías.',
+      noNode:
+        'No se encontró ruta porque un punto no pudo enlazar con la red cargada. Mueve los puntos más cerca de vías o a otra zona.',
       noPath: 'No se encontró ruta porque la red está desconectada o el corredor es muy estrecho.',
-      incompletePath: 'El motor devolvió una ruta incompleta. Puede ocurrir cuando los datos de la red son inconsistentes.',
-      noRoute: 'No hay ruta entre estos puntos. Puede deberse a una red desconectada, problema de encaje o fallo de enrutamiento.',
+      incompletePath:
+        'El motor devolvió una ruta incompleta. Puede ocurrir cuando los datos de la red son inconsistentes.',
+      noRoute:
+        'No hay ruta entre estos puntos. Puede deberse a una red desconectada, problema de encaje o fallo de enrutamiento.',
       routeErrorPrefix: 'Error de enrutamiento —',
     },
   },
@@ -128,12 +141,18 @@ const LOCALES = {
       calculating: 'Calculant ruta…',
       timedOut: 'Temps esgotat i enrutament cancel·lat. Prova una ruta més curta o reintenta.',
       cancelled: 'Enrutament cancel·lat.',
-      tileCors: 'Sol·licitud de mosaic bloquejada. Comprova que el servidor permeti sol·licituds des d’aquest origen.',
-      poorSnap: 'No s’ha trobat ruta perquè un o ambdós punts s’han ajustat malament. Acosta els punts a la via.',
-      noNode: 'No s’ha trobat ruta perquè un punt no ha pogut ajustar-se a la xarxa carregada. Mou els punts més a prop de la via o a una altra zona.',
-      noPath: 'No s’ha trobat ruta perquè la xarxa està desconnectada o el corredor és massa estret.',
-      incompletePath: 'El motor ha retornat una ruta incompleta. Pot passar quan les dades de la xarxa són inconsistents.',
-      noRoute: 'No hi ha ruta entre aquests punts. Pot ser a causa d’una xarxa desconnectada, un problema d’ajust o un error d’enrutament.',
+      tileCors:
+        'Sol·licitud de mosaic bloquejada. Comprova que el servidor permeti sol·licituds des d’aquest origen.',
+      poorSnap:
+        'No s’ha trobat ruta perquè un o ambdós punts s’han ajustat malament. Acosta els punts a la via.',
+      noNode:
+        'No s’ha trobat ruta perquè un punt no ha pogut ajustar-se a la xarxa carregada. Mou els punts més a prop de la via o a una altra zona.',
+      noPath:
+        'No s’ha trobat ruta perquè la xarxa està desconnectada o el corredor és massa estret.',
+      incompletePath:
+        'El motor ha retornat una ruta incompleta. Pot passar quan les dades de la xarxa són inconsistents.',
+      noRoute:
+        'No hi ha ruta entre aquests punts. Pot ser a causa d’una xarxa desconnectada, un problema d’ajust o un error d’enrutament.',
       routeErrorPrefix: 'Error d’enrutament —',
     },
   },
@@ -173,12 +192,18 @@ const LOCALES = {
       calculating: 'Calculando ruta…',
       timedOut: 'Tempo esgotado e enrutamento cancelado. Proba unha ruta máis curta ou reintenta.',
       cancelled: 'Enrutamento cancelado.',
-      tileCors: 'Solicitude de mosaico bloqueada. Comproba que o servidor permita solicitudes desde esta orixe.',
-      poorSnap: 'Non se atopou ruta porque un ou ambos os puntos axustáronse mal. Acerca os puntos ás vías.',
-      noNode: 'Non se atopou ruta porque un punto non puido axustarse á rede cargada. Move os puntos máis cerca das vías ou a outra zona.',
-      noPath: 'Non se atopou ruta porque a rede está desconectada ou o corredor é demasiado estreito.',
-      incompletePath: 'O motor devolveu unha ruta incompleta. Pode ocorrer cando os datos da rede son inconsistentes.',
-      noRoute: 'Non hai ruta entre estes puntos. Pode deberse a unha rede desconectada, problema de axuste ou fallo de enrutamento.',
+      tileCors:
+        'Solicitude de mosaico bloqueada. Comproba que o servidor permita solicitudes desde esta orixe.',
+      poorSnap:
+        'Non se atopou ruta porque un ou ambos os puntos axustáronse mal. Acerca os puntos ás vías.',
+      noNode:
+        'Non se atopou ruta porque un punto non puido axustarse á rede cargada. Move os puntos máis cerca das vías ou a outra zona.',
+      noPath:
+        'Non se atopou ruta porque a rede está desconectada ou o corredor é demasiado estreito.',
+      incompletePath:
+        'O motor devolveu unha ruta incompleta. Pode ocorrer cando os datos da rede son inconsistentes.',
+      noRoute:
+        'Non hai ruta entre estes puntos. Pode deberse a unha rede desconectada, problema de axuste ou fallo de enrutamento.',
       routeErrorPrefix: 'Erro de enrutamento —',
     },
   },
@@ -211,19 +236,27 @@ const LOCALES = {
       hint: '',
     },
     status: {
-      tileMetadata: 'Tile metadatuak kargatzea huts egin du. Egiaztatu URLa eta sare konektibitatea.',
+      tileMetadata:
+        'Tile metadatuak kargatzea huts egin du. Egiaztatu URLa eta sare konektibitatea.',
       waitingStyle: 'Mapa estiloaren kargatzea amaitu arte itxaroten, ibilbidea erakutsi aurretik.',
-      tileUrl: 'Tile URLa oraindik ez dago eskuragarri. Jarri urlTemplate edo baliozko tileJsonUrl.',
+      tileUrl:
+        'Tile URLa oraindik ez dago eskuragarri. Jarri urlTemplate edo baliozko tileJsonUrl.',
       engineBusy: 'Motorra lanpetuta dago. Orain arteko ibilbidea amaitu arte itxaroten…',
       calculating: 'Ibilbidea kalkulatzen…',
-      timedOut: 'Denbora agortu da eta ibilbidea bertan behera utzi da. Saiatu ibilbide laburrago batekin edo berriro.',
+      timedOut:
+        'Denbora agortu da eta ibilbidea bertan behera utzi da. Saiatu ibilbide laburrago batekin edo berriro.',
       cancelled: 'Ibilbidea bertan behera utzi da.',
       tileCors: 'Tile eskaera blokeatuta. Egiaztatu tile zerbitzariak iturri hau baimentzen duen.',
-      poorSnap: 'Ez da ibilbiderik aurkitu puntuak gaizki lotu direlako. Gertuago jarri puntuak bideak.',
-      noNode: 'Ez da ibilbiderik aurkitu puntuak ez direlako sareko puntuarekin lotu. Mugitu puntuak bide gehiago dituzten eremura.',
-      noPath: 'Ez da ibilbiderik aurkitu sareak konektatu ez duelako edo korridorea ezinbestez estua delako.',
-      incompletePath: 'Motorak ibilbide osatu gabeko bat itzuli du. Sarea desegonkorrak direnean gertatu daiteke.',
-      noRoute: 'Puntu hauen artean ez dago ibilbiderik. Sare deskonektatu, lotura arazo edo ibilbide hutsaren ondorio izan daiteke.',
+      poorSnap:
+        'Ez da ibilbiderik aurkitu puntuak gaizki lotu direlako. Gertuago jarri puntuak bideak.',
+      noNode:
+        'Ez da ibilbiderik aurkitu puntuak ez direlako sareko puntuarekin lotu. Mugitu puntuak bide gehiago dituzten eremura.',
+      noPath:
+        'Ez da ibilbiderik aurkitu sareak konektatu ez duelako edo korridorea ezinbestez estua delako.',
+      incompletePath:
+        'Motorak ibilbide osatu gabeko bat itzuli du. Sarea desegonkorrak direnean gertatu daiteke.',
+      noRoute:
+        'Puntu hauen artean ez dago ibilbiderik. Sare deskonektatu, lotura arazo edo ibilbide hutsaren ondorio izan daiteke.',
       routeErrorPrefix: 'Ibilbide errorea —',
     },
   },
@@ -256,19 +289,26 @@ const LOCALES = {
       hint: '',
     },
     status: {
-      tileMetadata: 'Impossible de charger les métadonnées des tuiles. Vérifiez l’URL et le réseau.',
+      tileMetadata:
+        'Impossible de charger les métadonnées des tuiles. Vérifiez l’URL et le réseau.',
       waitingStyle: 'En attente de la fin du chargement du style avant d’afficher l’itinéraire.',
       tileUrl: 'URL de tuile non disponible. Fournissez urlTemplate ou tileJsonUrl valide.',
       engineBusy: 'Moteur occupé. En attente de la fin du calcul en cours…',
       calculating: 'Calcul de l’itinéraire…',
-      timedOut: 'Le routage a expiré et a été annulé. Essayez un itinéraire plus court ou réessayez.',
+      timedOut:
+        'Le routage a expiré et a été annulé. Essayez un itinéraire plus court ou réessayez.',
       cancelled: 'Routage annulé.',
-      tileCors: 'Requête de tuile bloquée. Vérifiez que votre serveur autorise les requêtes de cette origine.',
-      poorSnap: 'Aucun itinéraire trouvé car un ou plusieurs points ont mal accroché. Placez-les plus près des routes.',
-      noNode: 'Aucun itinéraire trouvé car un point n’a pas pu s’accrocher au graphe chargé. Déplacez-les près des routes ou ailleurs.',
+      tileCors:
+        'Requête de tuile bloquée. Vérifiez que votre serveur autorise les requêtes de cette origine.',
+      poorSnap:
+        'Aucun itinéraire trouvé car un ou plusieurs points ont mal accroché. Placez-les plus près des routes.',
+      noNode:
+        'Aucun itinéraire trouvé car un point n’a pas pu s’accrocher au graphe chargé. Déplacez-les près des routes ou ailleurs.',
       noPath: 'Aucun itinéraire trouvé car le graphe est déconnecté ou le corridor trop étroit.',
-      incompletePath: 'Le moteur a retourné un itinéraire incomplet. Cela peut arriver lorsque les données du graphe sont incohérentes.',
-      noRoute: 'Aucun itinéraire entre ces points. Cela peut être causé par un graphe déconnecté, un problème d’accrochage ou un autre échec.',
+      incompletePath:
+        'Le moteur a retourné un itinéraire incomplet. Cela peut arriver lorsque les données du graphe sont incohérentes.',
+      noRoute:
+        'Aucun itinéraire entre ces points. Cela peut être causé par un graphe déconnecté, un problème d’accrochage ou un autre échec.',
       routeErrorPrefix: 'Erreur de routage —',
     },
   },
@@ -308,12 +348,17 @@ const LOCALES = {
       calculating: 'Route wird berechnet…',
       timedOut: 'Routing-Zeitüberschreitung. Versuche eine kürzere Route oder erneut.',
       cancelled: 'Routing abgebrochen.',
-      tileCors: 'Kachelanforderung blockiert. Prüfe, ob der Server Anfragen von dieser Herkunft erlaubt.',
-      poorSnap: 'Keine Route gefunden, da ein oder beide Punkte schlecht geclippt wurden. Platziere Punkte näher an Straßen.',
-      noNode: 'Keine Route gefunden, weil ein Punkt nicht am geladenen Graph befestigt werden konnte. Verschiebe die Punkte näher an Straßen oder in einen anderen Bereich.',
+      tileCors:
+        'Kachelanforderung blockiert. Prüfe, ob der Server Anfragen von dieser Herkunft erlaubt.',
+      poorSnap:
+        'Keine Route gefunden, da ein oder beide Punkte schlecht geclippt wurden. Platziere Punkte näher an Straßen.',
+      noNode:
+        'Keine Route gefunden, weil ein Punkt nicht am geladenen Graph befestigt werden konnte. Verschiebe die Punkte näher an Straßen oder in einen anderen Bereich.',
       noPath: 'Keine Route gefunden, weil der Graph getrennt ist oder der Korridor zu schmal ist.',
-      incompletePath: 'Die Engine lieferte einen unvollständigen Pfad. Dies kann bei inkonsistenten Graphdaten passieren.',
-      noRoute: 'Zwischen diesen Punkten wurde keine Route gefunden. Ursache kann ein getrennter Graph, ein Snap-Problem oder ein anderer Fehler sein.',
+      incompletePath:
+        'Die Engine lieferte einen unvollständigen Pfad. Dies kann bei inkonsistenten Graphdaten passieren.',
+      noRoute:
+        'Zwischen diesen Punkten wurde keine Route gefunden. Ursache kann ein getrennter Graph, ein Snap-Problem oder ein anderer Fehler sein.',
       routeErrorPrefix: 'Routing-Fehler —',
     },
   },
@@ -351,14 +396,20 @@ const LOCALES = {
       tileUrl: 'URL плитки еще недоступен. Укажите urlTemplate или допустимый tileJsonUrl.',
       engineBusy: 'Движок занят. Ожидание завершения текущего маршрута…',
       calculating: 'Вычисление маршрута…',
-      timedOut: 'Время маршрутизации истекло, действие отменено. Попробуйте более короткий маршрут или повторите.',
+      timedOut:
+        'Время маршрутизации истекло, действие отменено. Попробуйте более короткий маршрут или повторите.',
       cancelled: 'Маршрутизация отменена.',
-      tileCors: 'Запрос плитки заблокирован. Проверьте, что сервер разрешает запросы с этого источника.',
-      poorSnap: 'Маршрут не найден, потому что одна или обе точки плохо привязались. Поместите точки ближе к дорогам.',
-      noNode: 'Маршрут не найден, потому что одна точка не смогла привязаться к загруженному графу. Переместите точки ближе к дорогам или в другой район.',
+      tileCors:
+        'Запрос плитки заблокирован. Проверьте, что сервер разрешает запросы с этого источника.',
+      poorSnap:
+        'Маршрут не найден, потому что одна или обе точки плохо привязались. Поместите точки ближе к дорогам.',
+      noNode:
+        'Маршрут не найден, потому что одна точка не смогла привязаться к загруженному графу. Переместите точки ближе к дорогам или в другой район.',
       noPath: 'Маршрут не найден, потому что граф разомкнут или коридор слишком узкий.',
-      incompletePath: 'Движок вернул неполный маршрут. Это может случиться при неконсистентных данных графа.',
-      noRoute: 'Между этими точками нет маршрута. Это может быть из-за разомкнутого графа, проблемы привязки или другой ошибки.',
+      incompletePath:
+        'Движок вернул неполный маршрут. Это может случиться при неконсистентных данных графа.',
+      noRoute:
+        'Между этими точками нет маршрута. Это может быть из-за разомкнутого графа, проблемы привязки или другой ошибки.',
       routeErrorPrefix: 'Ошибка маршрутизации —',
     },
   },
@@ -391,19 +442,27 @@ const LOCALES = {
       hint: '',
     },
     status: {
-      tileMetadata: 'タイルメタデータの読み込みに失敗しました。URLとネットワークを確認してください。',
+      tileMetadata:
+        'タイルメタデータの読み込みに失敗しました。URLとネットワークを確認してください。',
       waitingStyle: 'ルートを表示する前に地図スタイルの読み込み完了を待機しています。',
-      tileUrl: 'タイルURLがまだ利用できません。urlTemplate または有効な tileJsonUrl を指定してください。',
+      tileUrl:
+        'タイルURLがまだ利用できません。urlTemplate または有効な tileJsonUrl を指定してください。',
       engineBusy: 'ルーティングエンジンが忙しいです。現在のルートの完了を待っています…',
       calculating: 'ルートを計算中…',
-      timedOut: 'ルーティングがタイムアウトし、キャンセルされました。短いルートを試すか再度実行してください。',
+      timedOut:
+        'ルーティングがタイムアウトし、キャンセルされました。短いルートを試すか再度実行してください。',
       cancelled: 'ルーティングがキャンセルされました。',
-      tileCors: 'タイルリクエストがブロックされました。このオリジンからのリクエストをタイルサーバーが許可しているか確認してください。',
-      poorSnap: 'ポイントのスナップが不適切なため、ルートが見つかりませんでした。道路に近い場所にポイントを配置してください。',
-      noNode: 'ポイントの 1 つが読み込まれたグラフにスナップできなかったため、ルートが見つかりませんでした。道路に近い場所または別の領域に移動してください。',
+      tileCors:
+        'タイルリクエストがブロックされました。このオリジンからのリクエストをタイルサーバーが許可しているか確認してください。',
+      poorSnap:
+        'ポイントのスナップが不適切なため、ルートが見つかりませんでした。道路に近い場所にポイントを配置してください。',
+      noNode:
+        'ポイントの 1 つが読み込まれたグラフにスナップできなかったため、ルートが見つかりませんでした。道路に近い場所または別の領域に移動してください。',
       noPath: 'グラフが切断されているか、通路が狭すぎるため、ルートが見つかりませんでした。',
-      incompletePath: 'ルーティングエンジンが不完全な経路を返しました。グラフデータが一貫していない場合に発生することがあります。',
-      noRoute: 'これらのポイント間にルートが見つかりませんでした。切断されたグラフ、スナップの問題、またはその他のルーティング失敗が原因となる可能性があります。',
+      incompletePath:
+        'ルーティングエンジンが不完全な経路を返しました。グラフデータが一貫していない場合に発生することがあります。',
+      noRoute:
+        'これらのポイント間にルートが見つかりませんでした。切断されたグラフ、スナップの問題、またはその他のルーティング失敗が原因となる可能性があります。',
       routeErrorPrefix: 'ルーティングエラー —',
     },
   },
@@ -445,7 +504,8 @@ const LOCALES = {
       cancelled: '路由已取消。',
       tileCors: '瓦片请求被阻止。请检查瓦片服务器是否允许来自此来源的请求。',
       poorSnap: '未找到路线，因为一个或多个点捕捉不良。请将点放置在更靠近道路的位置。',
-      noNode: '未找到路线，因为一个端点无法捕捉到加载的图。请将点移动到更靠近道路或其他区域的位置。',
+      noNode:
+        '未找到路线，因为一个端点无法捕捉到加载的图。请将点移动到更靠近道路或其他区域的位置。',
       noPath: '未找到路线，因为加载的图已断开连接或通道太窄。',
       incompletePath: '路由引擎返回了不完整路径。出现此情况可能是由于图数据不一致。',
       noRoute: '这些点之间未找到路线。可能是由于图断开、捕捉问题或其他路由失败。',
@@ -493,7 +553,11 @@ function normalizeLocale(value) {
  * @returns {string} Resolved supported locale code.
  */
 function resolveLocale(requestedLocale = 'auto') {
-  if (requestedLocale && typeof requestedLocale === 'string' && requestedLocale.toLowerCase() !== 'auto') {
+  if (
+    requestedLocale &&
+    typeof requestedLocale === 'string' &&
+    requestedLocale.toLowerCase() !== 'auto'
+  ) {
     return normalizeLocale(requestedLocale);
   }
 

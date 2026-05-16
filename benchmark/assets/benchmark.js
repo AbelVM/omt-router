@@ -22,10 +22,7 @@ import {
   cancelRunningEngine,
 } from '../../src/engines/router.js';
 import { buildGraphAsync } from '../../src/graphs/graphBuilder.js';
-import {
-  classifySelectorFeatures,
-  getSelectorBins,
-} from './benchmark-selector-features.js';
+import { classifySelectorFeatures, getSelectorBins } from './benchmark-selector-features.js';
 import { getTilesAlongLine } from '../../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance } from '../../src/utils/misc.js';
 import { PowerPool } from 'performance-helpers/powerPool';
@@ -33,12 +30,7 @@ import { PowerCache } from 'performance-helpers/powerCache';
 import tilesWorker from '../../src/tiles/tilesWorker?worker&inline';
 import Chart from 'chart.js/auto';
 
-const ENGINE_IDS = [
-  'bidirectional-astar',
-  'adaptive-barrier',
-  'delta-stepping',
-  'ultra-dijkstra',
-];
+const ENGINE_IDS = ['bidirectional-astar', 'adaptive-barrier', 'delta-stepping', 'ultra-dijkstra'];
 
 // ── Shared singletons (created once, reused across all routes) ────────────────
 let _pool = null;
@@ -50,7 +42,9 @@ export function getSharedPool() {
     const poolMaxSize = Math.min(8, Math.max(1, hw - 1));
     const poolSize = Math.min(2, poolMaxSize);
     _pool = new PowerPool(tilesWorker, {
-      size: poolSize, maxSize: poolMaxSize, lazy: false,
+      size: poolSize,
+      maxSize: poolMaxSize,
+      lazy: false,
       autoScale: {
         // Bench runs are sustained and throughput-oriented; scale up quickly and avoid oscillation.
         intervalMs: 400,
@@ -123,7 +117,7 @@ const WINNER_TIE_BREAK_ORDER = [
   'ultra-dijkstra',
 ];
 
-function selectTimingWinner(times) {
+export function selectTimingWinner(times) {
   const entries = Object.entries(times)
     .filter(([, value]) => Number.isFinite(value))
     .sort((a, b) => a[1] - b[1]);
@@ -141,28 +135,22 @@ function selectTimingWinner(times) {
   const secondBestMs = entries.length > 1 ? entries[1][1] : null;
   const runnerUpEngine = entries.length > 1 ? entries[1][0] : null;
   const worstMs = entries[entries.length - 1][1];
-  const toleranceMs = Math.max(
-    WINNER_ABS_TOLERANCE_MS,
-    fastestMs * WINNER_REL_TOLERANCE,
-  );
+  const toleranceMs = Math.max(WINNER_ABS_TOLERANCE_MS, fastestMs * WINNER_REL_TOLERANCE);
   const winnerCandidates = entries
     .filter(([, value]) => value <= fastestMs + toleranceMs)
     .map(([engineId]) => engineId);
-  const engineCountWithin5Pct = entries
-    .filter(([, value]) => value <= fastestMs * 1.05)
-    .length;
-  const engineCountWithin10Pct = entries
-    .filter(([, value]) => value <= fastestMs * 1.10)
-    .length;
+  const engineCountWithin5Pct = entries.filter(([, value]) => value <= fastestMs * 1.05).length;
+  const engineCountWithin10Pct = entries.filter(([, value]) => value <= fastestMs * 1.1).length;
 
   const winner = winnerCandidates
     .slice()
-    .sort((left, right) => WINNER_TIE_BREAK_ORDER.indexOf(left) - WINNER_TIE_BREAK_ORDER.indexOf(right))[0];
+    .sort(
+      (left, right) => WINNER_TIE_BREAK_ORDER.indexOf(left) - WINNER_TIE_BREAK_ORDER.indexOf(right)
+    )[0];
 
   const winnerMarginMs = secondBestMs !== null ? Math.max(0, secondBestMs - fastestMs) : null;
-  const winnerMarginPct = winnerMarginMs !== null && fastestMs > 0
-    ? round4(winnerMarginMs / fastestMs)
-    : null;
+  const winnerMarginPct =
+    winnerMarginMs !== null && fastestMs > 0 ? round4(winnerMarginMs / fastestMs) : null;
   const bestToWorstMs = Math.max(0, worstMs - fastestMs);
   const bestToWorstPct = fastestMs > 0 ? round4(bestToWorstMs / fastestMs) : null;
 
@@ -184,11 +172,15 @@ function selectTimingWinner(times) {
   };
 }
 
-function round2(x) { return Math.round(x * 100) / 100; }
+function round2(x) {
+  return Math.round(x * 100) / 100;
+}
 // Speedup can be very small (0.001) for GPU-on-tiny-graphs; preserve 4 sig figs.
-function round4(x) { return Math.round(x * 10000) / 10000; }
+function round4(x) {
+  return Math.round(x * 10000) / 10000;
+}
 
-function summarizeSamples(samples) {
+export function summarizeSamples(samples) {
   if (!Array.isArray(samples) || samples.length === 0) {
     return {
       count: 0,
@@ -229,7 +221,7 @@ function summarizeSamples(samples) {
   };
 }
 
-function sleep(ms, signal) {
+export function sleep(ms, signal) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       cleanup();
@@ -286,14 +278,19 @@ function normalizeEngineError(error) {
   return normalizeEngineErrorMessage(error);
 }
 
-async function runEngineQuery(startId, endId, prepared, {
-  engineId,
-  costField,
-  forceSerialRouting = false,
-  signal,
-  engineRunTimeoutMs = 0,
-  allowFallback = false,
-}) {
+async function runEngineQuery(
+  startId,
+  endId,
+  prepared,
+  {
+    engineId,
+    costField,
+    forceSerialRouting = false,
+    signal,
+    engineRunTimeoutMs = 0,
+    allowFallback = false,
+  }
+) {
   if (isAbortSignalAborted(signal)) {
     cancelRunningEngine({ reason: 'benchmark_aborted' });
     throw createAbortError();
@@ -311,24 +308,28 @@ async function runEngineQuery(startId, endId, prepared, {
   const cleanup = [];
 
   if (Number.isFinite(engineRunTimeoutMs) && engineRunTimeoutMs > 0) {
-    guards.push(new Promise((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        cancelRunningEngine({ reason: 'benchmark_timeout', engineId });
-        reject(new Error(`engine_timeout:${engineId}`));
-      }, engineRunTimeoutMs);
-      cleanup.push(() => clearTimeout(timeoutId));
-    }));
+    guards.push(
+      new Promise((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          cancelRunningEngine({ reason: 'benchmark_timeout', engineId });
+          reject(new Error(`engine_timeout:${engineId}`));
+        }, engineRunTimeoutMs);
+        cleanup.push(() => clearTimeout(timeoutId));
+      })
+    );
   }
 
   if (signal) {
-    guards.push(new Promise((_, reject) => {
-      const abortHandler = () => {
-        cancelRunningEngine({ reason: 'benchmark_aborted', engineId });
-        reject(createAbortError());
-      };
-      signal.addEventListener('abort', abortHandler, { once: true });
-      cleanup.push(() => signal.removeEventListener('abort', abortHandler));
-    }));
+    guards.push(
+      new Promise((_, reject) => {
+        const abortHandler = () => {
+          cancelRunningEngine({ reason: 'benchmark_aborted', engineId });
+          reject(createAbortError());
+        };
+        signal.addEventListener('abort', abortHandler, { once: true });
+        cleanup.push(() => signal.removeEventListener('abort', abortHandler));
+      })
+    );
   }
 
   try {
@@ -387,7 +388,9 @@ function buildSummaryGroups(results) {
 
   const orderedLengths = [
     ...SUMMARY_LENGTH_ORDER.filter((key) => lengthToSizes.has(key)),
-    ...Array.from(lengthToSizes.keys()).filter((key) => !SUMMARY_LENGTH_ORDER.includes(key)).sort(),
+    ...Array.from(lengthToSizes.keys())
+      .filter((key) => !SUMMARY_LENGTH_ORDER.includes(key))
+      .sort(),
   ];
 
   const groupKeys = [];
@@ -456,9 +459,7 @@ function summarizeEngineErrors(errors) {
     ['ultra_dijkstra_error', 'Dijkstra'],
   ];
 
-  const failed = labels
-    .filter(([key]) => !!errors[key])
-    .map(([, shortName]) => shortName);
+  const failed = labels.filter(([key]) => !!errors[key]).map(([, shortName]) => shortName);
 
   if (failed.length === 0) return null;
   return failed.join(',');
@@ -469,7 +470,7 @@ function summarizeEngineErrors(errors) {
  */
 function computeRadius(start, end, zoom) {
   const midLat = (start[1] + end[1]) / 2;
-  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(midLat * Math.PI / 180)) / (2 ** zoom);
+  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos((midLat * Math.PI) / 180)) / 2 ** zoom;
   const beelineM = haversineDistance(start, end);
   const bufferM = Math.max(600, beelineM * 0.15);
   return Math.min(3, Math.max(1, Math.ceil(bufferM / tileWidthM)));
@@ -512,12 +513,7 @@ async function benchmarkSingleRoute(
   pool,
   cache,
   costField = 'distance',
-  {
-    signal,
-    engineRunTimeoutMs = 0,
-    forceSerialRouting = false,
-    onPhase,
-  } = {},
+  { signal, engineRunTimeoutMs = 0, forceSerialRouting = false, onPhase } = {}
 ) {
   const { id, name, category, lengthCategory, start, end, forceRadius } = routeDef;
 
@@ -526,7 +522,7 @@ async function benchmarkSingleRoute(
   // ── Fetch tiles & build graph ───────────────────────────────────────────────
   onPhase?.({ phase: 'fetching-tiles' });
   const tileList = getTilesAlongLine(start, end, zoom, radius);
-  const tiles = tileList.map(t => ({
+  const tiles = tileList.map((t) => ({
     ...t,
     url: interpolate(urlTemplate, { z: t.z, x: t.x, y: t.y }),
   }));
@@ -548,7 +544,10 @@ async function benchmarkSingleRoute(
 
   if (startId === -1 || endId === -1) {
     return {
-      id, name, category, lengthCategory,
+      id,
+      name,
+      category,
+      lengthCategory,
       ...selectorFeatures,
       radius,
       fetchMs,
@@ -684,32 +683,35 @@ async function benchmarkSingleRoute(
   const canonicalWarm = normalizeBenchmarkResult(
     'bidirectional-astar',
     warmResults['bidirectional-astar'],
-    prepared,
+    prepared
   );
   const referenceCost = canonicalWarm?.found ? canonicalWarm.cost : null;
 
   const results = {};
   for (const engineId of engineIds) {
-    const rawWarm = engineId === 'bidirectional-astar'
-      ? canonicalWarm
-      : normalizeBenchmarkResult(engineId, warmResults[engineId], prepared, referenceCost);
+    const rawWarm =
+      engineId === 'bidirectional-astar'
+        ? canonicalWarm
+        : normalizeBenchmarkResult(engineId, warmResults[engineId], prepared, referenceCost);
     const rawTimed = timedResults[engineId]
       ? normalizeBenchmarkResult(engineId, timedResults[engineId], prepared, referenceCost)
       : null;
     const warm = rawWarm ?? {};
     const hasTimedSamples = (timesMap[engineId] ?? []).length > 0;
     const useTimedResult = rawTimed && !rawTimed.error;
-    const result = useTimedResult ? rawTimed : rawWarm ?? {};
+    const result = useTimedResult ? rawTimed : (rawWarm ?? {});
     const runErr = engineRunErrors[engineId] ?? null;
     const warmErr = warm.error ?? null;
     const warmErrCode = warm.errorCode ?? null;
     const timedErrMessage = runErr?.message ?? rawTimed?.error ?? null;
     const timedErrCode = runErr?.code ?? rawTimed?.errorCode ?? null;
-    const resultSource = useTimedResult ? 'timed' : (rawWarm ? 'warm' : 'none');
+    const resultSource = useTimedResult ? 'timed' : rawWarm ? 'warm' : 'none';
     const status = runErr
       ? 'timed_error'
       : useTimedResult
-        ? (warmErr ? 'warm_error_recovered' : 'ok')
+        ? warmErr
+          ? 'warm_error_recovered'
+          : 'ok'
         : rawTimed?.error
           ? 'timed_error'
           : warmErr
@@ -725,7 +727,11 @@ async function benchmarkSingleRoute(
       found: result.found ?? false,
       parallelUsed: result.parallelUsed ?? false,
       cost: result.cost ?? null,
-      error: runErr ? timedErrMessage : (useTimedResult ? null : (rawTimed?.error ?? warmErr ?? null)),
+      error: runErr
+        ? timedErrMessage
+        : useTimedResult
+          ? null
+          : (rawTimed?.error ?? warmErr ?? null),
       warmError: warmErr ?? null,
       warmErrorCode: warmErrCode,
       timedError: timedErrMessage,
@@ -748,12 +754,13 @@ async function benchmarkSingleRoute(
   // Real-world route() does not provide benchmark route labels (category),
   // so auto-engine evaluation relies on prepared selector metrics only.
   const autoEngine = selectBestEngine(prepared.metrics);
-  const autoEngineMs = {
-    'bidirectional-astar': results['bidirectional-astar'].medianMs,
-    'adaptive-barrier': results['adaptive-barrier'].medianMs,
-    'delta-stepping': results['delta-stepping'].medianMs,
-    'ultra-dijkstra': results['ultra-dijkstra'].medianMs,
-  }[autoEngine] ?? null;
+  const autoEngineMs =
+    {
+      'bidirectional-astar': results['bidirectional-astar'].medianMs,
+      'adaptive-barrier': results['adaptive-barrier'].medianMs,
+      'delta-stepping': results['delta-stepping'].medianMs,
+      'ultra-dijkstra': results['ultra-dijkstra'].medianMs,
+    }[autoEngine] ?? null;
   const fastestMs = timingWinner.fastestMs;
   // Compare auto against the declared winner's time, not the absolute fastest.
   // This way auto_vs_winner_pct is 0 when auto selects the winner engine,
@@ -770,12 +777,16 @@ async function benchmarkSingleRoute(
     const r = results[engineId];
     if (r.cost != null && r.found && !r.error) costs[engineId] = r.cost;
   }
-  const costWinner = Object.keys(costs).length > 0
-    ? Object.entries(costs).reduce((a, b) => a[1] < b[1] ? a : b)[0]
-    : null;
+  const costWinner =
+    Object.keys(costs).length > 0
+      ? Object.entries(costs).reduce((a, b) => (a[1] < b[1] ? a : b))[0]
+      : null;
 
   return {
-    id, name, category, lengthCategory,
+    id,
+    name,
+    category,
+    lengthCategory,
     start,
     end,
     ...selectorFeatures,
@@ -822,19 +833,26 @@ async function benchmarkSingleRoute(
     all_engines_timed: Object.values(results).every((r) => Number.isFinite(r.medianMs)),
     all_engines_cost: Object.values(results).every((r) => r.cost != null),
     any_engine_error: Object.values(results).some((r) => Boolean(r.error || r.timedError)),
-    cost_winner_ms: costWinner ? results[costWinner]?.medianMs ?? null : null,
-    winner_vs_cost_pct: costWinner && Number.isFinite(results[costWinner]?.medianMs)
-      ? round2((timingWinner.fastestMs - results[costWinner].medianMs) / results[costWinner].medianMs * 100)
-      : null,
-    winner_vs_cost_ms: costWinner && Number.isFinite(results[costWinner]?.medianMs)
-      ? round4(timingWinner.fastestMs - results[costWinner].medianMs)
-      : null,
+    cost_winner_ms: costWinner ? (results[costWinner]?.medianMs ?? null) : null,
+    winner_vs_cost_pct:
+      costWinner && Number.isFinite(results[costWinner]?.medianMs)
+        ? round2(
+            ((timingWinner.fastestMs - results[costWinner].medianMs) /
+              results[costWinner].medianMs) *
+              100
+          )
+        : null,
+    winner_vs_cost_ms:
+      costWinner && Number.isFinite(results[costWinner]?.medianMs)
+        ? round4(timingWinner.fastestMs - results[costWinner].medianMs)
+        : null,
     auto_engine: autoEngine,
     auto_engine_ms: autoEngineMs,
     auto_vs_winner_pct: autoVsWinnerPct,
-    auto_matches_winner: timingWinner.winnerCandidates.length > 0
-      ? Number(timingWinner.winnerCandidates.includes(autoEngine))
-      : null,
+    auto_matches_winner:
+      timingWinner.winnerCandidates.length > 0
+        ? Number(timingWinner.winnerCandidates.includes(autoEngine))
+        : null,
     auto_is_winner: autoEngine === winner,
     winner_tied: Number(timingWinner.winnerTied),
     winner_candidates: timingWinner.winnerCandidates,
@@ -858,13 +876,17 @@ async function benchmarkSingleRoute(
       ultra_dijkstra: results['ultra-dijkstra'].found,
     },
     errors: {
-      bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
-      adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
+      bidirectional_astar_error:
+        results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
+      adaptive_barrier_error:
+        results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
       delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
       ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
     },
-    bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
-    adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
+    bidirectional_astar_error:
+      results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
+    adaptive_barrier_error:
+      results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
     delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
     ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
     bidirectional_astar_warm_error: results['bidirectional-astar'].warmError,
@@ -891,13 +913,19 @@ async function benchmarkSingleRoute(
     adaptive_barrier_timed_error_code: results['adaptive-barrier'].timedErrorCode,
     delta_stepping_timed_error_code: results['delta-stepping'].timedErrorCode,
     ultra_dijkstra_timed_error_code: results['ultra-dijkstra'].timedErrorCode,
-    bidirectional_astar_error_code: results['bidirectional-astar'].warmErrorCode ?? results['bidirectional-astar'].timedErrorCode,
-    adaptive_barrier_error_code: results['adaptive-barrier'].warmErrorCode ?? results['adaptive-barrier'].timedErrorCode,
-    delta_stepping_error_code: results['delta-stepping'].warmErrorCode ?? results['delta-stepping'].timedErrorCode,
-    ultra_dijkstra_error_code: results['ultra-dijkstra'].warmErrorCode ?? results['ultra-dijkstra'].timedErrorCode,
+    bidirectional_astar_error_code:
+      results['bidirectional-astar'].warmErrorCode ?? results['bidirectional-astar'].timedErrorCode,
+    adaptive_barrier_error_code:
+      results['adaptive-barrier'].warmErrorCode ?? results['adaptive-barrier'].timedErrorCode,
+    delta_stepping_error_code:
+      results['delta-stepping'].warmErrorCode ?? results['delta-stepping'].timedErrorCode,
+    ultra_dijkstra_error_code:
+      results['ultra-dijkstra'].warmErrorCode ?? results['ultra-dijkstra'].timedErrorCode,
     engine_errors: summarizeEngineErrors({
-      bidirectional_astar_error: results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
-      adaptive_barrier_error: results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
+      bidirectional_astar_error:
+        results['bidirectional-astar'].error ?? results['bidirectional-astar'].timedError,
+      adaptive_barrier_error:
+        results['adaptive-barrier'].error ?? results['adaptive-barrier'].timedError,
       delta_stepping_error: results['delta-stepping'].error ?? results['delta-stepping'].timedError,
       ultra_dijkstra_error: results['ultra-dijkstra'].error ?? results['ultra-dijkstra'].timedError,
     }),
@@ -923,50 +951,42 @@ async function benchmarkSingleRoute(
       execution: {
         nRunsRequested: nRuns,
         engineOrder: [...engineIds],
-        warmupMsByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          Number.isFinite(warmTimingsMs[engineId]) ? warmTimingsMs[engineId] : null,
-        ])),
-        warmupErrorMessagesByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          warmErrors[engineId]?.message ?? null,
-        ])),
-        warmupErrorCodesByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          warmErrors[engineId]?.code ?? null,
-        ])),
-        warmupErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          warmErrors[engineId] ? 1 : 0,
-        ])),
-        timedErrorMessagesByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          engineRunErrors[engineId]?.message ?? null,
-        ])),
-        timedErrorCodesByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          engineRunErrors[engineId]?.code ?? null,
-        ])),
-        timedErrorsByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          timedErrorCounts[engineId] ?? 0,
-        ])),
-        finalResultSourceByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          results[engineId]?.resultSource ?? null,
-        ])),
-        finalEngineStatusByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          results[engineId]?.status ?? null,
-        ])),
-        timingSamplesMsByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          [...(timesMap[engineId] ?? [])],
-        ])),
-        timingSampleStatsByEngine: Object.fromEntries(engineIds.map((engineId) => [
-          engineId,
-          summarizeSamples(timesMap[engineId] ?? []),
-        ])),
+        warmupMsByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [
+            engineId,
+            Number.isFinite(warmTimingsMs[engineId]) ? warmTimingsMs[engineId] : null,
+          ])
+        ),
+        warmupErrorMessagesByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, warmErrors[engineId]?.message ?? null])
+        ),
+        warmupErrorCodesByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, warmErrors[engineId]?.code ?? null])
+        ),
+        warmupErrorsByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, warmErrors[engineId] ? 1 : 0])
+        ),
+        timedErrorMessagesByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, engineRunErrors[engineId]?.message ?? null])
+        ),
+        timedErrorCodesByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, engineRunErrors[engineId]?.code ?? null])
+        ),
+        timedErrorsByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, timedErrorCounts[engineId] ?? 0])
+        ),
+        finalResultSourceByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, results[engineId]?.resultSource ?? null])
+        ),
+        finalEngineStatusByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, results[engineId]?.status ?? null])
+        ),
+        timingSamplesMsByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, [...(timesMap[engineId] ?? [])]])
+        ),
+        timingSampleStatsByEngine: Object.fromEntries(
+          engineIds.map((engineId) => [engineId, summarizeSamples(timesMap[engineId] ?? [])])
+        ),
         timingRounds: timedRounds,
       },
     },
@@ -1013,13 +1033,11 @@ export async function runBenchmark(config, onProgress = () => {}) {
   } = config;
 
   const normalizedPauseMs = Math.max(0, Math.floor(routePauseMs));
-  const mutedPhases = new Set([
-    'warming-engine',
-    'timing-engine',
-  ]);
+  const mutedPhases = new Set(['warming-engine', 'timing-engine']);
 
   const shouldClearCachesAfterEachRoute = Boolean(clearCachesAfterEachRoute);
-  const shouldClearCachesOnCategoryBoundary = Boolean(clearCacheOnCategoryBoundary) && !shouldClearCachesAfterEachRoute;
+  const shouldClearCachesOnCategoryBoundary =
+    Boolean(clearCacheOnCategoryBoundary) && !shouldClearCachesAfterEachRoute;
 
   const pool = suppliedPool ?? getSharedPool();
   const cache = suppliedCache ?? getSharedCache();
@@ -1056,29 +1074,41 @@ export async function runBenchmark(config, onProgress = () => {}) {
 
       let result;
       try {
-        result = await benchmarkSingleRoute(routeDef, urlTemplate, mode, zoom, nRuns, pool, cache, costField, {
-          signal,
-          engineRunTimeoutMs,
-          forceSerialRouting,
-          onPhase: (phaseInfo) => {
-            if (mutedPhases.has(phaseInfo?.phase)) return;
-            onProgress({
-              current: i,
-              total: routes.length,
-              routeName: routeDef.name,
-              phase: phaseInfo?.phase,
-              phaseInfo,
-              results,
-            });
-          },
-        });
+        result = await benchmarkSingleRoute(
+          routeDef,
+          urlTemplate,
+          mode,
+          zoom,
+          nRuns,
+          pool,
+          cache,
+          costField,
+          {
+            signal,
+            engineRunTimeoutMs,
+            forceSerialRouting,
+            onPhase: (phaseInfo) => {
+              if (mutedPhases.has(phaseInfo?.phase)) return;
+              onProgress({
+                current: i,
+                total: routes.length,
+                routeName: routeDef.name,
+                phase: phaseInfo?.phase,
+                phaseInfo,
+                results,
+              });
+            },
+          }
+        );
       } catch (err) {
         if (err?.name === 'AbortError') {
           throw err;
         }
         result = {
-          id: routeDef.id, name: routeDef.name,
-          category: routeDef.category, lengthCategory: routeDef.lengthCategory,
+          id: routeDef.id,
+          name: routeDef.name,
+          category: routeDef.category,
+          lengthCategory: routeDef.lengthCategory,
           ...classifySelectorFeatures({
             nodeCount: null,
             edgeCount: null,
@@ -1112,22 +1142,31 @@ export async function runBenchmark(config, onProgress = () => {}) {
       }
 
       results.push(result);
-      onProgress({ current: i + 1, total: routes.length, routeName: routeDef.name, result, results });
+      onProgress({
+        current: i + 1,
+        total: routes.length,
+        routeName: routeDef.name,
+        result,
+        results,
+      });
 
-      const nextCategory = (routes[i + 1]?.category) ?? null;
+      const nextCategory = routes[i + 1]?.category ?? null;
       if (shouldClearCachesAfterEachRoute) {
         cache.clear();
-        if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
+        if (graphCacheInstance && typeof graphCacheInstance.clear === 'function')
+          graphCacheInstance.clear();
       } else if (shouldClearCachesOnCategoryBoundary) {
         if (routeDef.category !== prevCategory && prevCategory !== null) {
           // Defensive: should not happen, but just in case
           cache.clear();
-          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
+          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function')
+            graphCacheInstance.clear();
         }
         if (routeDef.category !== nextCategory) {
           // Last route of this category
           cache.clear();
-          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') graphCacheInstance.clear();
+          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function')
+            graphCacheInstance.clear();
         }
       }
       prevCategory = routeDef.category;
@@ -1168,30 +1207,25 @@ export async function runBenchmark(config, onProgress = () => {}) {
 /**
  * Generate a performance summary table showing engines as rows and length-graph-size
  * combinations as columns, with values as percentage of fastest speed (fastest = 100%).
- * 
+ *
  * @param {object[]} results - benchmark results
  * @returns {object} { headers, rows, formatValue }
  */
 export function generatePerformanceSummary(results) {
-  const engines = [
-    'bidirectional-astar',
-    'adaptive-barrier',
-    'delta-stepping',
-    'ultra-dijkstra'
-  ];
-  
+  const engines = ['bidirectional-astar', 'adaptive-barrier', 'delta-stepping', 'ultra-dijkstra'];
+
   const engineNames = {
     'bidirectional-astar': 'A★ (Bidirectional)',
     'adaptive-barrier': 'Barrier (Adaptive SSP)',
     'delta-stepping': 'Delta-Stepping',
-    'ultra-dijkstra': 'Dijkstra (Ultra)'
+    'ultra-dijkstra': 'Dijkstra (Ultra)',
   };
 
   const engineResultKeys = {
     'bidirectional-astar': 'bidirectional_astar_ms',
     'adaptive-barrier': 'adaptive_barrier_ms',
     'delta-stepping': 'delta_stepping_ms',
-    'ultra-dijkstra': 'ultra_dijkstra_ms'
+    'ultra-dijkstra': 'ultra_dijkstra_ms',
   };
 
   // Rounded timings can hit 0.000ms; clamp to a tiny floor for stable ratios.
@@ -1199,18 +1233,18 @@ export function generatePerformanceSummary(results) {
     if (!Number.isFinite(t) || t < 0) return null;
     return Math.max(t, 0.001);
   };
-  
+
   const { groups, groupKeys } = buildSummaryGroups(results);
-  
+
   // Build summary table: engines × groups
-  const rows = engines.map(engine => {
+  const rows = engines.map((engine) => {
     const row = { engine: engineNames[engine] };
-    groupKeys.forEach(groupKey => {
+    groupKeys.forEach((groupKey) => {
       const resultsInGroup = groups[groupKey];
       const timings = resultsInGroup
-        .map(r => normalizeTiming(r[engineResultKeys[engine]]))
-        .filter(t => t != null);
-      
+        .map((r) => normalizeTiming(r[engineResultKeys[engine]]))
+        .filter((t) => t != null);
+
       if (timings.length === 0) {
         row[groupKey] = null;
       } else {
@@ -1220,22 +1254,24 @@ export function generatePerformanceSummary(results) {
     });
     return row;
   });
-  
+
   // Convert to percentages relative to fastest in each group
-  groupKeys.forEach(groupKey => {
+  groupKeys.forEach((groupKey) => {
     const groupAvgs = rows
-      .map(r => r[groupKey])
-      .filter(v => v != null)
-      .map(v => v.avg)
-      .filter(v => Number.isFinite(v) && v > 0);
+      .map((r) => r[groupKey])
+      .filter((v) => v != null)
+      .map((v) => v.avg)
+      .filter((v) => Number.isFinite(v) && v > 0);
 
     if (groupAvgs.length === 0) {
-      rows.forEach(row => { row[groupKey] = null; });
+      rows.forEach((row) => {
+        row[groupKey] = null;
+      });
       return;
     }
 
     const minTime = Math.min(...groupAvgs);
-    rows.forEach(row => {
+    rows.forEach((row) => {
       const cell = row[groupKey];
       if (cell == null || !Number.isFinite(cell.avg) || cell.avg <= 0) {
         row[groupKey] = null;
@@ -1243,49 +1279,42 @@ export function generatePerformanceSummary(results) {
       }
 
       const percentage = Math.round((minTime / cell.avg) * 100);
-      row[groupKey] = Number.isFinite(percentage)
-        ? Math.max(1, Math.min(100, percentage))
-        : null;
+      row[groupKey] = Number.isFinite(percentage) ? Math.max(1, Math.min(100, percentage)) : null;
     });
   });
-  
+
   return {
     groupKeys,
     rows,
-    formatValue: (v) => v === null ? '—' : `${v}%`
+    formatValue: (v) => (v === null ? '—' : `${v}%`),
   };
 }
 
 export function generateCostSummary(results) {
-  const engines = [
-    'bidirectional-astar',
-    'adaptive-barrier',
-    'delta-stepping',
-    'ultra-dijkstra'
-  ];
+  const engines = ['bidirectional-astar', 'adaptive-barrier', 'delta-stepping', 'ultra-dijkstra'];
 
   const engineNames = {
     'bidirectional-astar': 'A★ (Bidirectional)',
     'adaptive-barrier': 'Barrier (Adaptive SSP)',
     'delta-stepping': 'Delta-Stepping',
-    'ultra-dijkstra': 'Dijkstra (Ultra)'
+    'ultra-dijkstra': 'Dijkstra (Ultra)',
   };
 
   const engineCostKeys = {
     'bidirectional-astar': 'bidirectional_astar_cost',
     'adaptive-barrier': 'adaptive_barrier_cost',
     'delta-stepping': 'delta_stepping_cost',
-    'ultra-dijkstra': 'ultra_dijkstra_cost'
+    'ultra-dijkstra': 'ultra_dijkstra_cost',
   };
 
   const { groups, groupKeys } = buildSummaryGroups(results);
 
-  const rows = engines.map(engine => {
+  const rows = engines.map((engine) => {
     const row = { engine: engineNames[engine] };
-    groupKeys.forEach(groupKey => {
+    groupKeys.forEach((groupKey) => {
       const costs = groups[groupKey]
-        .map(r => r[engineCostKeys[engine]])
-        .filter(cost => Number.isFinite(cost) && cost >= 0);
+        .map((r) => r[engineCostKeys[engine]])
+        .filter((cost) => Number.isFinite(cost) && cost >= 0);
 
       if (costs.length === 0) {
         row[groupKey] = null;
@@ -1297,20 +1326,22 @@ export function generateCostSummary(results) {
     return row;
   });
 
-  groupKeys.forEach(groupKey => {
+  groupKeys.forEach((groupKey) => {
     const groupAvgs = rows
-      .map(r => r[groupKey])
-      .filter(v => v != null)
-      .map(v => v.avg)
-      .filter(v => Number.isFinite(v) && v >= 0);
+      .map((r) => r[groupKey])
+      .filter((v) => v != null)
+      .map((v) => v.avg)
+      .filter((v) => Number.isFinite(v) && v >= 0);
 
     if (groupAvgs.length === 0) {
-      rows.forEach(row => { row[groupKey] = null; });
+      rows.forEach((row) => {
+        row[groupKey] = null;
+      });
       return;
     }
 
     const minCost = Math.min(...groupAvgs);
-    rows.forEach(row => {
+    rows.forEach((row) => {
       const cell = row[groupKey];
       if (cell == null || !Number.isFinite(cell.avg) || cell.avg < 0) {
         row[groupKey] = null;
@@ -1323,16 +1354,14 @@ export function generateCostSummary(results) {
       }
 
       const percentage = Math.round((minCost / cell.avg) * 100);
-      row[groupKey] = Number.isFinite(percentage)
-        ? Math.max(1, Math.min(100, percentage))
-        : null;
+      row[groupKey] = Number.isFinite(percentage) ? Math.max(1, Math.min(100, percentage)) : null;
     });
   });
 
   return {
     groupKeys,
     rows,
-    formatValue: (v) => v === null ? '—' : `${v}%`
+    formatValue: (v) => (v === null ? '—' : `${v}%`),
   };
 }
 
@@ -1357,19 +1386,16 @@ function truncateReportText(value, max = 96) {
 
 function toMarkdownCell(value) {
   const text = String(value ?? '');
-  return text
-    .replace(/\|/g, '\\|')
-    .replace(/\r?\n/g, ' ')
-    .trim();
+  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
 }
 
 function summarizeAutoSelectorReport(results) {
   const covered = results.filter((row) => !row.error && row.winner);
   const exactHits = covered.filter(
-    (row) => Number(row.auto_matches_winner) === 1 && row.auto_engine === row.winner,
+    (row) => Number(row.auto_matches_winner) === 1 && row.auto_engine === row.winner
   ).length;
   const nearTieHits = covered.filter(
-    (row) => Number(row.auto_matches_winner) === 1 && row.auto_engine !== row.winner,
+    (row) => Number(row.auto_matches_winner) === 1 && row.auto_engine !== row.winner
   ).length;
   const misses = covered.filter((row) => Number(row.auto_matches_winner) === 0).length;
   const coverage = covered.length;
@@ -1385,13 +1411,11 @@ function summarizeAutoSelectorReport(results) {
 }
 
 function buildTimingSummary(row) {
-  return REPORT_ENGINE_ORDER
-    .map((engineId) => {
-      const key = REPORT_ENGINE_TIME_KEYS[engineId];
-      const value = row[key];
-      return `${REPORT_ENGINE_LABELS[engineId]}=${formatReportValue(value, 3)}ms`;
-    })
-    .join(', ');
+  return REPORT_ENGINE_ORDER.map((engineId) => {
+    const key = REPORT_ENGINE_TIME_KEYS[engineId];
+    const value = row[key];
+    return `${REPORT_ENGINE_LABELS[engineId]}=${formatReportValue(value, 3)}ms`;
+  }).join(', ');
 }
 
 function formatSelectorBins(row) {
@@ -1415,14 +1439,22 @@ export function generateCopilotReport(results, context = {}) {
     return counts;
   }, {});
 
-  const barrierParallelUsed = validResults.filter((row) => Number(row.adaptive_barrier_parallel) === 1).length;
-  const deltaParallelUsed = validResults.filter((row) => Number(row.delta_stepping_parallel) === 1).length;
+  const barrierParallelUsed = validResults.filter(
+    (row) => Number(row.adaptive_barrier_parallel) === 1
+  ).length;
+  const deltaParallelUsed = validResults.filter(
+    (row) => Number(row.delta_stepping_parallel) === 1
+  ).length;
 
   const missRows = validResults
     .filter((row) => Number(row.auto_matches_winner) === 0)
     .sort((left, right) => {
-      const leftPct = Number.isFinite(left.auto_vs_winner_pct) ? left.auto_vs_winner_pct : -Infinity;
-      const rightPct = Number.isFinite(right.auto_vs_winner_pct) ? right.auto_vs_winner_pct : -Infinity;
+      const leftPct = Number.isFinite(left.auto_vs_winner_pct)
+        ? left.auto_vs_winner_pct
+        : -Infinity;
+      const rightPct = Number.isFinite(right.auto_vs_winner_pct)
+        ? right.auto_vs_winner_pct
+        : -Infinity;
       return rightPct - leftPct;
     });
 
@@ -1439,7 +1471,8 @@ export function generateCopilotReport(results, context = {}) {
     existing.count += 1;
     existing.totalPenalty += Number.isFinite(row.auto_vs_winner_pct) ? row.auto_vs_winner_pct : 0;
     if (row.winner) existing.winners.add(REPORT_ENGINE_LABELS[row.winner] ?? row.winner);
-    if (row.auto_engine) existing.autos.add(REPORT_ENGINE_LABELS[row.auto_engine] ?? row.auto_engine);
+    if (row.auto_engine)
+      existing.autos.add(REPORT_ENGINE_LABELS[row.auto_engine] ?? row.auto_engine);
     missGroupMap.set(groupKey, existing);
   });
 
@@ -1468,7 +1501,8 @@ export function generateCopilotReport(results, context = {}) {
     existing.count += 1;
     existing.totalPenalty += Number.isFinite(row.auto_vs_winner_pct) ? row.auto_vs_winner_pct : 0;
     if (row.winner) existing.winners.add(REPORT_ENGINE_LABELS[row.winner] ?? row.winner);
-    if (row.auto_engine) existing.autos.add(REPORT_ENGINE_LABELS[row.auto_engine] ?? row.auto_engine);
+    if (row.auto_engine)
+      existing.autos.add(REPORT_ENGINE_LABELS[row.auto_engine] ?? row.auto_engine);
     missBinMap.set(binKey, existing);
   });
 
@@ -1524,7 +1558,7 @@ export function generateCopilotReport(results, context = {}) {
     lines.push('## Miss Pockets');
     missGroups.slice(0, 8).forEach((group) => {
       lines.push(
-        `- ${group.groupKey}: ${group.count} misses, avg auto_vs_winner=${formatReportPercent(group.avgPenalty)}, auto=${group.autos.join('/') || 'n/a'}, winner=${group.winners.join('/') || 'n/a'}`,
+        `- ${group.groupKey}: ${group.count} misses, avg auto_vs_winner=${formatReportPercent(group.avgPenalty)}, auto=${group.autos.join('/') || 'n/a'}, winner=${group.winners.join('/') || 'n/a'}`
       );
     });
   }
@@ -1535,7 +1569,7 @@ export function generateCopilotReport(results, context = {}) {
     lines.push('- bin format: sizeBand|beelineBand|densityBand|branchBand');
     missBins.slice(0, 8).forEach((bin) => {
       lines.push(
-        `- ${bin.binKey}: ${bin.count} misses, avg auto_vs_winner=${formatReportPercent(bin.avgPenalty)}, auto=${bin.autos.join('/') || 'n/a'}, winner=${bin.winners.join('/') || 'n/a'}`,
+        `- ${bin.binKey}: ${bin.count} misses, avg auto_vs_winner=${formatReportPercent(bin.avgPenalty)}, auto=${bin.autos.join('/') || 'n/a'}, winner=${bin.winners.join('/') || 'n/a'}`
       );
     });
   }
@@ -1543,7 +1577,9 @@ export function generateCopilotReport(results, context = {}) {
   lines.push('');
   lines.push('## Misses Table');
   lines.push('- includes all real misses (auto selector outside winner tolerance band)');
-  lines.push('| route | category | length | size | selector_bin | radius | safeE | safeN | auto | winner | candidates | auto_vs_winner | timings |');
+  lines.push(
+    '| route | category | length | size | selector_bin | radius | safeE | safeN | auto | winner | candidates | auto_vs_winner | timings |'
+  );
   lines.push('| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | ---: | --- |');
   if (missRows.length === 0) {
     lines.push('| none | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |');
@@ -1551,9 +1587,12 @@ export function generateCopilotReport(results, context = {}) {
     missRows.forEach((row) => {
       const sizeKey = summaryGroupSizeCategory(row.safeE);
       const selectorBin = formatSelectorBins(row);
-      const winnerCandidates = Array.isArray(row.winner_candidates) && row.winner_candidates.length > 0
-        ? row.winner_candidates.map((engineId) => REPORT_ENGINE_LABELS[engineId] ?? engineId).join('/')
-        : 'n/a';
+      const winnerCandidates =
+        Array.isArray(row.winner_candidates) && row.winner_candidates.length > 0
+          ? row.winner_candidates
+              .map((engineId) => REPORT_ENGINE_LABELS[engineId] ?? engineId)
+              .join('/')
+          : 'n/a';
       const cells = [
         truncateReportText(row.name, 40),
         row.category,
@@ -1587,33 +1626,73 @@ export function generateCopilotReport(results, context = {}) {
 // ── CSV export ─────────────────────────────────────────────────────────────────
 
 const CSV_COLS = [
-  'id', 'name', 'category', 'lengthCategory',
+  'id',
+  'name',
+  'category',
+  'lengthCategory',
   'radius',
-  'safeN', 'safeE', 'safeBeelineKm',
-  'avgOutDegree', 'edgesPerKm', 'nodesPerKm',
-  'sizeRatioEN', 'beelinePerNode', 'relativeDensity', 'globalCoverage', 'emptyRatio',
-  'sourceDegree', 'targetDegree', 'sourceCentrality', 'targetCentrality',
-  'sourceTargetDegreeRatio', 'sourceTargetCentralityRatio', 'graphDensity', 'avgBranchFactor',
-  'logN', 'logE', 'logBeelineKm', 'logEdgesPerKm', 'logNodesPerKm', 'logEoverN', 'logBeelinePerNode',
-  'sizeBand', 'beelineBand', 'densityBand', 'coverageBand', 'emptyBand', 'branchBand',
-  'signature', 'signatureExpanded',
+  'safeN',
+  'safeE',
+  'safeBeelineKm',
+  'avgOutDegree',
+  'edgesPerKm',
+  'nodesPerKm',
+  'sizeRatioEN',
+  'beelinePerNode',
+  'relativeDensity',
+  'globalCoverage',
+  'emptyRatio',
+  'sourceDegree',
+  'targetDegree',
+  'sourceCentrality',
+  'targetCentrality',
+  'sourceTargetDegreeRatio',
+  'sourceTargetCentralityRatio',
+  'graphDensity',
+  'avgBranchFactor',
+  'logN',
+  'logE',
+  'logBeelineKm',
+  'logEdgesPerKm',
+  'logNodesPerKm',
+  'logEoverN',
+  'logBeelinePerNode',
+  'sizeBand',
+  'beelineBand',
+  'densityBand',
+  'coverageBand',
+  'emptyBand',
+  'branchBand',
+  'signature',
+  'signatureExpanded',
   'fetchMs',
-  'bidirectional_astar_ms', 'adaptive_barrier_ms', 'adaptive_barrier_parallel',
-  'delta_stepping_ms', 'ultra_dijkstra_ms',
-  'bidirectional_astar_cost', 'adaptive_barrier_cost', 'delta_stepping_cost', 'ultra_dijkstra_cost',
-  'bidirectional_astar_error', 'adaptive_barrier_error', 'delta_stepping_error', 'ultra_dijkstra_error',
+  'bidirectional_astar_ms',
+  'adaptive_barrier_ms',
+  'adaptive_barrier_parallel',
+  'delta_stepping_ms',
+  'ultra_dijkstra_ms',
+  'bidirectional_astar_cost',
+  'adaptive_barrier_cost',
+  'delta_stepping_cost',
+  'ultra_dijkstra_cost',
+  'bidirectional_astar_error',
+  'adaptive_barrier_error',
+  'delta_stepping_error',
+  'ultra_dijkstra_error',
   'engine_errors',
-  'auto_engine', 'auto_engine_ms', 'auto_vs_winner_pct', 'auto_matches_winner',
+  'auto_engine',
+  'auto_engine_ms',
+  'auto_vs_winner_pct',
+  'auto_matches_winner',
   'costWinner',
-  'winner', 'error',
+  'winner',
+  'error',
 ];
 
 function escapeCSV(v) {
   if (v === null || v === undefined) return '';
   const s = String(v);
-  return s.includes(',') || s.includes('"') || s.includes('\n')
-    ? `"${s.replace(/"/g, '""')}"`
-    : s;
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /**
@@ -1623,7 +1702,7 @@ function escapeCSV(v) {
  */
 export function toCSV(results) {
   const header = CSV_COLS.join(',');
-  const rows = results.map(r => CSV_COLS.map(k => escapeCSV(r[k])).join(','));
+  const rows = results.map((r) => CSV_COLS.map((k) => escapeCSV(r[k])).join(','));
   return [header, ...rows].join('\n');
 }
 
@@ -1633,11 +1712,12 @@ export function toCSV(results) {
  * @param {string} [filename]
  */
 export function downloadCSV(results, filename = 'benchmark_results.csv') {
-  const csv  = toCSV(results);
+  const csv = toCSV(results);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), {
-    href: url, download: filename,
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), {
+    href: url,
+    download: filename,
   });
   document.body.appendChild(a);
   a.click();
@@ -1648,22 +1728,42 @@ export function downloadCSV(results, filename = 'benchmark_results.csv') {
 // ── Chart.js scatter charts ───────────────────────────────────────────────────
 
 const _ENGINE_CHART_META = [
-  { id: 'bidirectional-astar', label: 'A★ (Bidirectional)', bg: 'rgba(59,130,246,0.75)',  border: '#1e40af' },
-  { id: 'adaptive-barrier',    label: 'Barrier (SSP)',       bg: 'rgba(139,92,246,0.75)', border: '#5b21b6' },
-  { id: 'delta-stepping',      label: 'Delta-Stepping',      bg: 'rgba(236,72,153,0.75)', border: '#831843' },
-  { id: 'ultra-dijkstra',      label: 'Dijkstra (Ultra)',    bg: 'rgba(245,158,11,0.75)', border: '#92400e' },
+  {
+    id: 'bidirectional-astar',
+    label: 'A★ (Bidirectional)',
+    bg: 'rgba(59,130,246,0.75)',
+    border: '#1e40af',
+  },
+  {
+    id: 'adaptive-barrier',
+    label: 'Barrier (SSP)',
+    bg: 'rgba(139,92,246,0.75)',
+    border: '#5b21b6',
+  },
+  { id: 'delta-stepping', label: 'Delta-Stepping', bg: 'rgba(236,72,153,0.75)', border: '#831843' },
+  {
+    id: 'ultra-dijkstra',
+    label: 'Dijkstra (Ultra)',
+    bg: 'rgba(245,158,11,0.75)',
+    border: '#92400e',
+  },
 ];
 
 function _fmtMsChart(v) {
   if (v == null || !Number.isFinite(v)) return '\u2014';
-  if (v < 1)   return `${v.toFixed(3)}ms`;
-  if (v < 10)  return `${v.toFixed(2)}ms`;
+  if (v < 1) return `${v.toFixed(3)}ms`;
+  if (v < 10) return `${v.toFixed(2)}ms`;
   if (v < 100) return `${v.toFixed(1)}ms`;
   return `${Math.round(v)}ms`;
 }
 
 function _buildTooltipLines(r) {
-  const short = { 'bidirectional-astar': 'A★', 'adaptive-barrier': 'Barrier', 'delta-stepping': 'Delta', 'ultra-dijkstra': 'Dijkstra' };
+  const short = {
+    'bidirectional-astar': 'A★',
+    'adaptive-barrier': 'Barrier',
+    'delta-stepping': 'Delta',
+    'ultra-dijkstra': 'Dijkstra',
+  };
   return [
     `${r.category} · ${r.lengthCategory}`,
     `radius: ${Number.isFinite(r.radius) ? r.radius : 'n/a'}  signature: ${r.signature ?? 'n/a'}`,
@@ -1674,26 +1774,31 @@ function _buildTooltipLines(r) {
   ];
 }
 
-const _SELECTOR_FEATURE_SCALES = [
-  {
-    xKey: 'coverageDensity',
-    xLabel: 'Coverage density',
+const _MODEL_DRIVEN_FEATURES = {
+  routeSpanCoverageContrast: {
+    xKey: 'logBeelineKm',
+    xLabel: 'Log route distance (km)',
+    yKey: 'logCoverageEmptyContrast',
+    yLabel: 'Log coverage × filled ratio',
+  },
+  coverageVsEmpty: {
+    xKey: 'logGlobalCoverage',
+    xLabel: 'Log global coverage',
+    yKey: 'logEmptyRatio',
+    yLabel: 'Log empty ratio',
+    rKey: 'safeE',
+    rLabel: 'Edge count',
+  },
+  coverageContrastHistogram: {
+    xKey: 'logCoverageEmptyContrast',
+    xLabel: 'Log coverage-empty contrast',
+  },
+  timingCompetitiveness: {
+    xKey: 'logBeelineKm',
+    xLabel: 'Route distance (log km)',
     yKey: 'coverageEmptyContrastTimesLogAvgBranchFactor',
     yLabel: 'Coverage-empty contrast × log avg branch',
   },
-  {
-    xKey: 'globalCoverageTimesEmptyRatio',
-    xLabel: 'Global coverage × empty ratio',
-    yKey: 'logGlobalCoverage',
-    yLabel: 'Log global coverage',
-  },
-];
-
-const _TIMING_BUBBLE_FEATURE = {
-  xKey: 'coverageDensity',
-  xLabel: 'Coverage density',
-  yKey: 'logAvgBranchFactor',
-  yLabel: 'Log avg branch factor',
 };
 
 function _getSelectorFeatureRow(row) {
@@ -1710,9 +1815,11 @@ function _getSelectorFeatureRow(row) {
     nodeDegreeTarget: Number.isFinite(row.targetDegree) ? row.targetDegree : null,
     nodeCentralitySource: Number.isFinite(row.sourceCentrality) ? row.sourceCentrality : null,
     nodeCentralityTarget: Number.isFinite(row.targetCentrality) ? row.targetCentrality : null,
-    sourceTargetDegreeRatio: Number.isFinite(row.sourceTargetDegreeRatio) ? row.sourceTargetDegreeRatio : null,
+    sourceTargetDegreeRatio: Number.isFinite(row.sourceTargetDegreeRatio)
+      ? row.sourceTargetDegreeRatio
+      : null,
   };
-  return row._selectorFeatures = classifySelectorFeatures(selectorMetrics);
+  return (row._selectorFeatures = classifySelectorFeatures(selectorMetrics));
 }
 
 function _featureForRow(row, key) {
@@ -1722,18 +1829,21 @@ function _featureForRow(row, key) {
 }
 
 function _buildScatterDatasets(validResults, xKey, yKey) {
-  const sets = _ENGINE_CHART_META.map(e => ({
+  const sets = _ENGINE_CHART_META.map((e) => ({
     label: e.label,
     data: validResults
       .map((r) => ({
         x: _featureForRow(r, xKey),
         y: _featureForRow(r, yKey),
-        route: r,
+        routeName: r.name,
+        category: r.category,
+        lengthCategory: r.lengthCategory,
+        winner: r.winner,
       }))
-      .filter((pt) => pt.x != null && pt.y != null && pt.route.winner === e.id),
+      .filter((pt) => pt.x != null && pt.y != null && pt.winner === e.id),
     backgroundColor: e.bg,
     borderColor: e.border,
-    borderWidth: 1,
+    borderWidth: 0.5,
     pointRadius: 2,
     pointHoverRadius: 4,
   }));
@@ -1743,31 +1853,50 @@ function _buildScatterDatasets(validResults, xKey, yKey) {
       .map((r) => ({
         x: _featureForRow(r, xKey),
         y: _featureForRow(r, yKey),
-        route: r,
+        routeName: r.name,
+        category: r.category,
+        lengthCategory: r.lengthCategory,
+        winner: r.winner,
       }))
-      .filter((pt) => pt.x != null && pt.y != null && !pt.route.winner),
+      .filter((pt) => pt.x != null && pt.y != null && !pt.winner),
     backgroundColor: 'rgba(148,163,184,0.5)',
     borderColor: '#64748b',
-    borderWidth: 1,
+    borderWidth: 0.5,
     pointRadius: 2,
     pointHoverRadius: 4,
   };
   if (errDs.data.length > 0) sets.push(errDs);
-  return sets.filter(ds => ds.data.length > 0);
+  return sets.filter((ds) => ds.data.length > 0);
+}
+
+function _tooltipLabelColor(item) {
+  return {
+    borderColor: item.dataset.borderColor,
+    backgroundColor: item.dataset.backgroundColor,
+  };
 }
 
 const _TOOLTIP_OPTS = {
   mode: 'nearest',
   intersect: true,
   callbacks: {
-    title(items) { return items[0]?.raw?.route?.name ?? ''; },
+    title(items) {
+      return items[0]?.raw?.routeName ?? '';
+    },
     label(item) {
-      const r = item.raw?.route;
-      return r ? _buildTooltipLines(r) : [];
+      const raw = item.raw;
+      if (!raw) return [];
+      const routeLine =
+        raw.category || raw.lengthCategory
+          ? `${raw.category ?? ''}${raw.category && raw.lengthCategory ? ' · ' : ''}${raw.lengthCategory ?? ''}`
+          : (raw.routeName ?? '');
+      return [
+        routeLine,
+        `x: ${Number.isFinite(raw.x) ? Number(raw.x.toPrecision(3)) : 'n/a'}`,
+        `y: ${Number.isFinite(raw.y) ? Number(raw.y.toPrecision(3)) : 'n/a'}`,
+      ].filter(Boolean);
     },
-    labelColor(item) {
-      return { borderColor: item.dataset.borderColor, backgroundColor: item.dataset.backgroundColor };
-    },
+    labelColor: _tooltipLabelColor,
   },
   bodyFont: { size: 11 },
   titleFont: { size: 12, weight: 'bold' },
@@ -1777,23 +1906,34 @@ const _TOOLTIP_OPTS = {
   bodyColor: '#cbd5e1',
 };
 
-function _logAxis(title, tickFn) {
-  return {
+function _logAxis(title, tickFn, opts = {}) {
+  const axis = {
     type: 'logarithmic',
     title: { display: true, text: title, font: { weight: '600', size: 12 }, color: '#475569' },
     ticks: { callback: tickFn, color: '#64748b', font: { size: 11 } },
     grid: { color: '#e2e8f0' },
   };
+  if (opts.min != null) axis.min = opts.min;
+  return axis;
 }
 
-function _linearAxis(title, tickFn) {
-  return {
+function _linearAxis(title, tickFn, opts = {}) {
+  const axis = {
     type: 'linear',
-    min: 0,
     title: { display: true, text: title, font: { weight: '600', size: 12 }, color: '#475569' },
     ticks: { callback: tickFn, color: '#64748b', font: { size: 11 } },
     grid: { color: '#e2e8f0' },
   };
+  if (opts.min != null) axis.min = opts.min;
+  if (opts.beginAtZero != null) axis.beginAtZero = opts.beginAtZero;
+  return axis;
+}
+
+function _destroyExistingChart(canvas) {
+  const current = Chart.getChart(canvas);
+  if (current) {
+    current.destroy();
+  }
 }
 
 function _upsertScatter(canvas, datasets, xScale, yScale, existingChart) {
@@ -1802,6 +1942,7 @@ function _upsertScatter(canvas, datasets, xScale, yScale, existingChart) {
     existingChart.update('none');
     return existingChart;
   }
+  _destroyExistingChart(canvas);
   return new Chart(canvas, {
     type: 'scatter',
     data: { datasets },
@@ -1845,20 +1986,29 @@ function _buildHistogramDatasets(results, featureKey, binCount = 12) {
   const bins = _buildHistogramBins(values, binCount);
   const binLabels = bins.map((bin) => bin.label);
   const allBuckets = new Map([
-    ..._ENGINE_CHART_META.map((engine) => [engine.id, Array.from({ length: bins.length }, () => 0)]),
+    ..._ENGINE_CHART_META.map((engine) => [
+      engine.id,
+      Array.from({ length: bins.length }, () => 0),
+    ]),
     [null, Array.from({ length: bins.length }, () => 0)],
   ]);
 
   valid.forEach((row) => {
     const value = _featureForRow(row, featureKey);
-    const bucket = bins.findIndex((bin, index) => (index === bins.length - 1 ? value <= bin.max : value < bin.max) && value >= bin.min);
+    const bucket = bins.findIndex(
+      (bin, index) =>
+        (index === bins.length - 1 ? value <= bin.max : value < bin.max) && value >= bin.min
+    );
     const winner = row.winner && allBuckets.has(row.winner) ? row.winner : null;
     if (bucket >= 0) {
       allBuckets.get(winner)[bucket] += 1;
     }
   });
 
-  const datasets = [..._ENGINE_CHART_META, { id: null, label: 'No winner / error', bg: 'rgba(148,163,184,0.7)', border: '#64748b' }]
+  const datasets = [
+    ..._ENGINE_CHART_META,
+    { id: null, label: 'No winner / error', bg: 'rgba(148,163,184,0.7)', border: '#64748b' },
+  ]
     .map((engine) => ({
       label: engine.label,
       data: allBuckets.get(engine.id),
@@ -1871,13 +2021,17 @@ function _buildHistogramDatasets(results, featureKey, binCount = 12) {
   return { labels: binLabels, datasets };
 }
 
-function _upsertBar(canvas, labels, datasets, xLabel, yLabel, existingChart) {
+function _upsertBar(canvas, labels, datasets, xLabel, yLabel, existingChart, opts = {}) {
+  const yType = opts.yType === 'log' ? 'logarithmic' : opts.yType;
   if (existingChart) {
     existingChart.data.labels = labels;
     existingChart.data.datasets = datasets;
+    if (yType) existingChart.options.scales.y.type = yType;
+    if (opts.yMin != null) existingChart.options.scales.y.min = opts.yMin;
     existingChart.update('none');
     return existingChart;
   }
+  _destroyExistingChart(canvas);
   return new Chart(canvas, {
     type: 'bar',
     data: { labels, datasets },
@@ -1887,16 +2041,29 @@ function _upsertBar(canvas, labels, datasets, xLabel, yLabel, existingChart) {
       maintainAspectRatio: true,
       scales: {
         x: {
-          title: { display: true, text: xLabel, font: { weight: '600', size: 12 }, color: '#475569' },
+          title: {
+            display: true,
+            text: xLabel,
+            font: { weight: '600', size: 12 },
+            color: '#475569',
+          },
           ticks: { color: '#64748b', font: { size: 11 } },
           grid: { color: '#e2e8f0' },
         },
-        y: {
-          beginAtZero: true,
-          title: { display: true, text: yLabel, font: { weight: '600', size: 12 }, color: '#475569' },
-          ticks: { color: '#64748b', font: { size: 11 } },
-          grid: { color: '#e2e8f0' },
-        },
+        y: Object.assign(
+          {
+            title: {
+              display: true,
+              text: yLabel,
+              font: { weight: '600', size: 12 },
+              color: '#475569',
+            },
+            ticks: { color: '#64748b', font: { size: 11 } },
+            grid: { color: '#e2e8f0' },
+          },
+          yType ? { type: yType } : { type: 'linear' },
+          opts.yMin != null ? { min: opts.yMin } : {}
+        ),
       },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, padding: 12 } },
@@ -1905,6 +2072,7 @@ function _upsertBar(canvas, labels, datasets, xLabel, yLabel, existingChart) {
             label(item) {
               return `${item.dataset.label}: ${item.parsed.y.toLocaleString()} routes`;
             },
+            labelColor: _tooltipLabelColor,
           },
         },
       },
@@ -1920,14 +2088,15 @@ function _routeTimingMetrics(row) {
     'ultra_dijkstra_ms',
   ];
   const times = timeKeys
-    .map((key) => Number.isFinite(row[key]) ? row[key] : null)
+    .map((key) => (Number.isFinite(row[key]) ? row[key] : null))
     .filter(Number.isFinite);
   if (!times.length) return null;
   const sorted = [...times].sort((a, b) => a - b);
   const fastestMs = sorted[0];
   const secondBestMs = sorted.length > 1 ? sorted[1] : null;
   const winnerMarginMs = secondBestMs != null ? Math.max(0, secondBestMs - fastestMs) : null;
-  const winnerMarginPct = winnerMarginMs != null && fastestMs > 0 ? round4(winnerMarginMs / fastestMs) : null;
+  const winnerMarginPct =
+    winnerMarginMs != null && fastestMs > 0 ? round4(winnerMarginMs / fastestMs) : null;
   return { fastestMs, winnerMarginMs, winnerMarginPct };
 }
 
@@ -1941,6 +2110,126 @@ function _bubbleRadiusForWinnerMarginPct(winnerMarginPct) {
   return Math.min(14, Math.max(4, 4 + winnerMarginPct * 18));
 }
 
+function _bubbleRadiusForFeature(value) {
+  if (!Number.isFinite(value)) return 4;
+  const effectiveValue = Math.max(1, value);
+  const radius = 4 + Math.pow(effectiveValue, 1.6) * 3;
+  return Math.min(26, Math.max(4, radius));
+}
+
+export function bubbleRadiusForFeature(value) {
+  return _bubbleRadiusForFeature(value);
+}
+
+export function bubbleRadiusForFastestMs(fastestMs) {
+  return _bubbleRadiusForFastestMs(fastestMs);
+}
+
+export function bubbleRadiusForWinnerMarginPct(winnerMarginPct) {
+  return _bubbleRadiusForWinnerMarginPct(winnerMarginPct);
+}
+
+export function bubbleRadiusForSize(value, range = {}) {
+  return _bubbleRadiusForSize(value, range);
+}
+
+function _bubbleRadiusForSize(value, range = {}) {
+  if (!Number.isFinite(value)) return 4;
+  const effectiveValue = Math.max(0, value);
+  const minValue = Number.isFinite(range.minValue) ? Math.max(0, range.minValue) : 0;
+  const maxValue = Number.isFinite(range.maxValue) ? Math.max(minValue, range.maxValue) : minValue;
+  if (minValue >= maxValue) {
+    return Math.min(24, Math.max(4, 4 + Math.log1p(effectiveValue) * 1.8));
+  }
+  const logMin = Math.log1p(minValue);
+  const logMax = Math.log1p(maxValue);
+  const logValue = Math.log1p(effectiveValue);
+  const fraction = Number.isFinite(logMax - logMin)
+    ? Math.max(0, Math.min(1, (logValue - logMin) / (logMax - logMin)))
+    : 0;
+  return Math.min(24, Math.max(4, 4 + fraction * 20));
+}
+
+function _buildFeatureBubbleDatasets(validResults, xKey, yKey, rKey, rLabel) {
+  const isSizeKey = rKey === 'safeE' || rKey === 'safeN';
+  const sizeRange = isSizeKey
+    ? validResults
+        .map((r) => _featureForRow(r, rKey))
+        .filter(Number.isFinite)
+        .reduce(
+          (range, value) => ({
+            minValue: Math.min(range.minValue, value),
+            maxValue: Math.max(range.maxValue, value),
+          }),
+          { minValue: Infinity, maxValue: -Infinity }
+        )
+    : null;
+  const getRadius = (radiusValue) => {
+    if (!Number.isFinite(radiusValue)) return null;
+    return isSizeKey
+      ? _bubbleRadiusForSize(radiusValue, sizeRange)
+      : _bubbleRadiusForFeature(radiusValue);
+  };
+  const sets = _ENGINE_CHART_META.map((engine) => ({
+    label: engine.label,
+    data: validResults
+      .map((r) => {
+        const x = _featureForRow(r, xKey);
+        const y = _featureForRow(r, yKey);
+        const radiusValue = _featureForRow(r, rKey);
+        const radius = getRadius(radiusValue);
+        return x != null && y != null && Number.isFinite(radius)
+          ? {
+              x,
+              y,
+              r: radius,
+              routeName: r.name,
+              category: r.category,
+              lengthCategory: r.lengthCategory,
+              winner: r.winner,
+              radiusLabel: `${rLabel}: ${Number(radiusValue.toPrecision(3))}`,
+            }
+          : null;
+      })
+      .filter((pt) => pt && pt.winner === engine.id),
+    backgroundColor: engine.bg.replace(/0\.75\)$/, '0.1)'),
+    borderColor: engine.border,
+    borderWidth: 0.5,
+  }));
+
+  const errData = validResults
+    .map((r) => {
+      const x = _featureForRow(r, xKey);
+      const y = _featureForRow(r, yKey);
+      const radiusValue = _featureForRow(r, rKey);
+      const radius = getRadius(radiusValue);
+      return x != null && y != null && Number.isFinite(radius)
+        ? {
+            x,
+            y,
+            r: radius,
+            routeName: r.name,
+            category: r.category,
+            lengthCategory: r.lengthCategory,
+            winner: r.winner,
+            radiusLabel: `${rLabel}: ${Number(radiusValue.toPrecision(3))}`,
+          }
+        : null;
+    })
+    .filter((pt) => pt && !pt.winner);
+  if (errData.length > 0) {
+    sets.push({
+      label: 'No winner / error',
+      data: errData,
+      backgroundColor: 'rgba(148,163,184,0.1)',
+      borderColor: '#64748b',
+      borderWidth: 0.5,
+    });
+  }
+
+  return sets.filter((ds) => ds.data.length > 0);
+}
+
 function _buildBubbleDatasets(validResults, xKey, yKey) {
   const sets = _ENGINE_CHART_META.map((engine) => ({
     label: engine.label,
@@ -1950,13 +2239,22 @@ function _buildBubbleDatasets(validResults, xKey, yKey) {
         const x = _featureForRow(r, xKey);
         const y = _featureForRow(r, yKey);
         return timing && x != null && y != null
-          ? { x, y, r: _bubbleRadiusForWinnerMarginPct(timing.winnerMarginPct), route: r, timing }
+          ? {
+              x,
+              y,
+              r: _bubbleRadiusForWinnerMarginPct(timing.winnerMarginPct),
+              routeName: r.name,
+              category: r.category,
+              lengthCategory: r.lengthCategory,
+              winner: r.winner,
+              timing,
+            }
           : null;
       })
-      .filter((pt) => pt && pt.route.winner === engine.id),
-    backgroundColor: engine.bg.replace(/0\.75\)$/, '0.2)'),
+      .filter((pt) => pt && pt.winner === engine.id),
+    backgroundColor: engine.bg.replace(/0\.75\)$/, '0.1)'),
     borderColor: engine.border,
-    borderWidth: 1,
+    borderWidth: 0.5,
   }));
   const errData = validResults
     .map((r) => {
@@ -1964,17 +2262,26 @@ function _buildBubbleDatasets(validResults, xKey, yKey) {
       const x = _featureForRow(r, xKey);
       const y = _featureForRow(r, yKey);
       return timing && x != null && y != null
-        ? { x, y, r: _bubbleRadiusForWinnerMarginPct(timing.winnerMarginPct), route: r, timing }
+        ? {
+            x,
+            y,
+            r: _bubbleRadiusForWinnerMarginPct(timing.winnerMarginPct),
+            routeName: r.name,
+            category: r.category,
+            lengthCategory: r.lengthCategory,
+            winner: r.winner,
+            timing,
+          }
         : null;
     })
-    .filter((pt) => pt && !pt.route.winner);
+    .filter((pt) => pt && !pt.winner);
   if (errData.length > 0) {
     sets.push({
       label: 'No winner / error',
       data: errData,
-      backgroundColor: 'rgba(148,163,184,0.2)',
+      backgroundColor: 'rgba(148,163,184,0.1)',
       borderColor: '#64748b',
-      borderWidth: 1,
+      borderWidth: 0.5,
     });
   }
   return sets.filter((ds) => ds.data.length > 0);
@@ -1986,6 +2293,7 @@ function _upsertBubble(canvas, datasets, xScale, yScale, existingChart) {
     existingChart.update('none');
     return existingChart;
   }
+  _destroyExistingChart(canvas);
   return new Chart(canvas, {
     type: 'bubble',
     data: { datasets },
@@ -1999,22 +2307,34 @@ function _upsertBubble(canvas, datasets, xScale, yScale, existingChart) {
         tooltip: {
           callbacks: {
             title(items) {
-              return items[0]?.raw?.route?.name ?? '';
+              return items[0]?.raw?.routeName ?? '';
             },
             label(item) {
-              const route = item.raw?.route;
-              const timing = item.raw?.timing;
-              const valueX = Number(item.raw?.x);
-              const valueY = Number(item.raw?.y);
-              if (!route || !timing) return [];
-              return [
-                `${route.category} · ${route.lengthCategory}`,
+              const raw = item.raw;
+              if (!raw) return [];
+              const routeLine =
+                raw.category || raw.lengthCategory
+                  ? `${raw.category ?? ''}${raw.category && raw.lengthCategory ? ' · ' : ''}${raw.lengthCategory ?? ''}`
+                  : (raw.routeName ?? '');
+              const valueX = Number(raw.x);
+              const valueY = Number(raw.y);
+              const lines = [
+                routeLine,
                 `x: ${Number.isFinite(valueX) ? Number(valueX.toPrecision(3)) : 'n/a'}`,
                 `y: ${Number.isFinite(valueY) ? Number(valueY.toPrecision(3)) : 'n/a'}`,
-                `fastest: ${_fmtMsChart(timing.fastestMs)}`,
-                `margin: ${timing.winnerMarginPct != null ? `${Math.round(timing.winnerMarginPct * 100)}%` : 'n/a'}`,
               ];
+              if (raw.radiusLabel) {
+                lines.push(raw.radiusLabel);
+              }
+              if (raw.timing) {
+                lines.push(`fastest: ${_fmtMsChart(raw.timing.fastestMs)}`);
+                lines.push(
+                  `margin: ${raw.timing.winnerMarginPct != null ? `${Math.round(raw.timing.winnerMarginPct * 100)}%` : 'n/a'}`
+                );
+              }
+              return lines;
             },
+            labelColor: _tooltipLabelColor,
           },
         },
       },
@@ -2023,7 +2343,7 @@ function _upsertBubble(canvas, datasets, xScale, yScale, existingChart) {
 }
 
 /**
- * Create or update a Chart.js scatter plot of Edges vs Beeline distance.
+ * Create or update a Chart.js scatter plot of route distance vs coverage-empty contrast.
  *
  * @param {HTMLCanvasElement} canvas
  * @param {object[]} results
@@ -2032,16 +2352,27 @@ function _upsertBubble(canvas, datasets, xScale, yScale, existingChart) {
  * @returns {Chart}
  */
 export function drawScatter(canvas, results, _opts = {}, existingChart = null) {
-  const feature = _SELECTOR_FEATURE_SCALES[0];
-  const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null);
+  const feature = _MODEL_DRIVEN_FEATURES.routeSpanCoverageContrast;
+  const valid = results.filter(
+    (r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null
+  );
   const datasets = _buildScatterDatasets(valid, feature.xKey, feature.yKey);
-  const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
-  const yScale = _linearAxis(feature.yLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
+  const xScale = _linearAxis(
+    feature.xLabel,
+    (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''),
+    { beginAtZero: false }
+  );
+  const yScale = _logAxis(
+    feature.yLabel,
+    (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''),
+    { min: 0.001 }
+  );
   return _upsertScatter(canvas, datasets, xScale, yScale, existingChart);
 }
 
 /**
- * Create or update a Chart.js scatter plot of Edges/km vs Avg out-degree.
+ * Create or update a Chart.js bubble chart of log global coverage vs empty ratio.
+ * Bubble size encodes route edge count so large graphs are easier to distinguish.
  *
  * @param {HTMLCanvasElement} canvas
  * @param {object[]} results
@@ -2050,26 +2381,61 @@ export function drawScatter(canvas, results, _opts = {}, existingChart = null) {
  * @returns {Chart}
  */
 export function drawDensityScatter(canvas, results, _opts = {}, existingChart = null) {
-  const feature = _SELECTOR_FEATURE_SCALES[1];
-  const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null);
-  const datasets = _buildScatterDatasets(valid, feature.xKey, feature.yKey);
-  const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
-  const yScale = _linearAxis(feature.yLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
-  return _upsertScatter(canvas, datasets, xScale, yScale, existingChart);
+  const feature = _MODEL_DRIVEN_FEATURES.coverageVsEmpty;
+  const valid = results.filter(
+    (r) =>
+      _featureForRow(r, feature.xKey) != null &&
+      _featureForRow(r, feature.yKey) != null &&
+      _featureForRow(r, feature.rKey) != null
+  );
+  const datasets = _buildFeatureBubbleDatasets(
+    valid,
+    feature.xKey,
+    feature.yKey,
+    feature.rKey,
+    feature.rLabel
+  );
+  const xScale = _linearAxis(
+    feature.xLabel,
+    (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''),
+    { beginAtZero: false }
+  );
+  const yScale = _logAxis(
+    feature.yLabel,
+    (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''),
+    { min: 0.001 }
+  );
+  return _upsertBubble(canvas, datasets, xScale, yScale, existingChart);
 }
 
 export function drawFeatureHistogram(canvas, results, _opts = {}, existingChart = null) {
-  const feature = _SELECTOR_FEATURE_SCALES[0];
+  const feature = _MODEL_DRIVEN_FEATURES.coverageContrastHistogram;
   const { labels, datasets } = _buildHistogramDatasets(results, feature.xKey, 14);
-  return _upsertBar(canvas, labels, datasets, feature.xLabel, 'Routes', existingChart);
+  return _upsertBar(canvas, labels, datasets, feature.xLabel, 'Routes', existingChart, {
+    yType: 'logarithmic',
+    yMin: 0.5,
+  });
 }
 
 export function drawTimingBubble(canvas, results, _opts = {}, existingChart = null) {
-  const feature = _TIMING_BUBBLE_FEATURE;
-  const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null && _routeTimingMetrics(r));
+  const feature = _MODEL_DRIVEN_FEATURES.timingCompetitiveness;
+  const valid = results.filter(
+    (r) =>
+      _featureForRow(r, feature.xKey) != null &&
+      _featureForRow(r, feature.yKey) != null &&
+      _routeTimingMetrics(r)
+  );
   const datasets = _buildBubbleDatasets(valid, feature.xKey, feature.yKey);
-  const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
-  const yScale = _linearAxis(feature.yLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));
+  const xScale = _linearAxis(
+    feature.xLabel,
+    (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''),
+    { beginAtZero: false }
+  );
+  const yScale = _logAxis(
+    feature.yLabel,
+    (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''),
+    { min: 0.001 }
+  );
   return _upsertBubble(canvas, datasets, xScale, yScale, existingChart);
 }
 

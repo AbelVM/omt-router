@@ -43,10 +43,7 @@ function getSharedPool(workerCount) {
  * algorithm with optional shared-memory worker parallelism.
  */
 class DeltaSteppingSSSP {
-  constructor(n, m, delta = 200, {
-    forceSerialRouting = false,
-    minFrontierForParallel,
-  } = {}) {
+  constructor(n, m, delta = 200, { forceSerialRouting = false, minFrontierForParallel } = {}) {
     this.n = n;
     this.m = m;
     this.delta = Math.max(1, delta | 0);
@@ -57,15 +54,24 @@ class DeltaSteppingSSSP {
 
     const align4 = (offset) => (offset + 3) & ~3;
     let off = 0;
-    this.distOff = off; off += n * 4;
-    this.prevOff = off; off += n * 4;
-    this.headOff = off; off += n * 4;
-    this.nextOff = off; off += m * 4;
-    this.targetsOff = off; off += m * 4;
-    this.weightsOff = off; off += m * 4;
-    this.qCurrOff = off; off += n * 4;
-    this.qNextOff = off; off += n * 4;
-    this.inQueueOff = off; off += n;
+    this.distOff = off;
+    off += n * 4;
+    this.prevOff = off;
+    off += n * 4;
+    this.headOff = off;
+    off += n * 4;
+    this.nextOff = off;
+    off += m * 4;
+    this.targetsOff = off;
+    off += m * 4;
+    this.weightsOff = off;
+    off += m * 4;
+    this.qCurrOff = off;
+    off += n * 4;
+    this.qNextOff = off;
+    off += n * 4;
+    this.inQueueOff = off;
+    off += n;
     this.stateOff = align4(off);
     const size = this.stateOff + 64;
 
@@ -82,7 +88,8 @@ class DeltaSteppingSSSP {
     this.inQueue = new Uint8Array(this.buffer, this.inQueueOff, n);
     this.state = new Int32Array(this.buffer, this.stateOff, 8);
 
-    const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
+    const _hwConcurrency =
+      typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
     const maxWorkersBelowHw = Math.max(1, _hwConcurrency - 1);
     const workerCount = Math.max(1, Math.min(MAX_PARALLEL_WORKERS, maxWorkersBelowHw));
     this.workerCount = workerCount;
@@ -90,9 +97,10 @@ class DeltaSteppingSSSP {
     this.MIN_FRONTIER_FOR_PARALLEL = Number.isFinite(minFrontierForParallel)
       ? Math.max(1, Math.floor(minFrontierForParallel))
       : defaultMinFrontierForParallel;
-    this.pool = (this.hasParallelSupport && this.hasWorkerSupport && workerCount > 1)
-      ? getSharedPool(workerCount)
-      : null;
+    this.pool =
+      this.hasParallelSupport && this.hasWorkerSupport && workerCount > 1
+        ? getSharedPool(workerCount)
+        : null;
 
     this.buckets = new Map();
     this.head.fill(-1);
@@ -291,16 +299,18 @@ class DeltaSteppingSSSP {
 /**
  * Wrapper export: Delta Stepping SSSP with point-to-point routing.
  * Reconstructs path from distances and reports whether worker parallelism ran.
- * 
+ *
  * @param {number} startId
  * @param {number} endId
  * @param {object} prepared result of buildCH()
  * @returns {Promise<{ path: number[], cost: number, found: boolean, engine: string, parallelUsed: boolean }>}
  */
-export async function deltaSteppingRouter(startId, endId, prepared, {
-  forceSerialRouting = false,
-  minFrontierForParallel,
-} = {}) {
+export async function deltaSteppingRouter(
+  startId,
+  endId,
+  prepared,
+  { forceSerialRouting = false, minFrontierForParallel } = {}
+) {
   const { adjPtr, adjTo, adjCost, N } = prepared;
   const DIST_SCALE = 10;
 

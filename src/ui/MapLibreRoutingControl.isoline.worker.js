@@ -27,6 +27,8 @@ self.addEventListener('message', async (ev) => {
     try {
       // Allow caller to explicitly close the worker.
       self.close();
-    } catch (_e) { void _e; }
+    } catch (_e) {
+      void _e;
+    }
   }
 });

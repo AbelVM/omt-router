@@ -6582,7 +6582,7 @@ function pi(e, t = "distance", n = {}) {
 		coordsAreGeographic: e.coordsAreGeographic === !0
 	};
 }
-async function mi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphCategory: a = "", costField: o = n.costField ?? "distance", useCache: s = !0, allowFallback: c = !0, forceSerialRouting: l = !1, useWorkerPool: u = !1, engineWorkerPoolSize: d = null, engineWorkerMaxPoolSize: f = null } = {}) {
+async function mi(e, t, n, { forceEngine: r = null, engineId: i = "auto", graphCategory: a = "", costField: o = n.costField ?? "distance", useCache: s = !0, allowFallback: c = !0, forceSerialRouting: l = !1, useWorkerPool: u = !1, engineWorkerPoolSize: d = null, _engineWorkerMaxPoolSize: f = null } = {}) {
 	if (!Number.isInteger(e) || e < 0) throw Error("Invalid startId: expected a non-negative integer.");
 	if (!Number.isInteger(t) || t < 0) throw Error("Invalid endId: expected a non-negative integer.");
 	if (!n || typeof n != "object" || !Array.isArray(n.coordsArr) || !ArrayBuffer.isView(n.adjPtr)) throw Error("Invalid prepared graph object: expected result of buildCH().");

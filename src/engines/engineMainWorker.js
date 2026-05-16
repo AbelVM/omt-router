@@ -65,10 +65,13 @@ function restorePreparedGraph(prepared) {
  * @param {Object|null} [options.parallelPolicy]
  * @returns {Promise<Object>} Route result from the engine.
  */
-async function runEngine(engineId, startId, endId, prepared, {
-  forceSerialRouting = false,
-  parallelPolicy = null,
-} = {}) {
+async function runEngine(
+  engineId,
+  startId,
+  endId,
+  prepared,
+  { forceSerialRouting = false, parallelPolicy = null } = {}
+) {
   switch (normalizeEngineId(engineId, 'ultra-dijkstra')) {
     case 'bidirectional-astar':
       return bidirectionalAStar(startId, endId, prepared);
@@ -91,12 +94,16 @@ async function runEngine(engineId, startId, endId, prepared, {
 }
 
 self.onmessage = async (event) => {
-
   const message = event.data ?? {};
   if (message.type === 'prepare') {
     const prepared = restorePreparedGraph(message.prepared);
     // Defensive: prepared.N must be a positive integer
-    if (!prepared || typeof prepared.N !== 'number' || !Number.isFinite(prepared.N) || prepared.N <= 0) {
+    if (
+      !prepared ||
+      typeof prepared.N !== 'number' ||
+      !Number.isFinite(prepared.N) ||
+      prepared.N <= 0
+    ) {
       self.postMessage({
         type: 'status',
         state: 'error',
@@ -124,7 +131,12 @@ self.onmessage = async (event) => {
     const responseCorrelationId = message.correlationId ?? null;
 
     const prepared = restorePreparedGraph(messagePrepared);
-    if (!prepared || typeof prepared.N !== 'number' || !Number.isFinite(prepared.N) || prepared.N <= 0) {
+    if (
+      !prepared ||
+      typeof prepared.N !== 'number' ||
+      !Number.isFinite(prepared.N) ||
+      prepared.N <= 0
+    ) {
       const response = {
         type: 'result',
         requestId,
@@ -204,7 +216,12 @@ self.onmessage = async (event) => {
   }
 
   // Defensive: prepared must exist and have valid N
-  if (!prepared || typeof prepared.N !== 'number' || !Number.isFinite(prepared.N) || prepared.N <= 0) {
+  if (
+    !prepared ||
+    typeof prepared.N !== 'number' ||
+    !Number.isFinite(prepared.N) ||
+    prepared.N <= 0
+  ) {
     self.postMessage({
       type: 'result',
       requestId,
@@ -225,9 +242,14 @@ self.onmessage = async (event) => {
   }
 
   // Defensive: startId and endId must be valid node indices
-  if (!Number.isFinite(startId) || !Number.isFinite(endId) ||
-      startId < 0 || endId < 0 ||
-      startId >= prepared.N || endId >= prepared.N) {
+  if (
+    !Number.isFinite(startId) ||
+    !Number.isFinite(endId) ||
+    startId < 0 ||
+    endId < 0 ||
+    startId >= prepared.N ||
+    endId >= prepared.N
+  ) {
     self.postMessage({
       type: 'result',
       requestId,

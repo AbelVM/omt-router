@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { findTopTwoIndices, resolveMlFeatureValues, shouldUseParallelForEngine, getParallelPolicyForEngine } from '../src/tuning/tuning.js';
+import {
+  findTopTwoIndices,
+  resolveMlFeatureValues,
+  shouldUseParallelForEngine,
+  getParallelPolicyForEngine,
+} from '../src/tuning/tuning.js';
 
 describe('tuning utilities', () => {
   it('findTopTwoIndices returns safe defaults for empty and single-element arrays', () => {
@@ -33,7 +38,9 @@ describe('tuning utilities', () => {
     expect(shouldUseParallelForEngine('adaptive-barrier', true)).toBe(false);
     expect(shouldUseParallelForEngine('ultra-dijkstra', true)).toBe(false);
     expect(shouldUseParallelForEngine('delta-stepping', false)).toBe(false);
-    expect(getParallelPolicyForEngine('delta-stepping', true)).toEqual({ minFrontierForParallel: 256 });
+    expect(getParallelPolicyForEngine('delta-stepping', true)).toEqual({
+      minFrontierForParallel: 256,
+    });
     expect(getParallelPolicyForEngine('adaptive-barrier', true)).toBeNull();
   });
 

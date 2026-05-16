@@ -11,16 +11,13 @@
  * @returns {Function} Restore function that resets the original shim.
  */
 export function attachArrangeShim(Graph) {
-
   const originalArrange = Graph.prototype._arrangeContractedPaths;
 
-  Graph.prototype._arrangeContractedPaths = function(adj_list) {
+  Graph.prototype._arrangeContractedPaths = function (adj_list) {
     const self = this;
 
     adj_list.forEach((node, index) => {
-
-      node.forEach(edge => {
-
+      node.forEach((edge) => {
         const start_node = index;
 
         // collect simple (uncontracted) ids composing this edge
@@ -39,7 +36,7 @@ export function attachArrangeShim(Graph) {
 
         // build node->edge map
         const links = {};
-        simpleIds.forEach(id => {
+        simpleIds.forEach((id) => {
           const properties = self._edgeProperties[id];
           const s = String(properties._start_index);
           const e = String(properties._end_index);
@@ -48,7 +45,7 @@ export function attachArrangeShim(Graph) {
           if (!links[e]) links[e] = [];
           links[e].push(id);
         });
-        Object.values(links).forEach(arr => arr.sort((a, b) => a - b));
+        Object.values(links).forEach((arr) => arr.sort((a, b) => a - b));
 
         // trivial case
         if (simpleIds.length <= 1) {
@@ -107,7 +104,10 @@ export function attachArrangeShim(Graph) {
           if (arr.length === 1) break;
           let pick = null;
           for (const e of arr) {
-            if (e !== current_edge_id && !ordered.includes(e)) { pick = e; break; }
+            if (e !== current_edge_id && !ordered.includes(e)) {
+              pick = e;
+              break;
+            }
           }
           if (pick == null) break;
           current_edge_id = pick;
@@ -118,18 +118,14 @@ export function attachArrangeShim(Graph) {
         }
 
         self._edgeProperties[edge.attrs]._ordered = ordered;
-
       });
-
     });
-
   };
 
   return function restore() {
     if (originalArrange) Graph.prototype._arrangeContractedPaths = originalArrange;
     else delete Graph.prototype._arrangeContractedPaths;
   };
-
 }
 
 export default attachArrangeShim;

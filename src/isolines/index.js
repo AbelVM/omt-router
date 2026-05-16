@@ -1,4 +1,3 @@
-
 /**
  * @module src/isolines/index
  * @description Public isoline API that computes GeoJSON isolines from a prepared graph.
@@ -49,92 +48,100 @@ import { prettyBreaks } from '../utils/misc.js';
  *   `coordsAreGeographic` that `isoPHAST()` uses (see `src/isolines/README.md`).
  */
 export async function isoline({
-	point,
-	direction = 'from',
-	mode = 'car',
-	costField = 'distance',
-	graph,
-	maxCost = 1000,
-	snapMaxDistM = 800,
-	penalties = {},
+  point,
+  direction = 'from',
+  mode = 'car',
+  costField = 'distance',
+  graph,
+  maxCost = 1000,
+  snapMaxDistM = 800,
+  penalties = {},
 } = {}) {
-	if (!graph || !(graph.nodes instanceof Map) || !Array.isArray(graph.edges)) {
-		throw new Error('Invalid graph: expected object with nodes Map and edges array.');
-	}
-	if (!Array.isArray(point) || point.length !== 2) {
-		throw new Error('Invalid point: expected [lng, lat]');
-	}
+  if (!graph || !(graph.nodes instanceof Map) || !Array.isArray(graph.edges)) {
+    throw new Error('Invalid graph: expected object with nodes Map and edges array.');
+  }
+  if (!Array.isArray(point) || point.length !== 2) {
+    throw new Error('Invalid point: expected [lng, lat]');
+  }
 
-	// Always project the point onto the nearest segment and create an
-	// augmented graph with a new node at the projected coordinates. Do not
-	// fall back to nearest-node lookup — isolines must originate from the
-	// projected point so the augmented graph is used consistently.
-	let workingGraph;
-	let startId;
-	// Use the provided snapMaxDistM both as the search radius and as the
-	// maximum acceptable projection distance so callers control snapping
-	// sensitivity via a single parameter.
-	const candidate = findEndpointCandidate(point, graph, [snapMaxDistM], snapMaxDistM);
-	if (!candidate || !candidate.segmentSnap) {
-		throw new Error('Point did not project to any graph segment within snapMaxDistM');
-	}
-	// Create augmented graph from the segment snap (this yields a new node id)
-	workingGraph = createAugmentedGraph(graph, candidate.segmentSnap);
-	// Ensure the working graph carries the requested travel `mode` so
-	// `buildCH()` can use it when computing 'optimal' travelTime costs.
-	workingGraph.mode = mode;
-	startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+  // Always project the point onto the nearest segment and create an
+  // augmented graph with a new node at the projected coordinates. Do not
+  // fall back to nearest-node lookup — isolines must originate from the
+  // projected point so the augmented graph is used consistently.
+  let workingGraph;
+  let startId;
+  // Use the provided snapMaxDistM both as the search radius and as the
+  // maximum acceptable projection distance so callers control snapping
+  // sensitivity via a single parameter.
+  const candidate = findEndpointCandidate(point, graph, [snapMaxDistM], snapMaxDistM);
+  if (!candidate || !candidate.segmentSnap) {
+    throw new Error('Point did not project to any graph segment within snapMaxDistM');
+  }
+  // Create augmented graph from the segment snap (this yields a new node id)
+  workingGraph = createAugmentedGraph(graph, candidate.segmentSnap);
+  // Ensure the working graph carries the requested travel `mode` so
+  // `buildCH()` can use it when computing 'optimal' travelTime costs.
+  workingGraph.mode = mode;
+  startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
 
-	// Build prepared graph (CSR) using same builder as routing
-	const prepared = buildCH(workingGraph, costField, penalties);
+  // Build prepared graph (CSR) using same builder as routing
+  const prepared = buildCH(workingGraph, costField, penalties);
 
-	// Pass full prepared graph and let isoPHAST handle direction and mode.
-	const { distances, reachable } = isoPHAST(prepared, startId, maxCost, { outputUnscaled: true, direction, mode });
+  // Pass full prepared graph and let isoPHAST handle direction and mode.
+  const { distances, reachable } = isoPHAST(prepared, startId, maxCost, {
+    outputUnscaled: true,
+    direction,
+    mode,
+  });
 
-	const DEBUG_ISOLINES = typeof process !== 'undefined'
-		? process.env?.DEBUG_ISOLINES
-		: typeof import.meta !== 'undefined'
-			? import.meta.env?.DEBUG_ISOLINES
-			: false;
+  const DEBUG_ISOLINES =
+    typeof process !== 'undefined'
+      ? process.env?.DEBUG_ISOLINES
+      : typeof import.meta !== 'undefined'
+        ? import.meta.env?.DEBUG_ISOLINES
+        : false;
 
-	if (DEBUG_ISOLINES) {
-		console.error('DEBUG_ISOLINES reachable', reachable, Array.from(distances).map((d, i) => [i, d]));
-	}
+  if (DEBUG_ISOLINES) {
+    console.error(
+      'DEBUG_ISOLINES reachable',
+      reachable,
+      Array.from(distances).map((d, i) => [i, d])
+    );
+  }
 
+  // Use d3-tricontour to build contour geometries. Build a simple
+  // points array as `[x, y, value]` entries which tricontour expects.
+  const coordsArr = prepared.coordsArr || [];
+  const points = [];
+  // Exclude values strictly greater than the threshold + epsilon so tricontour
+  // only receives points within the requested isoband range.
+  const factor = 3; // x3 factor to ensure a convex hull big enough to build isolines
+  for (let i = 0; i < distances.length; i++) {
+    const v = distances[i];
+    if (!Number.isFinite(v)) continue;
+    if (v > maxCost * factor) continue;
+    const coord = coordsArr[i];
+    if (!coord || coord.length < 2) continue;
+    points.push([coord[0], coord[1], v]);
+  }
 
-	// Use d3-tricontour to build contour geometries. Build a simple
-	// points array as `[x, y, value]` entries which tricontour expects.
-	const coordsArr = prepared.coordsArr || [];
-	const points = [];
-	// Exclude values strictly greater than the threshold + epsilon so tricontour
-	// only receives points within the requested isoband range.
-	const factor = 3; // x3 factor to ensure a convex hull big enough to build isolines
-	for (let i = 0; i < distances.length; i++) {
-		const v = distances[i];
-		if (!Number.isFinite(v)) continue;
-		if (v > maxCost * factor) continue;
-		const coord = coordsArr[i];
-		if (!coord || coord.length < 2) continue;
-		points.push([coord[0], coord[1], v]);
-	}
+  const NUMBER_OF_BREAKS = 7; // default number of breaks for isobands
+  let breaks =
+    costField === 'distance'
+      ? prettyBreaks(0, maxCost, NUMBER_OF_BREAKS)
+      : prettyBreaks(0, Math.round(maxCost / 60), NUMBER_OF_BREAKS).map((b) => b * 60);
+  breaks = breaks.filter((k) => k < maxCost);
+  breaks.push(maxCost);
+  breaks.sort((a, b) => a - b);
 
-	const NUMBER_OF_BREAKS = 7; // default number of breaks for isobands
-	let breaks = (costField === 'distance') ? 
-		prettyBreaks(0, maxCost, NUMBER_OF_BREAKS) : 
-		prettyBreaks(0, Math.round(maxCost / 60), NUMBER_OF_BREAKS).map(b => b * 60);
-	breaks = breaks.filter(k => k < maxCost);
-	breaks.push(maxCost);
-	breaks.sort((a, b) => a - b);
+  if (DEBUG_ISOLINES) {
+    console.error('DEBUG_ISOLINES isoline points', points.length, points);
+    console.error('DEBUG_ISOLINES breaks', breaks);
+  }
 
-	if (DEBUG_ISOLINES) {
-		console.error('DEBUG_ISOLINES isoline points', points.length, points);
-		console.error('DEBUG_ISOLINES breaks', breaks);
-	}
-
-	// Compute isobands via d3-tricontour adapter and return GeoJSON.
-	if (points.length === 0) return { type: 'FeatureCollection', features: [] };
-	return isobandsToFeatures(points, breaks, costField);
+  // Compute isobands via d3-tricontour adapter and return GeoJSON.
+  if (points.length === 0) return { type: 'FeatureCollection', features: [] };
+  return isobandsToFeatures(points, breaks, costField);
 }
 
 export default isoline;
-

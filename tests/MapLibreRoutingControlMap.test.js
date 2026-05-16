@@ -1,18 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { setupRouteSource, removeRouteLayers, placeMarker, placeIsolineMarker, clearIsoline, centerMapOnSource } from '../src/ui/MapLibreRoutingControl.map.js';
-
-function createElementStub() {
-  return {
-    className: '',
-    style: {},
-    classList: {
-      add: vi.fn(),
-      remove: vi.fn(),
-      toggle: vi.fn(),
-    },
-    querySelector: vi.fn(() => null),
-  };
-}
+import {
+  setupRouteSource,
+  removeRouteLayers,
+  placeMarker,
+  placeIsolineMarker,
+  clearIsoline,
+  centerMapOnSource,
+} from '../src/ui/MapLibreRoutingControl.map.js';
 
 function createMarkerStub() {
   const marker = {
@@ -126,7 +120,11 @@ describe('MapLibreRoutingControl.map helpers', () => {
     const marker = createMarkerStub();
     const ctrl = {
       _map: map,
-      _maplibre: { Marker: vi.fn(function () { return marker; }) },
+      _maplibre: {
+        Marker: vi.fn(function () {
+          return marker;
+        }),
+      },
       _markers: {},
       _options: { startColor: '#00f', endColor: '#f00' },
       _originInput: null,

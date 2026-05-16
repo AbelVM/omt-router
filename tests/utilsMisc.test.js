@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { interpolate, haversineDistance, haversineDistanceCoords, isWithinDistanceMeters, isWithinDistanceMetersCoords, prettyBreaks, signedArea } from '../src/utils/misc.js';
+import {
+  interpolate,
+  haversineDistance,
+  haversineDistanceCoords,
+  isWithinDistanceMeters,
+  isWithinDistanceMetersCoords,
+  prettyBreaks,
+  signedArea,
+} from '../src/utils/misc.js';
 
 describe('utils/misc helpers', () => {
   it('interpolates templates and preserves unknown placeholders', () => {
-    expect(interpolate('https://tiles/{z}/{x}/{y}.pbf', { z: 1, x: 2, y: 3 })).toBe('https://tiles/1/2/3.pbf');
-    expect(interpolate('https://{host}/{z}/{x}/{y}', { z: 1, x: 2, y: 3 })).toBe('https://{host}/1/2/3');
+    expect(interpolate('https://tiles/{z}/{x}/{y}.pbf', { z: 1, x: 2, y: 3 })).toBe(
+      'https://tiles/1/2/3.pbf'
+    );
+    expect(interpolate('https://{host}/{z}/{x}/{y}', { z: 1, x: 2, y: 3 })).toBe(
+      'https://{host}/1/2/3'
+    );
   });
 
   it('computes haversine distances consistently for both helper variants', () => {
@@ -28,8 +40,18 @@ describe('utils/misc helpers', () => {
   });
 
   it('calculates signed polygon area with orientation awareness', () => {
-    const ccw = [[0, 0], [1, 0], [1, 1], [0, 0]];
-    const cw = [[0, 0], [0, 1], [1, 1], [0, 0]];
+    const ccw = [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 0],
+    ];
+    const cw = [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [0, 0],
+    ];
     expect(signedArea(ccw)).toBeGreaterThan(0);
     expect(signedArea(cw)).toBeLessThan(0);
   });

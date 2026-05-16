@@ -8,14 +8,14 @@ const VALID_COST_FIELDS = new Set(['distance', 'travelTime', 'optimal']);
 
 function isValidLngLatCoordinates(value) {
   return (
-    Array.isArray(value)
-    && value.length === 2
-    && Number.isFinite(value[0])
-    && Number.isFinite(value[1])
-    && value[0] >= -180
-    && value[0] <= 180
-    && value[1] >= -90
-    && value[1] <= 90
+    Array.isArray(value) &&
+    value.length === 2 &&
+    Number.isFinite(value[0]) &&
+    Number.isFinite(value[1]) &&
+    value[0] >= -180 &&
+    value[0] <= 180 &&
+    value[1] >= -90 &&
+    value[1] <= 90
   );
 }
 
@@ -28,7 +28,7 @@ function isValidLngLatCoordinates(value) {
 export function validateRouteCoordinates(value, name) {
   if (!isValidLngLatCoordinates(value)) {
     throw new Error(
-      `Invalid ${name}: expected [lng, lat] with finite numbers, lng ∈ [-180, 180], lat ∈ [-90, 90]`,
+      `Invalid ${name}: expected [lng, lat] with finite numbers, lng ∈ [-180, 180], lat ∈ [-90, 90]`
     );
   }
 }
@@ -98,8 +98,8 @@ export function validateUrlTemplate(urlTemplate) {
  */
 export function validateMaxAcceptableSnapDistance(maxAcceptableSnapDistanceM) {
   if (
-    maxAcceptableSnapDistanceM !== undefined
-    && (!Number.isFinite(maxAcceptableSnapDistanceM) || maxAcceptableSnapDistanceM < 0)
+    maxAcceptableSnapDistanceM !== undefined &&
+    (!Number.isFinite(maxAcceptableSnapDistanceM) || maxAcceptableSnapDistanceM < 0)
   ) {
     throw new Error('Invalid maxAcceptableSnapDistanceM: expected a non-negative finite number.');
   }
@@ -163,11 +163,7 @@ export function validateRadius(radius) {
  * @returns {{intersectionPenaltySec:number,turnPenaltySec:number,turnAngleThresholdDeg:number}}
  */
 export function normalizePenalties(penalties = {}) {
-  const {
-    intersectionPenaltySec = 0,
-    turnPenaltySec = 0,
-    turnAngleThresholdDeg = 25,
-  } = penalties;
+  const { intersectionPenaltySec = 0, turnPenaltySec = 0, turnAngleThresholdDeg = 25 } = penalties;
 
   const values = [
     ['intersectionPenaltySec', intersectionPenaltySec],

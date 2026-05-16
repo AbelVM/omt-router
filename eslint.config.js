@@ -6,7 +6,13 @@ export default [
   js.configs.recommended,
   prettier,
   {
-    files: ['src/**/*.js', 'tests/**/*.js', 'vite.config.js', 'example/**/*.js', 'benchmark/**/*.js'],
+    files: [
+      'src/**/*.js',
+      'tests/**/*.js',
+      'vite.config.js',
+      'example/**/*.js',
+      'benchmark/**/*.js',
+    ],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -24,4 +30,3 @@ export default [
     },
   },
 ];
-

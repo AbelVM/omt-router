@@ -1,11 +1,14 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../src/index.js', () => ({
   buildTileURL: (template, tile) => `${template}/${tile.z}/${tile.x}/${tile.y}`,
   buildGraphForTiles: vi.fn(),
 }));
 vi.mock('../src/isolines/index.js', () => ({
-  isoline: vi.fn(async () => ({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { valueMax: 1 } }] })),
+  isoline: vi.fn(async () => ({
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', properties: { valueMax: 1 } }],
+  })),
 }));
 
 import * as Core from '../src/ui/MapLibreRoutingControl.core.js';
@@ -51,18 +54,27 @@ describe('MapLibreRoutingControl core helpers', () => {
   });
 
   it('builds geojson only for valid graph edges with existing nodes', () => {
-    expect(Core.buildGraphGeoJSON({ nodes: new Map(), edges: [] })).toEqual({ type: 'FeatureCollection', features: [] });
+    expect(Core.buildGraphGeoJSON({ nodes: new Map(), edges: [] })).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    });
 
     const graph = {
       nodes: new Map([
         [0, { coords: [0, 0] }],
         [1, { coords: [1, 1] }],
       ]),
-      edges: [{ source: 0, target: 1 }, { source: 0, target: 2 }],
+      edges: [
+        { source: 0, target: 1 },
+        { source: 0, target: 2 },
+      ],
     };
     const result = Core.buildGraphGeoJSON(graph);
     expect(result.features).toHaveLength(1);
-    expect(result.features[0].geometry.coordinates).toEqual([[0, 0], [1, 1]]);
+    expect(result.features[0].geometry.coordinates).toEqual([
+      [0, 0],
+      [1, 1],
+    ]);
   });
 
   it('formats lng/lats to a stable string', () => {
@@ -92,7 +104,15 @@ describe('MapLibreRoutingControl core helpers', () => {
       _clearGraph: vi.fn(),
       _setStatus: vi.fn(),
       _cancelRunningEngine: vi.fn(),
-      _routeFunction: vi.fn(() => Promise.resolve({ found: true, coordinates: [[0, 0], [1, 1]] })),
+      _routeFunction: vi.fn(() =>
+        Promise.resolve({
+          found: true,
+          coordinates: [
+            [0, 0],
+            [1, 1],
+          ],
+        })
+      ),
       _originInput: { value: '' },
       _destInput: { value: '' },
       _placeMarker: vi.fn(),
@@ -146,7 +166,13 @@ describe('MapLibreRoutingControl core helpers', () => {
       _options: { routeSourceId: 'route' },
       _setupRouteSource: vi.fn(),
       _urlTemplate: 'http://example.com/{z}/{x}/{y}.pbf',
-      _text: { status: { calculating: 'Routing...', partialGraph: 'Partial graph used for this route. Some segments may be missing because tiles were unavailable.' } },
+      _text: {
+        status: {
+          calculating: 'Routing...',
+          partialGraph:
+            'Partial graph used for this route. Some segments may be missing because tiles were unavailable.',
+        },
+      },
       _routeOptions: {},
       _routeTimeoutMs: 1000,
       _hideStats: vi.fn(),
@@ -154,7 +180,16 @@ describe('MapLibreRoutingControl core helpers', () => {
       _clearGraph: vi.fn(),
       _setStatus: vi.fn(),
       _cancelRunningEngine: vi.fn(),
-      _routeFunction: vi.fn(() => Promise.resolve({ found: true, coordinates: [[0, 0], [1, 1]], partialGraph: true })),
+      _routeFunction: vi.fn(() =>
+        Promise.resolve({
+          found: true,
+          coordinates: [
+            [0, 0],
+            [1, 1],
+          ],
+          partialGraph: true,
+        })
+      ),
       _originInput: { value: '' },
       _destInput: { value: '' },
       _placeMarker: vi.fn(),
@@ -166,7 +201,10 @@ describe('MapLibreRoutingControl core helpers', () => {
     await Core.tryRoute(ctrl);
 
     expect(source.setData).toHaveBeenCalled();
-    expect(ctrl._setStatus).toHaveBeenLastCalledWith('Partial graph used for this route. Some segments may be missing because tiles were unavailable.', 'error');
+    expect(ctrl._setStatus).toHaveBeenLastCalledWith(
+      'Partial graph used for this route. Some segments may be missing because tiles were unavailable.',
+      'error'
+    );
   });
 
   it('handles missing isoline graphs by reporting a tile CORS issue', async () => {
@@ -196,17 +234,41 @@ describe('MapLibreRoutingControl core helpers', () => {
   });
 
   it('converts a Feature isoline result into a FeatureCollection and updates source data', async () => {
-    isoline.mockResolvedValueOnce({ type: 'Feature', properties: { valueMax: 10 }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 1], [0, 0]]] } });
+    isoline.mockResolvedValueOnce({
+      type: 'Feature',
+      properties: { valueMax: 10 },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [0, 0],
+            [1, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    });
     const src = { setData: vi.fn() };
-    buildGraphForTiles.mockResolvedValueOnce({ nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] });
+    buildGraphForTiles.mockResolvedValueOnce({
+      nodes: new Map([[0, { coords: [0, 0] }]]),
+      edges: [{ source: 0, target: 0 }],
+    });
 
     const ctrl = {
       _mounted: true,
       _isoline: { point: [0, 0], maxCost: 100, direction: 'from' },
       _setupRouteSource: vi.fn(),
       _map: { getSource: () => src, getLayer: () => false },
-      _options: { isolineSourceId: 'isoline', isolineFillLayerId: 'fill', isolineOutlineLayerId: 'outline', startColor: '#000', endColor: '#fff' },
-      _text: { status: { waitingStyle: 'Waiting for style', calculatingIsoline: 'Calculating isoline' } },
+      _options: {
+        isolineSourceId: 'isoline',
+        isolineFillLayerId: 'fill',
+        isolineOutlineLayerId: 'outline',
+        startColor: '#000',
+        endColor: '#fff',
+      },
+      _text: {
+        status: { waitingStyle: 'Waiting for style', calculatingIsoline: 'Calculating isoline' },
+      },
       _setStatus: vi.fn(),
       _routeOptions: { maxAcceptableSnapDistanceM: 100, penalties: {} },
       _mode: 'car',
@@ -235,7 +297,13 @@ describe('MapLibreRoutingControl core helpers', () => {
       _setupRouteSource: vi.fn(),
       _map: { getSource: () => src, getLayer: () => false },
       _options: { isolineSourceId: 'isoline' },
-      _text: { status: { waitingStyle: 'Waiting for style', calculatingIsoline: 'Calculating isoline', noGraph: 'Graph unavailable' } },
+      _text: {
+        status: {
+          waitingStyle: 'Waiting for style',
+          calculatingIsoline: 'Calculating isoline',
+          noGraph: 'Graph unavailable',
+        },
+      },
       _setStatus: vi.fn(),
       _routeOptions: { maxAcceptableSnapDistanceM: 100, penalties: {} },
       _mode: 'car',
@@ -243,7 +311,11 @@ describe('MapLibreRoutingControl core helpers', () => {
       _urlTemplate: 'http://example.com/{z}/{x}/{y}.pbf',
       _tileUrlTransform: undefined,
       _tileProxyTemplate: undefined,
-      _routeFunction: vi.fn(() => Promise.resolve({ graph: { nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] } })),
+      _routeFunction: vi.fn(() =>
+        Promise.resolve({
+          graph: { nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] },
+        })
+      ),
       _calcId: 0,
       _centerMapOnSource: vi.fn(),
     };
@@ -273,7 +345,16 @@ describe('MapLibreRoutingControl core helpers', () => {
   it('handles route failures and clears visuals', () => {
     const status = vi.fn();
     const ctrl = {
-      _text: { status: { noRoute: 'No route', poorSnap: 'Poor snap', tileCors: 'Tile CORS', noNode: 'No node', noPath: 'No path', incompletePath: 'Incomplete path' } },
+      _text: {
+        status: {
+          noRoute: 'No route',
+          poorSnap: 'Poor snap',
+          tileCors: 'Tile CORS',
+          noNode: 'No node',
+          noPath: 'No path',
+          incompletePath: 'Incomplete path',
+        },
+      },
       _setStatus: status,
       _clearRoute: vi.fn(),
       _clearGraph: vi.fn(),
@@ -290,7 +371,14 @@ describe('MapLibreRoutingControl core helpers', () => {
   });
 
   it('returns early when tryRoute is called without origin or destination', async () => {
-    const ctrl = { _mounted: true, _origin: null, _dest: null, _map: {}, _text: { status: {} }, _routeTimeoutMs: 1000 };
+    const ctrl = {
+      _mounted: true,
+      _origin: null,
+      _dest: null,
+      _map: {},
+      _text: { status: {} },
+      _routeTimeoutMs: 1000,
+    };
     await Core.tryRoute(ctrl);
     expect(ctrl._origin).toBeNull();
   });
@@ -331,7 +419,9 @@ describe('MapLibreRoutingControl core helpers', () => {
       _options: { routeSourceId: 'route' },
       _setupRouteSource: vi.fn(),
       _urlTemplate: 'http://example.com/{z}/{x}/{y}.pbf',
-      _text: { status: { timedOut: 'Timed out', cancelled: 'Cancelled', routeErrorPrefix: 'Error:' } },
+      _text: {
+        status: { timedOut: 'Timed out', cancelled: 'Cancelled', routeErrorPrefix: 'Error:' },
+      },
       _routeOptions: {},
       _routeTimeoutMs: 1000,
       _hideStats: vi.fn(),
@@ -392,9 +482,16 @@ describe('MapLibreRoutingControl core helpers', () => {
   });
 
   it('computes isoline on the main thread when worker support is unavailable', async () => {
-    const routeFunction = vi.fn(() => Promise.resolve({ graph: { nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] } }));
+    const routeFunction = vi.fn(() =>
+      Promise.resolve({
+        graph: { nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] },
+      })
+    );
     const setData = vi.fn();
-    buildGraphForTiles.mockResolvedValue({ nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] });
+    buildGraphForTiles.mockResolvedValue({
+      nodes: new Map([[0, { coords: [0, 0] }]]),
+      edges: [{ source: 0, target: 0 }],
+    });
 
     const ctrl = {
       _mounted: true,
@@ -428,7 +525,11 @@ describe('MapLibreRoutingControl core helpers', () => {
 
     expect(buildGraphForTiles).toHaveBeenCalled();
     expect(setData).toHaveBeenCalled();
-    expect(ctrl._centerMapOnSource).toHaveBeenCalledWith('isoline', { padding: 100, maxZoom: 16, duration: 600 });
+    expect(ctrl._centerMapOnSource).toHaveBeenCalledWith('isoline', {
+      padding: 100,
+      maxZoom: 16,
+      duration: 600,
+    });
     expect(ctrl._setStatus).toHaveBeenCalledWith('', '');
   });
 
@@ -450,7 +551,9 @@ describe('MapLibreRoutingControl core helpers', () => {
     };
     ctrl._isolineWorker = fakeWorker;
 
-    const result = await Core.computeIsolineInWorker(ctrl, { graph: { buffer: new Uint8Array([1, 2, 3]) } });
+    const result = await Core.computeIsolineInWorker(ctrl, {
+      graph: { buffer: new Uint8Array([1, 2, 3]) },
+    });
 
     expect(result).toEqual({ type: 'FeatureCollection', features: [] });
     expect(fakeWorker.postMessage).toHaveBeenCalled();
@@ -509,7 +612,15 @@ describe('MapLibreRoutingControl core helpers', () => {
       _clearGraph: vi.fn(),
       _setStatus: vi.fn(),
       _cancelRunningEngine: vi.fn(),
-      _routeFunction: vi.fn(() => Promise.resolve({ found: true, coordinates: [[0, 0], [1, 1]] })),
+      _routeFunction: vi.fn(() =>
+        Promise.resolve({
+          found: true,
+          coordinates: [
+            [0, 0],
+            [1, 1],
+          ],
+        })
+      ),
       _originInput: { value: '' },
       _destInput: { value: '' },
       _placeMarker: vi.fn(),
@@ -561,7 +672,14 @@ describe('MapLibreRoutingControl core helpers', () => {
       _options: { routeSourceId: 'route' },
       _setupRouteSource: vi.fn(),
       _urlTemplate: 'http://example.com/{z}/{x}/{y}.pbf',
-      _text: { status: { timedOut: 'Timed out', cancelled: 'Cancelled', routeErrorPrefix: 'Error:', unknownError: 'Unknown routing error' } },
+      _text: {
+        status: {
+          timedOut: 'Timed out',
+          cancelled: 'Cancelled',
+          routeErrorPrefix: 'Error:',
+          unknownError: 'Unknown routing error',
+        },
+      },
       _routeOptions: {},
       _routeTimeoutMs: 1000,
       _hideStats: vi.fn(),
@@ -607,11 +725,16 @@ describe('MapLibreRoutingControl core helpers', () => {
       _clearGraph: vi.fn(),
       _setStatus: vi.fn(),
       _cancelRunningEngine: vi.fn(),
-      _routeFunction: vi.fn(() => Promise.resolve({
-        found: true,
-        coordinates: [[0, 0], [1, 1]],
-        graph: { nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] },
-      })),
+      _routeFunction: vi.fn(() =>
+        Promise.resolve({
+          found: true,
+          coordinates: [
+            [0, 0],
+            [1, 1],
+          ],
+          graph: { nodes: new Map([[0, { coords: [0, 0] }]]), edges: [{ source: 0, target: 0 }] },
+        })
+      ),
       _originInput: { value: '' },
       _destInput: { value: '' },
       _placeMarker: vi.fn(),
@@ -636,7 +759,15 @@ describe('MapLibreRoutingControl core helpers', () => {
   it('handles non-path route failure reasons with localized status and clears visuals', () => {
     const status = vi.fn();
     const ctrl = {
-      _text: { status: { tileCors: 'CORS', poorSnap: 'Poor snap', noNode: 'No node', incompletePath: 'Incomplete', noRoute: 'No route' } },
+      _text: {
+        status: {
+          tileCors: 'CORS',
+          poorSnap: 'Poor snap',
+          noNode: 'No node',
+          incompletePath: 'Incomplete',
+          noRoute: 'No route',
+        },
+      },
       _setStatus: status,
       _clearRoute: vi.fn(),
       _clearGraph: vi.fn(),

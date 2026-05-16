@@ -43,8 +43,12 @@ class MinHeap {
     while (i > 0) {
       const p = (i - 1) >> 1;
       if (this.#costs[p] <= this.#costs[i]) break;
-      const tc = this.#costs[p]; this.#costs[p] = this.#costs[i]; this.#costs[i] = tc;
-      const tn = this.#nodes[p]; this.#nodes[p] = this.#nodes[i]; this.#nodes[i] = tn;
+      const tc = this.#costs[p];
+      this.#costs[p] = this.#costs[i];
+      this.#costs[i] = tc;
+      const tn = this.#nodes[p];
+      this.#nodes[p] = this.#nodes[i];
+      this.#nodes[i] = tn;
       i = p;
     }
   }
@@ -64,8 +68,12 @@ class MinHeap {
         if (l < this.#size && this.#costs[l] < this.#costs[s]) s = l;
         if (r < this.#size && this.#costs[r] < this.#costs[s]) s = r;
         if (s === i) break;
-        const tc = this.#costs[s]; this.#costs[s] = this.#costs[i]; this.#costs[i] = tc;
-        const tn = this.#nodes[s]; this.#nodes[s] = this.#nodes[i]; this.#nodes[i] = tn;
+        const tc = this.#costs[s];
+        this.#costs[s] = this.#costs[i];
+        this.#costs[i] = tc;
+        const tn = this.#nodes[s];
+        this.#nodes[s] = this.#nodes[i];
+        this.#nodes[i] = tn;
         i = s;
       }
     }
@@ -90,7 +98,8 @@ class MinHeap {
  * @param {object} prepared result of buildCH()
  */
 export function bidirectionalAStar(startId, endId, prepared) {
-  const { adjPtr, adjTo, adjCost, revAdjPtr, revAdjFrom, revAdjCost, N, coordsArr, costField } = prepared;
+  const { adjPtr, adjTo, adjCost, revAdjPtr, revAdjFrom, revAdjCost, N, coordsArr, costField } =
+    prepared;
   const startCoords = coordsArr[startId];
   const endCoords = coordsArr[endId];
 

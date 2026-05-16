@@ -7,8 +7,7 @@
 import { PowerPool } from 'performance-helpers/powerPool';
 import tilesWorker from './tilesWorker?worker&inline.js';
 
-const _hwConcurrency =
-  typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
+const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
 const TILE_POOL_MAX_SIZE = Math.min(8, Math.max(1, _hwConcurrency - 1));
 const TILE_POOL_BASE_SIZE = Math.min(2, TILE_POOL_MAX_SIZE);
 let _pool = null;

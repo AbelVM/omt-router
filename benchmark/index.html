@@ -1,211 +1,275 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>omt-router — Multi-Engine Benchmark</title>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>omt-router — Multi-Engine Benchmark</title>
     <link rel="stylesheet" href="./assets/benchmark.css" />
-</head>
-<body>
-<div class="page">
-
-  <div class="header">
-    <div class="header-copy">
-      <h1>omt-router — Multi-Engine Benchmark</h1>
-      <p>Compares 4 routing engines (A★, Barrier SSP, Delta-Stepping, Dijkstra) across graph sizes and beeline distances to identify performance champions and conditional winners.</p>
-    </div>
-    <div class="header-meta">
-      <div id="benchmark-stopwatch" class="stopwatch" hidden></div>
-    </div>
-  </div>
-
-  <!-- Config ──────────────────────────────────────────────────────────────── -->
-  <section>
-    <h2>Configuration</h2>
-    <div class="config-grid wide">
-      <label>
-        Tile URL template
-        <input id="url-input" type="text"
-        value=""
-          spellcheck="false" />
-      </label>
-      <label>
-        Transport mode
-        <select id="mode-select">
-          <option value="car" selected>Car</option>
-          <option value="pedestrian">Pedestrian</option>
-          <option value="bicycle">Bicycle</option>
-        </select>
-      </label>
-      <label>
-        Runs per route
-          <input id="runs-input" type="number" value="10" min="1" max="10" />
-      </label>
-      <label>
-        Pause between routes (ms)
-          <input id="pause-input" type="number" value="0" min="0" max="30000" step="100" />
-      </label>
-      <label>
-        Finish after successful routes
-          <input id="success-routes-input" type="number" value="0" min="0" />
-      </label>
-    </div>
-
-    <!-- Route filters -->
-    <div style="margin-top:16px">
-      <div style="font-size:12px;font-weight:500;color:var(--subtext);margin-bottom:6px">Categories to include</div>
-      <div class="filter-row" id="category-filters"></div>
-      <div style="font-size:12px;font-weight:500;color:var(--subtext);margin-top:12px;margin-bottom:6px">Length categories</div>
-      <div class="filter-row" id="length-filters"></div>
-    </div>
-
-    <div class="actions">
-      <button class="btn btn-primary" id="run-btn">▶ Run Benchmark</button>
-      <button class="btn btn-secondary" id="stop-btn" disabled>■ Stop</button>
-      <button class="btn btn-secondary" id="pause-btn" disabled>⏸ Pause</button>
-      <span id="route-count" style="align-self:center;font-size:12px;color:var(--subtext)"></span>
-    </div>
-  </section>
-
-  <!-- Progress ──────────────────────────────────────────────────────────── -->
-  <section id="progress-section" hidden>
-    <h2>Progress</h2>
-    <div class="progress-wrap">
-      <div class="progress-bar-outer">
-        <div class="progress-bar-inner" id="progress-bar"></div>
-      </div>
-      <div class="progress-text" id="progress-text">Starting…</div>
-      <div class="pause-state" id="pause-state" hidden>Paused</div>
-    </div>
-  </section>
-
-  <!-- Results ──────────────────────────────────────────────────────────── -->
-  <section id="results-section" hidden>
-    <h2>Results</h2>
-    <div id="results-run-context" class="run-pass-note" hidden></div>
-
-    <!-- Summary cards -->
-    <div class="summary-cards" id="summary-cards"></div>
-
-    <div id="auto-selector-summary" hidden style="margin-bottom:24px">
-      <h3 style="margin-bottom:12px">Auto Selector Breakdown</h3>
-      <div class="mini-summary" id="auto-selector-cards"></div>
-    </div>
-
-    <!-- Scatter plots -->
-    <div class="charts-grid" style="margin-bottom:24px">
-      <div class="chart-panel">
-        <div class="chart-panel-title">Coverage density × Coverage-empty contrast</div>
-        <canvas id="scatter"></canvas>
-      </div>
-      <div class="chart-panel">
-        <div class="chart-panel-title">Global coverage × empty ratio × Log global coverage</div>
-        <canvas id="density"></canvas>
-      </div>
-      <div class="chart-panel">
-        <div class="chart-panel-title">Coverage density distribution by winner</div>
-        <canvas id="histogram"></canvas>
-      </div>
-      <div class="chart-panel">
-        <div class="chart-panel-title">Timing competitiveness: win margin by density and branch factor</div>
-        <canvas id="bubble"></canvas>
-      </div>
-    </div>
-
-    <!-- Threshold suggestion -->
-    <div id="suggestion-wrap" hidden style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:600;color:var(--subtext);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Suggested Thresholds</div>
-      <div class="suggestion" id="suggestion-content"></div>
-    </div>
-
-    <!-- Actions -->
-    <div class="actions" style="margin-bottom:20px">
-      <button class="btn btn-secondary" id="download-btn">⬇ Download CSV</button>
-      <button class="btn btn-secondary" id="report-btn">📄 Generate Report</button>
-      <button class="btn btn-secondary" id="copy-report-btn" disabled>Copy Report</button>
-    </div>
-
-    <div class="report-panel" id="report-panel" hidden>
-      <div class="report-toolbar">
-        <div>
-          <strong id="report-status">Report not generated</strong>
-          <p id="report-note">Generate a benchmark report for the current results.</p>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">
+        <div class="header-copy">
+          <h1>omt-router — Multi-Engine Benchmark</h1>
+          <p>
+            Compares 4 routing engines (A★, Barrier SSP, Delta-Stepping, Dijkstra) across graph
+            sizes and beeline distances to identify performance champions and conditional winners.
+          </p>
         </div>
-        <div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
-          <div class="report-type-controls" id="report-type-controls" hidden>
-            <label for="report-view-select" style="font-size:12px;color:var(--subtext);margin-right:8px;display:inline-flex;align-items:center;">Report</label>
-            <select id="report-view-select" style="font-size:13px;padding:6px 8px;min-width:150px;"></select>
+        <div class="header-meta">
+          <div id="benchmark-stopwatch" class="stopwatch" hidden></div>
+        </div>
+      </div>
+
+      <!-- Config ──────────────────────────────────────────────────────────────── -->
+      <section>
+        <h2>Configuration</h2>
+        <div class="config-grid wide">
+          <label>
+            Tile URL template
+            <input id="url-input" type="text" value="" spellcheck="false" />
+          </label>
+          <label>
+            Transport mode
+            <select id="mode-select">
+              <option value="car" selected>Car</option>
+              <option value="pedestrian">Pedestrian</option>
+              <option value="bicycle">Bicycle</option>
+            </select>
+          </label>
+          <label>
+            Runs per route
+            <input id="runs-input" type="number" value="10" min="1" max="10" />
+          </label>
+          <label>
+            Pause between routes (ms)
+            <input id="pause-input" type="number" value="0" min="0" max="30000" step="100" />
+          </label>
+          <label>
+            Finish after successful routes
+            <input id="success-routes-input" type="number" value="0" min="0" />
+          </label>
+        </div>
+
+        <!-- Route filters -->
+        <div style="margin-top: 16px">
+          <div style="font-size: 12px; font-weight: 500; color: var(--subtext); margin-bottom: 6px">
+            Categories to include
           </div>
-          <div class="report-actions"></div>
+          <div class="filter-row" id="category-filters"></div>
+          <div
+            style="
+              font-size: 12px;
+              font-weight: 500;
+              color: var(--subtext);
+              margin-top: 12px;
+              margin-bottom: 6px;
+            "
+          >
+            Length categories
+          </div>
+          <div class="filter-row" id="length-filters"></div>
         </div>
-      </div>
-      <textarea id="report-output" class="report-output" readonly></textarea>
-    </div>
 
-    <!-- Performance Summary Table -->
-    <div style="margin-bottom:24px;">
-      <h3 style="margin-bottom:12px">Performance Summary (% of Fastest)</h3>
-      <div class="table-wrap">
-        <table id="summary-table" class="summary-matrix" style="background: var(--bg2); font-size: 11px;">
-          <thead id="summary-thead"></thead>
-          <tbody id="summary-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Route Cost Summary Table -->
-    <div style="margin-bottom:24px;">
-      <h3 style="margin-bottom:12px">Route Cost Summary (% of Lowest Cost)</h3>
-      <div class="table-wrap">
-        <table id="cost-summary-table" class="summary-matrix" style="background: var(--bg2); font-size: 11px;">
-          <thead id="cost-summary-thead"></thead>
-          <tbody id="cost-summary-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Table -->
-    <div class="table-wrap results-table-wrap">
-      <table id="results-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>SAB</th>
-            <th data-col="name">Route</th>
-          <th data-col="category">Category</th>
-          <th data-col="lengthCategory">Length</th>
-          <th data-col="bidirectional_astar_ms" class="num">A★ (ms)</th>
-          <th data-col="adaptive_barrier_ms" class="num">Barrier (ms)</th>
-          <th data-col="adaptive_barrier_parallel" class="num">Barrier P</th>
-          <th data-col="delta_stepping_ms" class="num">Delta (ms)</th>
-          <th data-col="delta_stepping_parallel" class="num">Delta P</th>
-          <th data-col="ultra_dijkstra_ms" class="num">Dijkstra (ms)</th>
-          <th data-col="auto_engine">Pick</th>
-          <th data-col="winner">Winner</th>
-          <th data-col="auto_matches_winner" class="num">🎯</th>
-          <th data-col="auto_vs_winner_pct" class="num">Regret</th>
-          <th>Error</th>
-          </tr>
-        </thead>
-        <tbody id="results-tbody"></tbody>
-      </table>
-    </div>
-    <div class="table-actions">
-      <div class="pagination" id="pagination-controls" hidden>
-        <div id="pagination-info" class="pagination-info"></div>
-        <div class="pagination-buttons">
-          <button id="pagination-prev" type="button" class="btn btn-secondary btn-small" disabled>Previous</button>
-          <button id="pagination-next" type="button" class="btn btn-secondary btn-small" disabled>Next</button>
+        <div class="actions">
+          <button class="btn btn-primary" id="run-btn">▶ Run Benchmark</button>
+          <button class="btn btn-secondary" id="stop-btn" disabled>■ Stop</button>
+          <button class="btn btn-secondary" id="pause-btn" disabled>⏸ Pause</button>
+          <span
+            id="route-count"
+            style="align-self: center; font-size: 12px; color: var(--subtext)"
+          ></span>
         </div>
-      </div>
+      </section>
+
+      <!-- Progress ──────────────────────────────────────────────────────────── -->
+      <section id="progress-section" hidden>
+        <h2>Progress</h2>
+        <div class="progress-wrap">
+          <div class="progress-bar-outer">
+            <div class="progress-bar-inner" id="progress-bar"></div>
+          </div>
+          <div class="progress-text" id="progress-text">Starting…</div>
+          <div class="pause-state" id="pause-state" hidden>Paused</div>
+        </div>
+      </section>
+
+      <!-- Results ──────────────────────────────────────────────────────────── -->
+      <section id="results-section" hidden>
+        <h2>Results</h2>
+        <div id="results-run-context" class="run-pass-note" hidden></div>
+
+        <!-- Summary cards -->
+        <div class="summary-cards" id="summary-cards"></div>
+
+        <div id="auto-selector-summary" hidden style="margin-bottom: 24px">
+          <h3 style="margin-bottom: 12px">Auto Selector Breakdown</h3>
+          <div class="mini-summary" id="auto-selector-cards"></div>
+        </div>
+
+        <!-- Scatter plots -->
+        <div class="charts-grid" style="margin-bottom: 24px">
+          <div class="chart-panel">
+            <div class="chart-panel-title">Route span (log km) × Coverage-empty contrast (log)</div>
+            <canvas id="scatter"></canvas>
+          </div>
+          <div class="chart-panel">
+            <div class="chart-panel-title">
+              Log global coverage × log empty ratio (bubble size = edge count)
+            </div>
+            <canvas id="density"></canvas>
+          </div>
+          <div class="chart-panel">
+            <div class="chart-panel-title">Coverage-empty contrast distribution by winner</div>
+            <canvas id="histogram"></canvas>
+          </div>
+          <div class="chart-panel">
+            <div class="chart-panel-title">
+              Timing competitiveness: distance vs coverage-branch complexity
+            </div>
+            <canvas id="bubble"></canvas>
+          </div>
+        </div>
+
+        <!-- Threshold suggestion -->
+        <div id="suggestion-wrap" hidden style="margin-bottom: 20px">
+          <div
+            style="
+              font-size: 12px;
+              font-weight: 600;
+              color: var(--subtext);
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+              margin-bottom: 10px;
+            "
+          >
+            Suggested Thresholds
+          </div>
+          <div class="suggestion" id="suggestion-content"></div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions" style="margin-bottom: 20px">
+          <button class="btn btn-secondary" id="download-btn">⬇ Download CSV</button>
+          <button class="btn btn-secondary" id="report-btn">📄 Generate Report</button>
+          <button class="btn btn-secondary" id="copy-report-btn" disabled>Copy Report</button>
+        </div>
+
+        <div class="report-panel" id="report-panel" hidden>
+          <div class="report-toolbar">
+            <div>
+              <strong id="report-status">Report not generated</strong>
+              <p id="report-note">Generate a benchmark report for the current results.</p>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap">
+              <div class="report-type-controls" id="report-type-controls" hidden>
+                <label
+                  for="report-view-select"
+                  style="
+                    font-size: 12px;
+                    color: var(--subtext);
+                    margin-right: 8px;
+                    display: inline-flex;
+                    align-items: center;
+                  "
+                  >Report</label
+                >
+                <select
+                  id="report-view-select"
+                  style="font-size: 13px; padding: 6px 8px; min-width: 150px"
+                ></select>
+              </div>
+              <div class="report-actions"></div>
+            </div>
+          </div>
+          <textarea id="report-output" class="report-output" readonly></textarea>
+        </div>
+
+        <!-- Performance Summary Table -->
+        <div style="margin-bottom: 24px">
+          <h3 style="margin-bottom: 12px">Performance Summary (% of Fastest)</h3>
+          <div class="table-wrap">
+            <table
+              id="summary-table"
+              class="summary-matrix"
+              style="background: var(--bg2); font-size: 11px"
+            >
+              <thead id="summary-thead"></thead>
+              <tbody id="summary-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Route Cost Summary Table -->
+        <div style="margin-bottom: 24px">
+          <h3 style="margin-bottom: 12px">Route Cost Summary (% of Lowest Cost)</h3>
+          <div class="table-wrap">
+            <table
+              id="cost-summary-table"
+              class="summary-matrix"
+              style="background: var(--bg2); font-size: 11px"
+            >
+              <thead id="cost-summary-thead"></thead>
+              <tbody id="cost-summary-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap results-table-wrap">
+          <table id="results-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>SAB</th>
+                <th data-col="name">Route</th>
+                <th data-col="category">Category</th>
+                <th data-col="lengthCategory">Length</th>
+                <th data-col="bidirectional_astar_ms" class="num">A★ (ms)</th>
+                <th data-col="adaptive_barrier_ms" class="num">Barrier (ms)</th>
+                <th data-col="adaptive_barrier_parallel" class="num">Barrier P</th>
+                <th data-col="delta_stepping_ms" class="num">Delta (ms)</th>
+                <th data-col="delta_stepping_parallel" class="num">Delta P</th>
+                <th data-col="ultra_dijkstra_ms" class="num">Dijkstra (ms)</th>
+                <th data-col="auto_engine">Pick</th>
+                <th data-col="winner">Winner</th>
+                <th data-col="auto_matches_winner" class="num">🎯</th>
+                <th data-col="auto_vs_winner_pct" class="num">Regret</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody id="results-tbody"></tbody>
+          </table>
+        </div>
+        <div class="table-actions">
+          <div class="pagination" id="pagination-controls" hidden>
+            <div id="pagination-info" class="pagination-info"></div>
+            <div class="pagination-buttons">
+              <button
+                id="pagination-prev"
+                type="button"
+                class="btn btn-secondary btn-small"
+                disabled
+              >
+                Previous
+              </button>
+              <button
+                id="pagination-next"
+                type="button"
+                class="btn btn-secondary btn-small"
+                disabled
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
-  </section>
 
-</div>
+    <!-- Tooltip -->
+    <div id="tooltip" hidden></div>
 
-<!-- Tooltip -->
-<div id="tooltip" hidden></div>
-
-<script type="module" src="./assets/index.js"></script>
-</body>
-</html>  
+    <script type="module" src="./assets/index.js"></script>
+  </body>
+</html>

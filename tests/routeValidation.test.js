@@ -56,8 +56,12 @@ describe('route input validation', () => {
 
   it('validates acceptable snap distance', () => {
     expect(() => validateMaxAcceptableSnapDistance(50)).not.toThrow();
-    expect(() => validateMaxAcceptableSnapDistance(-1)).toThrow(/Invalid maxAcceptableSnapDistanceM/);
-    expect(() => validateMaxAcceptableSnapDistance(NaN)).toThrow(/Invalid maxAcceptableSnapDistanceM/);
+    expect(() => validateMaxAcceptableSnapDistance(-1)).toThrow(
+      /Invalid maxAcceptableSnapDistanceM/
+    );
+    expect(() => validateMaxAcceptableSnapDistance(NaN)).toThrow(
+      /Invalid maxAcceptableSnapDistanceM/
+    );
   });
 
   it('validates radius values', () => {
@@ -93,11 +97,26 @@ describe('route input validation', () => {
   });
 
   it('normalizes penalty options and enforces non-negative finite values', () => {
-    expect(normalizePenalties({ intersectionPenaltySec: 3, turnPenaltySec: 4, turnAngleThresholdDeg: 45 }))
-      .toEqual({ intersectionPenaltySec: 3, turnPenaltySec: 4, turnAngleThresholdDeg: 45 });
-    expect(normalizePenalties({ intersectionPenaltySec: 1 })).toEqual({ intersectionPenaltySec: 1, turnPenaltySec: 0, turnAngleThresholdDeg: 25 });
-    expect(() => normalizePenalties({ intersectionPenaltySec: -1 })).toThrow(/Invalid penalties\.intersectionPenaltySec/);
-    expect(() => normalizePenalties({ turnPenaltySec: Infinity })).toThrow(/Invalid penalties\.turnPenaltySec/);
-    expect(() => normalizePenalties({ turnAngleThresholdDeg: NaN })).toThrow(/Invalid penalties\.turnAngleThresholdDeg/);
+    expect(
+      normalizePenalties({
+        intersectionPenaltySec: 3,
+        turnPenaltySec: 4,
+        turnAngleThresholdDeg: 45,
+      })
+    ).toEqual({ intersectionPenaltySec: 3, turnPenaltySec: 4, turnAngleThresholdDeg: 45 });
+    expect(normalizePenalties({ intersectionPenaltySec: 1 })).toEqual({
+      intersectionPenaltySec: 1,
+      turnPenaltySec: 0,
+      turnAngleThresholdDeg: 25,
+    });
+    expect(() => normalizePenalties({ intersectionPenaltySec: -1 })).toThrow(
+      /Invalid penalties\.intersectionPenaltySec/
+    );
+    expect(() => normalizePenalties({ turnPenaltySec: Infinity })).toThrow(
+      /Invalid penalties\.turnPenaltySec/
+    );
+    expect(() => normalizePenalties({ turnAngleThresholdDeg: NaN })).toThrow(
+      /Invalid penalties\.turnAngleThresholdDeg/
+    );
   });
 });

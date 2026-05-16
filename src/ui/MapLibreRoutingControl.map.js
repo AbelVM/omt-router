@@ -72,9 +72,10 @@ export function setupRouteSource(ctrl) {
         data: { type: 'FeatureCollection', features: [] },
       });
 
-      const initialIsolineColor = ctrl._isoline && ctrl._isoline.direction === 'from'
-        ? ctrl._options.startColor
-        : ctrl._options.endColor;
+      const initialIsolineColor =
+        ctrl._isoline && ctrl._isoline.direction === 'from'
+          ? ctrl._options.startColor
+          : ctrl._options.endColor;
 
       ctrl._map.addLayer({
         id: ctrl._options.isolineFillLayerId,
@@ -137,7 +138,11 @@ export function removeRouteLayers(ctrl) {
       ctrl._map.removeLayer(id);
     }
   }
-  for (const id of [ctrl._options.routeSourceId, ctrl._options.graphSourceId, ctrl._options.isolineSourceId]) {
+  for (const id of [
+    ctrl._options.routeSourceId,
+    ctrl._options.graphSourceId,
+    ctrl._options.isolineSourceId,
+  ]) {
     if (ctrl._map.getSource(id)) {
       ctrl._map.removeSource(id);
     }
@@ -194,7 +199,8 @@ export function placeMarker(ctrl, type, lngLat) {
  */
 export function placeIsolineMarker(ctrl, lngLat) {
   const coords = [lngLat[0], lngLat[1]];
-  const color = ctrl._isoline.direction === 'from' ? ctrl._options.startColor : ctrl._options.endColor;
+  const color =
+    ctrl._isoline.direction === 'from' ? ctrl._options.startColor : ctrl._options.endColor;
 
   if (ctrl._markers.isoline) {
     ctrl._markers.isoline.setLngLat(coords);
@@ -207,15 +213,21 @@ export function placeIsolineMarker(ctrl, lngLat) {
           svg.classList.toggle('rp-point-icon--origin', ctrl._isoline.direction === 'from');
           svg.classList.toggle('rp-point-icon--dest', ctrl._isoline.direction === 'to');
         }
-      } catch (_e) { void _e; }
-    } catch (_e) { void _e; }
+      } catch (_e) {
+        void _e;
+      }
+    } catch (_e) {
+      void _e;
+    }
     return;
   }
 
   const dot = document.createElement('div');
   dot.className = 'rp-map-dot';
   dot.style.background = color;
-  const marker = new ctrl._maplibre.Marker({ element: dot, draggable: true }).setLngLat(coords).addTo(ctrl._map);
+  const marker = new ctrl._maplibre.Marker({ element: dot, draggable: true })
+    .setLngLat(coords)
+    .addTo(ctrl._map);
   ctrl._markers.isoline = marker;
 
   try {
@@ -224,7 +236,9 @@ export function placeIsolineMarker(ctrl, lngLat) {
       svg.classList.toggle('rp-point-icon--origin', ctrl._isoline.direction === 'from');
       svg.classList.toggle('rp-point-icon--dest', ctrl._isoline.direction === 'to');
     }
-  } catch (_e) { void _e; }
+  } catch (_e) {
+    void _e;
+  }
 
   marker.on('dragstart', () => {
     ctrl._suppressNextMapPointerSet = true;
@@ -237,7 +251,8 @@ export function placeIsolineMarker(ctrl, lngLat) {
     }
     const p = marker.getLngLat();
     ctrl._isoline.point = [p.lng, p.lat];
-    if (ctrl._isolinePointInput) ctrl._isolinePointInput.value = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
+    if (ctrl._isolinePointInput)
+      ctrl._isolinePointInput.value = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
     try {
       ctrl._routeFunction([p.lng, p.lat], [p.lng, p.lat], ctrl._mode, ctrl._urlTemplate, {
         costField: ctrl._costField,
@@ -247,7 +262,9 @@ export function placeIsolineMarker(ctrl, lngLat) {
         tileUrlTransform: ctrl._tileUrlTransform,
         tileProxyTemplate: ctrl._tileProxyTemplate,
       });
-    } catch (_e) { void _e; }
+    } catch (_e) {
+      void _e;
+    }
     ctrl._tryIsoline?.();
   });
 }
@@ -274,7 +291,9 @@ export function clearIsoline(ctrl) {
  */
 export function clearRoute(ctrl) {
   if (!ctrl._map || !ctrl._map.getSource(ctrl._options.routeSourceId)) return;
-  ctrl._map.getSource(ctrl._options.routeSourceId).setData({ type: 'FeatureCollection', features: [] });
+  ctrl._map
+    .getSource(ctrl._options.routeSourceId)
+    .setData({ type: 'FeatureCollection', features: [] });
 }
 
 /**
@@ -283,7 +302,9 @@ export function clearRoute(ctrl) {
  */
 export function clearGraph(ctrl) {
   if (!ctrl._map || !ctrl._map.getSource(ctrl._options.graphSourceId)) return;
-  ctrl._map.getSource(ctrl._options.graphSourceId).setData({ type: 'FeatureCollection', features: [] });
+  ctrl._map
+    .getSource(ctrl._options.graphSourceId)
+    .setData({ type: 'FeatureCollection', features: [] });
 }
 
 /**

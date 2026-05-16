@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { interpolate, haversineDistance, haversineDistanceCoords, isWithinDistanceMeters } from '../src/utils/misc.js';
+import {
+  interpolate,
+  haversineDistance,
+  haversineDistanceCoords,
+  isWithinDistanceMeters,
+} from '../src/utils/misc.js';
 
 describe('utils/misc', () => {
   it('interpolate replaces known keys and preserves unknown placeholders', () => {

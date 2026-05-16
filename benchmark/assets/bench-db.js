@@ -43,14 +43,33 @@ function _defer() {
   return { promise: p, resolve: res, reject: rej };
 }
 
+function normalizeResultForStorage(result) {
+  if (!result || typeof result !== 'object') return {};
+  const payloadResult = { ...result };
+
+  // Trim top-level arrays that are not needed for persisted artifact generation.
+  // Keep rawDiagnostics so saved benchmark artifacts can still build clustering rows.
+  delete payloadResult.samplesMs;
+  delete payloadResult.sampleStats;
+  delete payloadResult.timingRounds;
+
+  payloadResult._passIndex = Number(payloadResult._passIndex ?? 0);
+  return payloadResult;
+}
+
 export async function saveResultToDB(runId, passIndex, routeIndex, result) {
+  const payloadResult = normalizeResultForStorage(result);
+  payloadResult._passIndex = Number(passIndex ?? payloadResult._passIndex ?? 0);
+
   const payload = {
     runId,
     passIndex: Number(passIndex ?? 0),
     routeIndex: Number.isFinite(routeIndex) ? routeIndex : -1,
     ts: Date.now(),
-    result,
+    result: payloadResult,
   };
+
+  payloadResult._insertedAt = payloadResult._insertedAt ?? payload.ts;
 
   // Avoid holding a reference to the full `result` in an in-memory
   // batching buffer. Write each result to IndexedDB immediately using
@@ -104,7 +123,7 @@ export async function getRecordsForRun(runId) {
           if (v.runId === runId) rows.push(v);
           c.continue();
         } else {
-          rows.sort((a, b) => (a.passIndex - b.passIndex) || (a.routeIndex - b.routeIndex));
+          rows.sort((a, b) => a.passIndex - b.passIndex || a.routeIndex - b.routeIndex);
           resolve(rows);
         }
       };
@@ -121,7 +140,7 @@ export async function getRecordsForRun(runId) {
         rows.push(c.value);
         c.continue();
       } else {
-        rows.sort((a, b) => (a.passIndex - b.passIndex) || (a.routeIndex - b.routeIndex));
+        rows.sort((a, b) => a.passIndex - b.passIndex || a.routeIndex - b.routeIndex);
         resolve(rows);
       }
     };

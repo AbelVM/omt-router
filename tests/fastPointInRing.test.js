@@ -10,7 +10,13 @@ import {
 
 describe('fastPointInRing', () => {
   it('prepares a closed ring and computes its bbox', () => {
-    const ring = [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]];
+    const ring = [
+      [0, 0],
+      [2, 0],
+      [2, 2],
+      [0, 2],
+      [0, 0],
+    ];
     const prepared = prepareRing(ring);
 
     expect(prepared.n).toBe(4);
@@ -19,7 +25,13 @@ describe('fastPointInRing', () => {
   });
 
   it('detects points inside, outside, and on the boundary based on inclusive option', () => {
-    const ring = [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]];
+    const ring = [
+      [0, 0],
+      [2, 0],
+      [2, 2],
+      [0, 2],
+      [0, 0],
+    ];
     const prepared = prepareRing(ring);
 
     expect(pointInPreparedRing(1, 1, prepared)).toBe(true);
@@ -29,8 +41,20 @@ describe('fastPointInRing', () => {
   });
 
   it('searches a ring index with or without a prebuilt tree', () => {
-    const ringA = prepareRing([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]);
-    const ringB = prepareRing([[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]]);
+    const ringA = prepareRing([
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+      [0, 0],
+    ]);
+    const ringB = prepareRing([
+      [10, 10],
+      [11, 10],
+      [11, 11],
+      [10, 11],
+      [10, 10],
+    ]);
     const tree = buildRingIndex([ringA, ringB]);
 
     expect(ringsContainingPoint(0.5, 0.5, [ringA, ringB], tree)).toEqual([0]);
@@ -38,12 +62,27 @@ describe('fastPointInRing', () => {
   });
 
   it('finds an interior point for a concave polygon and rejects invalid rings', () => {
-    const concave = [[0, 0], [4, 0], [4, 4], [2, 1], [0, 4], [0, 0]];
+    const concave = [
+      [0, 0],
+      [4, 0],
+      [4, 4],
+      [2, 1],
+      [0, 4],
+      [0, 0],
+    ];
     const interior = findInteriorPoint(concave);
 
     expect(interior).toBeInstanceOf(Array);
     expect(interior).toHaveLength(2);
     expect(pointInRing(interior, concave)).toBe(true);
-    expect(pointInRing([0, 0], [[0, 0], [1, 0]])).toBe(false);
+    expect(
+      pointInRing(
+        [0, 0],
+        [
+          [0, 0],
+          [1, 0],
+        ]
+      )
+    ).toBe(false);
   });
 });

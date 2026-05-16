@@ -42,11 +42,11 @@ function getSharedPool(workerCount) {
  * Combines arXiv:2504.17033 logic with hardware-aware dispatching.
  */
 export class AdaptiveBarrierSSSP {
-  constructor(maxN, maxM, {
-    forceSerialRouting = false,
-    minNodesForParallel,
-    minFrontierForParallel,
-  } = {}) {
+  constructor(
+    maxN,
+    maxM,
+    { forceSerialRouting = false, minNodesForParallel, minFrontierForParallel } = {}
+  ) {
     this.n = maxN;
     this.m = maxM;
     this.INF_DISTANCE = 0x3fffffff;
@@ -68,14 +68,22 @@ export class AdaptiveBarrierSSSP {
     // dist(i32, n), head(i32, n), next(i32, m), targets(i32, m), weights(i32, m),
     // q1(i32, n), q2(i32, n), inQueue(u8, n), state(i32, 8)
     let off = 0;
-    this.distOff = off; off += maxN * 4;
-    this.headOff = off; off += maxN * 4;
-    this.nextOff = off; off += maxM * 4;
-    this.targetsOff = off; off += maxM * 4;
-    this.weightsOff = off; off += maxM * 4;
-    this.q1Off = off; off += maxN * 4;
-    this.q2Off = off; off += maxN * 4;
-    this.inQueueOff = off; off += maxN;
+    this.distOff = off;
+    off += maxN * 4;
+    this.headOff = off;
+    off += maxN * 4;
+    this.nextOff = off;
+    off += maxM * 4;
+    this.targetsOff = off;
+    off += maxM * 4;
+    this.weightsOff = off;
+    off += maxM * 4;
+    this.q1Off = off;
+    off += maxN * 4;
+    this.q2Off = off;
+    off += maxN * 4;
+    this.inQueueOff = off;
+    off += maxN;
     this.stateOff = align4(off);
     const size = this.stateOff + 64;
     this.buffer = new BufferType(size);
@@ -94,29 +102,26 @@ export class AdaptiveBarrierSSSP {
     this.state = new Int32Array(this.buffer, this.stateOff, 8);
 
     // Available concurrency
-    const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
+    const _hwConcurrency =
+      typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
     const maxWorkersBelowHw = Math.max(1, _hwConcurrency - 1);
     const workerCount = Math.max(1, Math.min(MAX_PARALLEL_WORKERS, maxWorkersBelowHw));
     this.workerCount = workerCount;
-    const defaultMinFrontierForParallel = Math.max(
-      1_024,
-      Math.min(5_000, Math.floor(maxN / 64)),
-    );
+    const defaultMinFrontierForParallel = Math.max(1_024, Math.min(5_000, Math.floor(maxN / 64)));
     this.MIN_NODES_FOR_INDUSTRIAL = Number.isFinite(minNodesForParallel)
       ? Math.max(1, Math.floor(minNodesForParallel))
       : defaultMinNodesForParallel;
     this.MIN_FRONTIER_FOR_PARALLEL = Number.isFinite(minFrontierForParallel)
       ? Math.max(1, Math.floor(minFrontierForParallel))
       : defaultMinFrontierForParallel;
-    // Engines    
-    this.pool = (
-      this.hasParallelSupport
-      && this.hasWorkerSupport
-      && workerCount > 1
-      && maxN >= this.MIN_NODES_FOR_INDUSTRIAL
-    )
-      ? getSharedPool(workerCount)
-      : null;
+    // Engines
+    this.pool =
+      this.hasParallelSupport &&
+      this.hasWorkerSupport &&
+      workerCount > 1 &&
+      maxN >= this.MIN_NODES_FOR_INDUSTRIAL
+        ? getSharedPool(workerCount)
+        : null;
 
     this.head.fill(-1);
     this.edgeIdx = 0;
@@ -233,7 +238,7 @@ export class AdaptiveBarrierSSSP {
    * It directly manipulates the shared buffer and state without any synchronization primitives, as it's guaranteed to be single-threaded.
    * The inner loop is unrolled for better performance, and it minimizes function calls and branching to maximize throughput.
    * It also checks for the early exit signal every 16 iterations to balance responsiveness with performance.
-   * @returns void  
+   * @returns void
    */
   dispatchSerial(size, currQOff, nextQOff) {
     const currQ = new Int32Array(this.buffer, currQOff, size);
@@ -257,7 +262,6 @@ export class AdaptiveBarrierSSSP {
           }
         }
       }
-
     }
   }
 
@@ -294,7 +298,7 @@ export class AdaptiveBarrierSSSP {
         inQueueOff: this.inQueueOff,
         stateOff: this.stateOff,
         n: this.n,
-        m: this.m
+        m: this.m,
       });
     }
     return await this.pool.executeBatch(tasks);
@@ -304,17 +308,18 @@ export class AdaptiveBarrierSSSP {
 /**
  * Wrapper export: Adaptive Barrier SSSP with point-to-point routing.
  * Reconstructs path from distances and tracks parallel execution.
- * 
+ *
  * @param {number} startId
  * @param {number} endId
  * @param {object} prepared result of buildCH()
  * @returns {Promise<{ path: number[], cost: number, found: boolean, engine: string, parallelUsed: boolean }>}
  */
-export async function adaptiveBarrierSSPRouter(startId, endId, prepared, {
-  forceSerialRouting = false,
-  minNodesForParallel,
-  minFrontierForParallel,
-} = {}) {
+export async function adaptiveBarrierSSPRouter(
+  startId,
+  endId,
+  prepared,
+  { forceSerialRouting = false, minNodesForParallel, minFrontierForParallel } = {}
+) {
   const { adjPtr, adjTo, adjCost, revAdjPtr, revAdjFrom, revAdjCost, N } = prepared;
   const DIST_SCALE = 10;
 
@@ -341,7 +346,13 @@ export async function adaptiveBarrierSSPRouter(startId, endId, prepared, {
     const parallelUsed = solver.lastParallelUsed;
 
     if (endDistInt >= solver.INF_DISTANCE) {
-      return { path: [], cost: Infinity, found: false, engine: 'adaptiveBarrier', parallelUsed: false };
+      return {
+        path: [],
+        cost: Infinity,
+        found: false,
+        engine: 'adaptiveBarrier',
+        parallelUsed: false,
+      };
     }
 
     // Reconstruct path backward from endId to startId.

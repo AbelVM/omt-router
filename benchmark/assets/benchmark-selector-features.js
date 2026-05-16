@@ -4,7 +4,7 @@ const SELECTOR_BANDS = Object.freeze({
   beelineMeterThresholds: [200, 1800, 6000, 18000, 52000],
   densityEdgesPerKmThresholds: [5000, 9000, 16000],
   densityRelativeThresholds: [0.18, 0.45, 0.75],
-  globalCoverageThresholds: [0.15, 0.40, 0.70],
+  globalCoverageThresholds: [0.15, 0.4, 0.7],
   emptyRatioThresholds: [0.4, 0.7, 0.9],
   branchFactorThresholds: [1.4, 2.0],
 });
@@ -12,7 +12,9 @@ const SELECTOR_BANDS = Object.freeze({
 export function classifySelectorFeatures(metrics = {}) {
   const safeN = Math.max(1, Number.isFinite(metrics.nodeCount) ? metrics.nodeCount : 1);
   const safeE = Math.max(1, Number.isFinite(metrics.edgeCount) ? metrics.edgeCount : safeN);
-  const haversineDistance = Number.isFinite(metrics.haversineDistance) ? metrics.haversineDistance : 0;
+  const haversineDistance = Number.isFinite(metrics.haversineDistance)
+    ? metrics.haversineDistance
+    : 0;
   const safeBeelineKm = Math.max(0.25, haversineDistance / 1000);
   const avgOutDegree = Number.isFinite(metrics.averageNodeDegree)
     ? metrics.averageNodeDegree
@@ -24,24 +26,29 @@ export function classifySelectorFeatures(metrics = {}) {
   const emptyRatio = Number.isFinite(metrics.emptyRatio) ? metrics.emptyRatio : 1;
   const sourceDegree = Number.isFinite(metrics.nodeDegreeSource) ? metrics.nodeDegreeSource : 0;
   const targetDegree = Number.isFinite(metrics.nodeDegreeTarget) ? metrics.nodeDegreeTarget : 0;
-  const sourceCentrality = Number.isFinite(metrics.nodeCentralitySource) ? metrics.nodeCentralitySource : 0;
-  const targetCentrality = Number.isFinite(metrics.nodeCentralityTarget) ? metrics.nodeCentralityTarget : 0;
+  const sourceCentrality = Number.isFinite(metrics.nodeCentralitySource)
+    ? metrics.nodeCentralitySource
+    : 0;
+  const targetCentrality = Number.isFinite(metrics.nodeCentralityTarget)
+    ? metrics.nodeCentralityTarget
+    : 0;
   const sourceTargetDegreeRatio = Number.isFinite(metrics.sourceTargetDegreeRatio)
     ? metrics.sourceTargetDegreeRatio
     : targetDegree > 0
-    ? sourceDegree / targetDegree
-    : 0;
+      ? sourceDegree / targetDegree
+      : 0;
   const sourceTargetCentralityRatio = Number.isFinite(metrics.sourceTargetCentralityRatio)
     ? metrics.sourceTargetCentralityRatio
     : targetCentrality > 0
-    ? sourceCentrality / targetCentrality
-    : 0;
+      ? sourceCentrality / targetCentrality
+      : 0;
   const beelinePerNode = Number.isFinite(metrics.beelinePerNode)
     ? metrics.beelinePerNode
     : safeBeelineKm / safeN;
   const sizeRatioEN = safeE / safeN;
   const safeSourceTargetDegreeRatio = targetDegree > 0 ? sourceDegree / targetDegree : sourceDegree;
-  const safeSourceTargetCentralityRatio = targetCentrality > 0 ? sourceCentrality / targetCentrality : sourceCentrality;
+  const safeSourceTargetCentralityRatio =
+    targetCentrality > 0 ? sourceCentrality / targetCentrality : sourceCentrality;
 
   const logN = Math.log1p(safeN);
   const logE = Math.log1p(safeE);
@@ -82,17 +89,27 @@ export function classifySelectorFeatures(metrics = {}) {
   const logCoverageEmptyContrast = Math.log1p(Math.max(0, coverageEmptyContrast));
 
   let sizeBand = 'xlarge';
-  if (safeE < SELECTOR_BANDS.sizeEdgeThresholds[0] || safeN < SELECTOR_BANDS.sizeNodeThresholds[0]) {
+  if (
+    safeE < SELECTOR_BANDS.sizeEdgeThresholds[0] ||
+    safeN < SELECTOR_BANDS.sizeNodeThresholds[0]
+  ) {
     sizeBand = 'small';
-  } else if (safeE < SELECTOR_BANDS.sizeEdgeThresholds[1] || safeN < SELECTOR_BANDS.sizeNodeThresholds[1]) {
+  } else if (
+    safeE < SELECTOR_BANDS.sizeEdgeThresholds[1] ||
+    safeN < SELECTOR_BANDS.sizeNodeThresholds[1]
+  ) {
     sizeBand = 'medium';
-  } else if (safeE < SELECTOR_BANDS.sizeEdgeThresholds[2] || safeN < SELECTOR_BANDS.sizeNodeThresholds[2]) {
+  } else if (
+    safeE < SELECTOR_BANDS.sizeEdgeThresholds[2] ||
+    safeN < SELECTOR_BANDS.sizeNodeThresholds[2]
+  ) {
     sizeBand = 'large';
   }
 
   let beelineBand = 'xxl';
   if (haversineDistance <= SELECTOR_BANDS.beelineMeterThresholds[0]) beelineBand = 'micro';
-  else if (haversineDistance <= SELECTOR_BANDS.beelineMeterThresholds[1]) beelineBand = 'extra-short';
+  else if (haversineDistance <= SELECTOR_BANDS.beelineMeterThresholds[1])
+    beelineBand = 'extra-short';
   else if (haversineDistance <= SELECTOR_BANDS.beelineMeterThresholds[2]) beelineBand = 'short';
   else if (haversineDistance <= SELECTOR_BANDS.beelineMeterThresholds[3]) beelineBand = 'medium';
   else if (haversineDistance <= SELECTOR_BANDS.beelineMeterThresholds[4]) beelineBand = 'long';
@@ -104,8 +121,10 @@ export function classifySelectorFeatures(metrics = {}) {
 
   let coverageBand = 'high-coverage';
   if (globalCoverage <= SELECTOR_BANDS.globalCoverageThresholds[0]) coverageBand = 'low-coverage';
-  else if (globalCoverage <= SELECTOR_BANDS.globalCoverageThresholds[1]) coverageBand = 'moderate-coverage';
-  else if (globalCoverage <= SELECTOR_BANDS.globalCoverageThresholds[2]) coverageBand = 'strong-coverage';
+  else if (globalCoverage <= SELECTOR_BANDS.globalCoverageThresholds[1])
+    coverageBand = 'moderate-coverage';
+  else if (globalCoverage <= SELECTOR_BANDS.globalCoverageThresholds[2])
+    coverageBand = 'strong-coverage';
 
   let emptyBand = 'compact';
   if (emptyRatio >= SELECTOR_BANDS.emptyRatioThresholds[2]) emptyBand = 'open';

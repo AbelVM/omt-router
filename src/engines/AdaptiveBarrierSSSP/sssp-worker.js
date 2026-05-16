@@ -2,11 +2,11 @@
 
 /**
  * Worker optimized for cache locality and atomic synchronization
- * Designed for the SSSP algorithm with a shared memory approach, this worker processes 
+ * Designed for the SSSP algorithm with a shared memory approach, this worker processes
  * a chunk of the frontier and updates distances and the next frontier in shared memory.
- * It uses Atomics for synchronization and early exit signaling, and is optimized for 
+ * It uses Atomics for synchronization and early exit signaling, and is optimized for
  * performance with minimal branching and efficient memory access patterns.
- * The worker listens for messages containing the shared buffer and task parameters, 
+ * The worker listens for messages containing the shared buffer and task parameters,
  * performs the relaxation step of the SSSP algorithm, and posts a completion message when done.
  */
 self.onmessage = async ({ data }) => {
@@ -23,7 +23,7 @@ self.onmessage = async ({ data }) => {
    *   state[0] - target node index for early exit
    *   state[1] - early exit signal (0 or 1)
    *   state[2] - atomic counter for next frontier size
-   *   state[3] - reserved for future use 
+   *   state[3] - reserved for future use
    * Note: All workers share the same SAB, and synchronization is achieved through Atomics on the state array.
    */
   const {
@@ -68,7 +68,7 @@ self.onmessage = async ({ data }) => {
   for (let i = start; i < end; i++) {
     const u = currQ[i];
     const d_u = Atomics.load(dist, u);
-    
+
     let e = head[u];
     while (e !== -1) {
       const v = targets[e];
@@ -87,5 +87,5 @@ self.onmessage = async ({ data }) => {
       e = next[e];
     }
   }
-  self.postMessage("done");
+  self.postMessage('done');
 };

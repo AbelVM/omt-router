@@ -9,12 +9,28 @@ vi.mock('../src/graphs/graphBuilder.js', async () => {
 });
 
 import { buildGraph, isAccessible } from '../src/graphs/graphBuilder.js';
-import { nodeCentrality, getAllGraphMetrics, getDensityFeatures } from '../src/graphs/graphMetrics.js';
-import { computeRoute, prepareGraph, prepareRoutableGraph, nearestNode, selectBestEngine, validateRouteResult, buildCH } from '../src/engines/router.js';
+import {
+  nodeCentrality,
+  getAllGraphMetrics,
+  getDensityFeatures,
+} from '../src/graphs/graphMetrics.js';
+import {
+  computeRoute,
+  prepareGraph,
+  prepareRoutableGraph,
+  nearestNode,
+  selectBestEngine,
+  validateRouteResult,
+  buildCH,
+} from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance, isWithinDistanceMeters } from '../src/utils/misc.js';
 import { MapLibreRoutingControl, parseCoords } from '../src/ui/MapLibreRoutingControl.js';
-import { findTopTwoIndices, hasParallelRoutingRuntime, resolveMlFeatureValues } from '../src/tuning/tuning.js';
+import {
+  findTopTwoIndices,
+  hasParallelRoutingRuntime,
+  resolveMlFeatureValues,
+} from '../src/tuning/tuning.js';
 import { buildTileURL, dispose, shutdown } from '../src/index.js';
 
 describe('interpolate', () => {
@@ -28,7 +44,9 @@ describe('interpolate', () => {
   });
 
   it('supports {url} proxy templates', () => {
-    expect(interpolate('https://proxy/?u={url}', { url: 'https%3A%2F%2Fexample.com%2Ftile.pbf' })).toBe('https://proxy/?u=https%3A%2F%2Fexample.com%2Ftile.pbf');
+    expect(
+      interpolate('https://proxy/?u={url}', { url: 'https%3A%2F%2Fexample.com%2Ftile.pbf' })
+    ).toBe('https://proxy/?u=https%3A%2F%2Fexample.com%2Ftile.pbf');
   });
 });
 
@@ -107,7 +125,9 @@ describe('MapLibreRoutingControl input parsing', () => {
     expect(ctrl._text.stats.distance).toBe('Distance');
     expect(ctrl._text.stats.estTime).toBe('Est. time');
     expect(ctrl._text.status.poorSnap).toBe('Point snapped poorly');
-    expect(ctrl._text.status.noPath).toBe('No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.');
+    expect(ctrl._text.status.noPath).toBe(
+      'No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.'
+    );
     expect(ctrl._text.unknownKey).toBeUndefined();
     expect(ctrl._text.status.extraKey).toBeUndefined();
   });
@@ -128,7 +148,9 @@ describe('MapLibreRoutingControl input parsing', () => {
     expect(ctrl._text.stats.distance).toBe('Distance');
     expect(ctrl._text.stats.estTime).toBe('Est. time');
     expect(ctrl._text.status.poorSnap).toBe('Point snapped poorly');
-    expect(ctrl._text.status.noPath).toBe('No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.');
+    expect(ctrl._text.status.noPath).toBe(
+      'No route found because the loaded graph is disconnected or the corridor is too narrow for the requested path.'
+    );
     expect(ctrl._text.unknownKey).toBeUndefined();
     expect(ctrl._text.status.extraKey).toBeUndefined();
   });
@@ -166,8 +188,8 @@ describe('route URL templating', () => {
       buildTileURL(
         'https://example.com/{z}/{x}/{y}.pbf',
         { z: 14, x: 8200, y: 5600 },
-        { tileUrlTransform: () => null },
-      ),
+        { tileUrlTransform: () => null }
+      )
     ).toThrow(/Invalid tileUrlTransform/);
   });
 });
@@ -291,7 +313,10 @@ describe('graphMetrics', () => {
       N: 2,
       E: 3,
       adjPtr: new Int32Array([0, 2, 3]),
-      coordsArr: [[0, 0], [1, 1]],
+      coordsArr: [
+        [0, 0],
+        [1, 1],
+      ],
     };
     const metrics = getAllGraphMetrics(preparedGraph, rawGraph, 0, 1, { mode: 'car' });
     expect(metrics.nodeCentralitySource).toBe(5);
@@ -338,7 +363,10 @@ describe('graphMetrics', () => {
       N: 2,
       E: 1,
       adjPtr: new Int32Array([0, 1, 1]),
-      coordsArr: [[0, 0], [1, 1]],
+      coordsArr: [
+        [0, 0],
+        [1, 1],
+      ],
     };
     const first = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
     const second = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
@@ -358,19 +386,17 @@ describe('nearestNode', () => {
   it('finds the nearest node by haversine distance', () => {
     // Manually construct a tiny graph with two known nodes.
     const nodes = new Map([
-      [0, { id: 0, coords: [-3.7038, 40.4168] }],  // Madrid
-      [1, { id: 1, coords: [-3.6895, 40.4234] }],  // ~1.4 km away
+      [0, { id: 0, coords: [-3.7038, 40.4168] }], // Madrid
+      [1, { id: 1, coords: [-3.6895, 40.4234] }], // ~1.4 km away
     ]);
     const g = { nodes, edges: [] };
     // Query from a point very close to node 0
-    const result = nearestNode([-3.7040, 40.4170], g, 1000);
+    const result = nearestNode([-3.704, 40.417], g, 1000);
     expect(result).toBe(0);
   });
 
   it('returns -1 when the nearest node is beyond maxDistM', () => {
-    const nodes = new Map([
-      [0, { id: 0, coords: [-3.7038, 40.4168] }],
-    ]);
+    const nodes = new Map([[0, { id: 0, coords: [-3.7038, 40.4168] }]]);
     const g = { nodes, edges: [] };
     // Query 10 km away with a 500 m limit
     const result = nearestNode([-3.6038, 40.4168], g, 500);
@@ -399,7 +425,9 @@ describe('nearestNode', () => {
     const startCoords = [0.005, 0.0008];
     const endCoords = [0.01, 0];
 
-    const result = prepareRoutableGraph(graph, startCoords, endCoords, { maxAcceptableSnapDistanceM: 120 });
+    const result = prepareRoutableGraph(graph, startCoords, endCoords, {
+      maxAcceptableSnapDistanceM: 120,
+    });
 
     expect(result.startId).toBe(2);
     expect(result.endId).toBe(1);
@@ -430,7 +458,9 @@ describe('nearestNode', () => {
     const startCoords = [0.005, 0.0008];
     const endCoords = [0.01, 0];
 
-    const result = prepareRoutableGraph(graph, startCoords, endCoords, { maxAcceptableSnapDistanceM: 120 });
+    const result = prepareRoutableGraph(graph, startCoords, endCoords, {
+      maxAcceptableSnapDistanceM: 120,
+    });
 
     expect(result.startId).toBe(21);
     expect(result.graph.nodes.has(21)).toBe(true);
@@ -460,7 +490,9 @@ describe('nearestNode', () => {
     const startCoords = undefined;
     const endCoords = [0.01, 0];
 
-    const result = prepareRoutableGraph(graph, startCoords, endCoords, { maxAcceptableSnapDistanceM: 120 });
+    const result = prepareRoutableGraph(graph, startCoords, endCoords, {
+      maxAcceptableSnapDistanceM: 120,
+    });
 
     expect(result.startId).toBe(-1);
     expect(result.endId).toBe(-1);
@@ -517,7 +549,9 @@ describe('nearestNode', () => {
     const startCoords = [0.01, 0.00009];
     const endCoords = [0.02, 0];
 
-    const result = prepareRoutableGraph(graph, startCoords, endCoords, { maxAcceptableSnapDistanceM: 120 });
+    const result = prepareRoutableGraph(graph, startCoords, endCoords, {
+      maxAcceptableSnapDistanceM: 120,
+    });
 
     expect(result.startId).toBe(3);
     expect(result.graph.nodes.size).toBe(4);
@@ -812,7 +846,7 @@ describe('nearestNode', () => {
       forward.coordinates[forward.coordinates.length - 1],
       forward.coordinates[0],
       graph,
-      { costField: 'distance' },
+      { costField: 'distance' }
     );
 
     expect(reversed.found).toBe(true);
@@ -886,7 +920,9 @@ describe('nearestNode', () => {
     const startCoords = [0.005, 0.0008];
     const endCoords = [0.01, 0];
 
-    const result = prepareRoutableGraph(graph, startCoords, endCoords, { maxAcceptableSnapDistanceM: 120 });
+    const result = prepareRoutableGraph(graph, startCoords, endCoords, {
+      maxAcceptableSnapDistanceM: 120,
+    });
 
     expect(Array.isArray(result.graph.edges)).toBe(true);
     expect(result.graph.edges.length).toBe(edges.length + 1);
@@ -961,7 +997,9 @@ describe('nearestNode', () => {
     const startCoords = [0.0102, 0.00005];
     const endCoords = [0, 0];
 
-    const result = prepareRoutableGraph(graph, startCoords, endCoords, { maxAcceptableSnapDistanceM: 120 });
+    const result = prepareRoutableGraph(graph, startCoords, endCoords, {
+      maxAcceptableSnapDistanceM: 120,
+    });
 
     expect(result.startId).toBe(1);
     expect(result.graph.nodes.size).toBe(2);

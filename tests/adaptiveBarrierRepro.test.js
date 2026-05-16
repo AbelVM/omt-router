@@ -14,7 +14,14 @@ function makeRandomGraph(N, E, maxWeight = 15) {
     const v = Math.floor(Math.random() * N);
     if (u === v) continue;
     const weight = Math.floor(Math.random() * maxWeight) + 1;
-    edges.push({ source: u, target: v, length: weight, travelTime: weight, cost: weight, reverseCost: -1 });
+    edges.push({
+      source: u,
+      target: v,
+      length: weight,
+      travelTime: weight,
+      cost: weight,
+      reverseCost: -1,
+    });
   }
   return { nodes, edges };
 }
@@ -26,7 +33,6 @@ async function solveOne(prepared, startId, endId) {
 function dijkstraCost(prepared, startId, endId) {
   return bidirectionalAStar(startId, endId, prepared);
 }
-
 
 describe('adaptive barrier serial regression', () => {
   it('matches bidirectional A* on random graphs', async () => {

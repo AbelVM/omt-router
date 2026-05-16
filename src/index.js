@@ -136,8 +136,6 @@ export function dispose() {
 
 export const shutdown = dispose;
 
-
-
 /**
  * Compute the tile fetch radius needed to reliably contain the real path.
  *
@@ -163,7 +161,7 @@ export const shutdown = dispose;
  */
 function computeRadius(start, end, zoom) {
   const midLat = (start[1] + end[1]) / 2;
-  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(midLat * DEG_TO_RAD)) / (2 ** zoom);
+  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(midLat * DEG_TO_RAD)) / 2 ** zoom;
   const beelineM = haversineDistance(start, end);
   const bufferM = Math.max(600, beelineM * 0.15);
   return Math.min(3, Math.max(1, Math.ceil(bufferM / tileWidthM)));
@@ -324,10 +322,10 @@ export const route = async (
       return { ...result, ...partialGraphStatus };
     }
     if (
-      lastResult.reason !== 'no_path'
-      && lastResult.reason !== 'no_node'
-      && lastResult.reason !== 'poor_snap'
-      && lastResult.reason !== 'incomplete_path'
+      lastResult.reason !== 'no_path' &&
+      lastResult.reason !== 'no_node' &&
+      lastResult.reason !== 'poor_snap' &&
+      lastResult.reason !== 'incomplete_path'
     ) {
       const result = includeGraph ? { ...lastResult, graph } : lastResult;
       return { ...result, ...partialGraphStatus };
@@ -336,7 +334,7 @@ export const route = async (
     if (r < maxRadius) {
       // Log so the caller can see the retry in dev tools.
       console.debug(
-        `[omt-router] ${lastResult.reason} at radius=${r}, retrying with radius=${r + 1}`,
+        `[omt-router] ${lastResult.reason} at radius=${r}, retrying with radius=${r + 1}`
       );
     }
   }
@@ -367,21 +365,25 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
     throw new Error('routeBatch requires a valid urlTemplate string');
   }
 
-  return await Promise.all(requests.map((request, index) => {
-    if (!request || typeof request !== 'object') {
-      throw new Error(`routeBatch request at index ${index} must be an object with start, end, and mode`);
-    }
-    const { start, end, mode, costField } = request;
-    validateRouteCoordinates(start, `requests[${index}].start`);
-    validateRouteCoordinates(end, `requests[${index}].end`);
-    if (typeof mode !== 'string' || mode.length === 0) {
-      throw new Error(`routeBatch request at index ${index} must include a valid mode`);
-    }
-    if (costField !== undefined) {
-      validateCostField(costField);
-    }
-    return route(start, end, mode, urlTemplate, { ...options, costField });
-  }));
+  return await Promise.all(
+    requests.map((request, index) => {
+      if (!request || typeof request !== 'object') {
+        throw new Error(
+          `routeBatch request at index ${index} must be an object with start, end, and mode`
+        );
+      }
+      const { start, end, mode, costField } = request;
+      validateRouteCoordinates(start, `requests[${index}].start`);
+      validateRouteCoordinates(end, `requests[${index}].end`);
+      if (typeof mode !== 'string' || mode.length === 0) {
+        throw new Error(`routeBatch request at index ${index} must include a valid mode`);
+      }
+      if (costField !== undefined) {
+        validateCostField(costField);
+      }
+      return route(start, end, mode, urlTemplate, { ...options, costField });
+    })
+  );
 }
 
 /**
@@ -400,14 +402,18 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
  * @param {import('./tiles/tilePool.js').TilePool} [opts.pool]
  * @returns {Promise<Object>} merged graph
  */
-export async function buildGraphForTiles(tiles, mode, {
-  zoom = 14,
-  schema = 'zxy',
-  urlTemplate = '',
-  tileProxyTemplate = '',
-  tileUrlTransform,
-  pool = getSharedTilePool(),
-} = {}) {
+export async function buildGraphForTiles(
+  tiles,
+  mode,
+  {
+    zoom = 14,
+    schema = 'zxy',
+    urlTemplate = '',
+    tileProxyTemplate = '',
+    tileUrlTransform,
+    pool = getSharedTilePool(),
+  } = {}
+) {
   if (!Array.isArray(tiles)) throw new Error('tiles must be an array');
 
   const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);

@@ -114,8 +114,10 @@ export class MapLibreRoutingControl {
   constructor(options = {}) {
     this._options = mergeOptions(DEFAULT_OPTIONS, options);
     this._routeFunction = this._options.routeFunction ?? defaultRoute;
-    this._getEngineWorkerStatus = this._options.getEngineWorkerStatus ?? defaultGetEngineWorkerStatus;
-    this._onEngineWorkerStatusChange = this._options.onEngineWorkerStatusChange ?? defaultOnEngineWorkerStatusChange;
+    this._getEngineWorkerStatus =
+      this._options.getEngineWorkerStatus ?? defaultGetEngineWorkerStatus;
+    this._onEngineWorkerStatusChange =
+      this._options.onEngineWorkerStatusChange ?? defaultOnEngineWorkerStatusChange;
     this._cancelRunningEngine = this._options.cancelRunningEngine ?? defaultCancelRunningEngine;
     this._tileJsonUrl = this._options.tileJsonUrl;
     this._urlTemplate = this._options.urlTemplate || null;
@@ -124,17 +126,21 @@ export class MapLibreRoutingControl {
     this._routeOptions = { ...this._options.routeOptions };
     this._routeTimeoutMs = Number(this._options.routeTimeoutMs);
     this._theme = String(this._options.theme ?? 'auto').toLowerCase();
-    this._panelClassName = typeof this._options.panelClassName === 'string'
-      ? this._options.panelClassName.trim()
-      : '';
+    this._panelClassName =
+      typeof this._options.panelClassName === 'string' ? this._options.panelClassName.trim() : '';
     const locale = this._options.locale ?? this._options.language;
-    const localeOverride = this._options.locale_override ?? this._options.localeOverride ??
+    const localeOverride =
+      this._options.locale_override ??
+      this._options.localeOverride ??
       (locale && typeof locale === 'object' && !Array.isArray(locale) ? locale : undefined);
-    const baseLocale = typeof locale === 'string' ? resolveLocale(locale) : resolveLocale(this._options.language ?? 'auto');
+    const baseLocale =
+      typeof locale === 'string'
+        ? resolveLocale(locale)
+        : resolveLocale(this._options.language ?? 'auto');
     this._locale = baseLocale;
     this._text = localeOverride
       ? mergeLocaleText(LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE], localeOverride)
-      : LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE];
+      : (LOCALES[baseLocale] ?? LOCALES[DEFAULT_LOCALE]);
 
     this._text.status = {
       ...LOCALES[DEFAULT_LOCALE].status,
@@ -144,11 +150,17 @@ export class MapLibreRoutingControl {
     // Use l10n defaults and any provided locale overrides. Keep minimal
     // fallbacks in-place if l10n entries are missing.
     this._text.isoline = this._text.isoline || {};
-    this._text.tabs = this._text.tabs || { routing: this._text.title || 'Routing', isolines: this._text.isoline.heading || 'Isolines' };
-    this._maplibre = this._options.maplibre ?? (typeof window !== 'undefined' ? window.maplibregl : null);
+    this._text.tabs = this._text.tabs || {
+      routing: this._text.title || 'Routing',
+      isolines: this._text.isoline.heading || 'Isolines',
+    };
+    this._maplibre =
+      this._options.maplibre ?? (typeof window !== 'undefined' ? window.maplibregl : null);
 
     if (!this._maplibre || typeof this._maplibre.Marker !== 'function') {
-      throw new Error('MapLibreRoutingControl requires a compatible maplibre instance via options.maplibre or window.maplibregl.');
+      throw new Error(
+        'MapLibreRoutingControl requires a compatible maplibre instance via options.maplibre or window.maplibregl.'
+      );
     }
 
     this._mode = this._options.defaultMode;
@@ -176,7 +188,9 @@ export class MapLibreRoutingControl {
     this._tileTemplatePromise = null;
     this._mounted = false;
     // Normalize `features` option and accept common aliases.
-    let f = String(this._options.features ?? 'both').toLowerCase().trim();
+    let f = String(this._options.features ?? 'both')
+      .toLowerCase()
+      .trim();
     if (f === 'isoline') f = 'isolines';
     if (f === 'route') f = 'routing';
     if (!['both', 'isolines', 'routing'].includes(f)) f = 'both';
@@ -189,7 +203,9 @@ export class MapLibreRoutingControl {
     const _optIso = this._options.isolineMaxCost;
     const _defaultIso = Number.isFinite(Number(_optIso))
       ? Number(_optIso)
-      : ((this._costField === 'travelTime' || this._costField === 'optimal') ? 15 * 60 : 1000);
+      : this._costField === 'travelTime' || this._costField === 'optimal'
+        ? 15 * 60
+        : 1000;
     this._isoline = { point: null, direction: 'from', maxCost: _defaultIso };
     this._isolineWorker = null;
     this._isolinePendingRequests = null;
@@ -309,18 +325,34 @@ export class MapLibreRoutingControl {
     try {
       if (this._isolinePendingRequests) {
         for (const [_id, p] of this._isolinePendingRequests) {
-          try { p.reject(new Error('control removed')); } catch (_e) { void _e; }
+          try {
+            p.reject(new Error('control removed'));
+          } catch (_e) {
+            void _e;
+          }
         }
         this._isolinePendingRequests = null;
       }
-    } catch (_e) { void _e; }
+    } catch (_e) {
+      void _e;
+    }
     try {
       if (this._isolineWorker) {
-        try { this._isolineWorker.postMessage({ type: 'dispose' }); } catch (_e) { void _e; }
-        try { this._isolineWorker.terminate(); } catch (_e) { void _e; }
+        try {
+          this._isolineWorker.postMessage({ type: 'dispose' });
+        } catch (_e) {
+          void _e;
+        }
+        try {
+          this._isolineWorker.terminate();
+        } catch (_e) {
+          void _e;
+        }
         this._isolineWorker = null;
       }
-    } catch (_e) { void _e; }
+    } catch (_e) {
+      void _e;
+    }
     defaultDispose();
   }
 
@@ -550,13 +582,17 @@ export class MapLibreRoutingControl {
             this._markers.origin.remove();
             this._markers.origin = null;
           }
-        } catch (_e) { void _e; }
+        } catch (_e) {
+          void _e;
+        }
         try {
           if (this._markers.dest) {
             this._markers.dest.remove();
             this._markers.dest = null;
           }
-        } catch (_e) { void _e; }
+        } catch (_e) {
+          void _e;
+        }
         UI.syncModeAndCostUI(this);
         UI.resetOtherUI(this, 'isoline');
       });
@@ -572,14 +608,17 @@ export class MapLibreRoutingControl {
         this._isoline.direction = newDir;
         isoDirBtns.forEach((b) => b.classList.toggle('active', b === btn));
         // Update marker color immediately so UI reflects the selected direction
-        const color = this._isoline.direction === 'from' ? this._options.startColor : this._options.endColor;
+        const color =
+          this._isoline.direction === 'from' ? this._options.startColor : this._options.endColor;
         try {
           const mk = this._markers.isoline;
           if (mk && typeof mk.getElement === 'function') {
             const el = mk.getElement();
             if (el && el.style) el.style.background = color;
           }
-        } catch (_e) { void _e; }
+        } catch (_e) {
+          void _e;
+        }
         // Update the small bullet in the isoline point input to match direction
         try {
           const svg = this._panel.querySelector('#rp-isoline-panel .rp-point-icon');
@@ -587,7 +626,9 @@ export class MapLibreRoutingControl {
             svg.classList.toggle('rp-point-icon--origin', this._isoline.direction === 'from');
             svg.classList.toggle('rp-point-icon--dest', this._isoline.direction === 'to');
           }
-        } catch (_e) { void _e; }
+        } catch (_e) {
+          void _e;
+        }
 
         if (!wasSame && this._isoline.point) this._tryIsoline();
       });
@@ -619,8 +660,8 @@ export class MapLibreRoutingControl {
               bb.classList.toggle('active', isActive);
               bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             });
-              UI.syncModeAndCostUI(this);
-              return;
+            UI.syncModeAndCostUI(this);
+            return;
           }
           this._mode = newMode;
           isoModeBtns.forEach((bb) => {
@@ -747,9 +788,10 @@ export class MapLibreRoutingControl {
     // Choose the status element for the currently active tab, falling back
     // to whichever status element exists. Clear the other to avoid stale
     // messages appearing in the hidden panel.
-    const target = this._activeTab === 'isoline'
-      ? (this._statusElIsoline || this._statusEl)
-      : (this._statusEl || this._statusElIsoline);
+    const target =
+      this._activeTab === 'isoline'
+        ? this._statusElIsoline || this._statusEl
+        : this._statusEl || this._statusElIsoline;
     if (!target) return;
 
     const other = target === this._statusEl ? this._statusElIsoline : this._statusEl;
@@ -816,8 +858,13 @@ export class MapLibreRoutingControl {
    */
   _centerMapOnSource(sourceId, fitOptions = { padding: 100, maxZoom: 16, duration: 600 }) {
     try {
-      console.log('[dbg] _centerMapOnSource delegator called', { sourceId, mapPresent: !!this._map });
-    } catch (_e) { void _e; }
+      console.log('[dbg] _centerMapOnSource delegator called', {
+        sourceId,
+        mapPresent: !!this._map,
+      });
+    } catch (_e) {
+      void _e;
+    }
     return MapModule.centerMapOnSource(this, sourceId, fitOptions);
   }
 }

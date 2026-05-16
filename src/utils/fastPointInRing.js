@@ -45,11 +45,17 @@ import RBush from 'rbush';
 function prepareRing(ring, eps = 1e-12) {
   const n0 = Array.isArray(ring) ? ring.length : 0;
   if (n0 === 0) return { coords: new Float64Array(0), n: 0, bbox: [0, 0, 0, 0], eps };
-  const closed = n0 > 1 && Math.abs(ring[0][0] - ring[n0 - 1][0]) <= eps && Math.abs(ring[0][1] - ring[n0 - 1][1]) <= eps;
+  const closed =
+    n0 > 1 &&
+    Math.abs(ring[0][0] - ring[n0 - 1][0]) <= eps &&
+    Math.abs(ring[0][1] - ring[n0 - 1][1]) <= eps;
   const n = closed ? n0 - 1 : n0;
   if (n < 3) return { coords: new Float64Array(0), n: 0, bbox: [0, 0, 0, 0], eps };
   const coords = new Float64Array(2 * n);
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (let i = 0; i < n; i++) {
     const x = +ring[i][0];
     const y = +ring[i][1];
@@ -95,12 +101,14 @@ function pointInPreparedRing(px, py, prepared, { inclusive = true } = {}) {
   let inside = false;
   let j = n - 1;
   for (let i = 0; i < n; i++) {
-    const xi = coords[2 * i], yi = coords[2 * i + 1];
-    const xj = coords[2 * j], yj = coords[2 * j + 1];
+    const xi = coords[2 * i],
+      yi = coords[2 * i + 1];
+    const xj = coords[2 * j],
+      yj = coords[2 * j + 1];
     // on-segment check (boundary)
     if (_pointOnSegment(xi, yi, xj, yj, px, py, eps)) return !!inclusive;
     // ray-cast intersection
-    const intersect = ((yi > py) !== (yj > py)) && (px < xi + (py - yi) * (xj - xi) / (yj - yi));
+    const intersect = yi > py !== yj > py && px < xi + ((py - yi) * (xj - xi)) / (yj - yi);
     if (intersect) inside = !inside;
     j = i;
   }
@@ -182,7 +190,8 @@ function pointInRing(point, ring, options) {
  * - `eps`: forwarded to `prepareRing` when input is not prepared.
  */
 function findInteriorPoint(ringOrPrepared, { inclusive = true, gridSize = 3, eps } = {}) {
-  const prepared = ringOrPrepared && ringOrPrepared.coords ? ringOrPrepared : prepareRing(ringOrPrepared, eps);
+  const prepared =
+    ringOrPrepared && ringOrPrepared.coords ? ringOrPrepared : prepareRing(ringOrPrepared, eps);
   if (!prepared || prepared.n === 0) return null;
   const coords = prepared.coords;
   const n = prepared.n;
@@ -196,21 +205,27 @@ function findInteriorPoint(ringOrPrepared, { inclusive = true, gridSize = 3, eps
   if (test(cx, cy)) return [cx, cy];
 
   // 2) simple average of vertices
-  let sx = 0, sy = 0;
+  let sx = 0,
+    sy = 0;
   for (let i = 0; i < n; i++) {
     sx += coords[2 * i];
     sy += coords[2 * i + 1];
   }
-  const avgx = sx / n, avgy = sy / n;
+  const avgx = sx / n,
+    avgy = sy / n;
   if (test(avgx, avgy)) return [avgx, avgy];
 
   // 3) area-weighted polygon centroid (shoelace). Works for many concave
   // polygons but isn't guaranteed; cheap to compute.
-  let area2 = 0, cX = 0, cY = 0;
+  let area2 = 0,
+    cX = 0,
+    cY = 0;
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    const xi = coords[2 * i], yi = coords[2 * i + 1];
-    const xj = coords[2 * j], yj = coords[2 * j + 1];
+    const xi = coords[2 * i],
+      yi = coords[2 * i + 1];
+    const xj = coords[2 * j],
+      yj = coords[2 * j + 1];
     const cross = xi * yj - xj * yi;
     area2 += cross;
     cX += (xi + xj) * cross;
@@ -227,9 +242,12 @@ function findInteriorPoint(ringOrPrepared, { inclusive = true, gridSize = 3, eps
     const a = i;
     const b = (i + 1) % n;
     const c = (i + 2) % n;
-    const ax = coords[2 * a], ay = coords[2 * a + 1];
-    const bx = coords[2 * b], by = coords[2 * b + 1];
-    const cx2 = coords[2 * c], cy2 = coords[2 * c + 1];
+    const ax = coords[2 * a],
+      ay = coords[2 * a + 1];
+    const bx = coords[2 * b],
+      by = coords[2 * b + 1];
+    const cx2 = coords[2 * c],
+      cy2 = coords[2 * c + 1];
     const cross = (bx - ax) * (cy2 - ay) - (by - ay) * (cx2 - ax);
     if (Math.abs(cross) <= (prepared.eps || 1e-12)) continue;
     const triCx = (ax + bx + cx2) / 3;
@@ -239,9 +257,12 @@ function findInteriorPoint(ringOrPrepared, { inclusive = true, gridSize = 3, eps
 
   // 5) fan triangles from vertex 0
   for (let i = 1; i < n - 1; i++) {
-    const ax = coords[0], ay = coords[1];
-    const bx = coords[2 * i], by = coords[2 * i + 1];
-    const cx2 = coords[2 * (i + 1)], cy2 = coords[2 * (i + 1) + 1];
+    const ax = coords[0],
+      ay = coords[1];
+    const bx = coords[2 * i],
+      by = coords[2 * i + 1];
+    const cx2 = coords[2 * (i + 1)],
+      cy2 = coords[2 * (i + 1) + 1];
     const cross = (bx - ax) * (cy2 - ay) - (by - ay) * (cx2 - ax);
     if (Math.abs(cross) <= (prepared.eps || 1e-12)) continue;
     const triCx = (ax + bx + cx2) / 3;
@@ -270,4 +291,11 @@ function findInteriorPoint(ringOrPrepared, { inclusive = true, gridSize = 3, eps
   return null;
 }
 
-export { prepareRing, pointInPreparedRing, buildRingIndex, ringsContainingPoint, pointInRing, findInteriorPoint };
+export {
+  prepareRing,
+  pointInPreparedRing,
+  buildRingIndex,
+  ringsContainingPoint,
+  pointInRing,
+  findInteriorPoint,
+};

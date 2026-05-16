@@ -71,15 +71,23 @@ describe('index module route and tile URL helpers', () => {
   });
 
   it('throws when tileUrlTransform returns a non-string value', () => {
-    expect(() => buildTileURL('https://example.com/{z}/{x}/{y}.pbf', { z: 14, x: 1, y: 2 }, {
-      tileUrlTransform: () => null,
-    })).toThrow(/Invalid tileUrlTransform/);
+    expect(() =>
+      buildTileURL(
+        'https://example.com/{z}/{x}/{y}.pbf',
+        { z: 14, x: 1, y: 2 },
+        {
+          tileUrlTransform: () => null,
+        }
+      )
+    ).toThrow(/Invalid tileUrlTransform/);
   });
 
   it('throws for an unsupported costField in route()', async () => {
-    await expect(route([0, 0], [0.001, 0], 'car', 'https://example.com/{z}/{x}/{y}.pbf', {
-      costField: 'speed',
-    })).rejects.toThrow(/Unknown costField/);
+    await expect(
+      route([0, 0], [0.001, 0], 'car', 'https://example.com/{z}/{x}/{y}.pbf', {
+        costField: 'speed',
+      })
+    ).rejects.toThrow(/Unknown costField/);
   });
 
   it('returns includeGraph result and partial graph status when graph is complete', async () => {
@@ -88,7 +96,10 @@ describe('index module route and tile URL helpers', () => {
       found: true,
       cost: 123,
       path: [0, 1],
-      coordinates: [[0, 0], [0, 1]],
+      coordinates: [
+        [0, 0],
+        [0, 1],
+      ],
       reason: null,
     });
 
@@ -136,7 +147,10 @@ describe('index module route and tile URL helpers', () => {
       found: true,
       cost: 42,
       path: [0, 1],
-      coordinates: [[0, 0], [0, 1]],
+      coordinates: [
+        [0, 0],
+        [0, 1],
+      ],
     });
 
     const result = await route([0, 0], [0.001, 0], 'car', 'https://example.com/{z}/{x}/{y}.pbf', {
@@ -165,7 +179,10 @@ describe('index module route and tile URL helpers', () => {
         found: true,
         cost: 42,
         path: [0, 1],
-        coordinates: [[0, 0], [0, 1]],
+        coordinates: [
+          [0, 0],
+          [0, 1],
+        ],
       });
 
     const result = await route([0, 0], [0.001, 0], 'car', 'https://example.com/{z}/{x}/{y}.pbf', {
@@ -219,9 +236,7 @@ describe('index module route and tile URL helpers', () => {
     mockBuildGraphAsync.mockResolvedValue({ hasMissingTiles: false, missingTileErrors: [] });
     mockComputeRoute.mockResolvedValue({ found: true, cost: 10, path: [0], coordinates: [[0, 0]] });
 
-    const requests = [
-      { start: [0, 0], end: [0.001, 0], mode: 'car' },
-    ];
+    const requests = [{ start: [0, 0], end: [0.001, 0], mode: 'car' }];
 
     const results = await routeBatch(requests, 'https://example.com/{z}/{x}/{y}.pbf', {
       useWorkerPool: true,
@@ -238,7 +253,9 @@ describe('index module route and tile URL helpers', () => {
 
 describe('dispose lifecycle', () => {
   it('cleans up the tile pool and ignores shutdown errors', () => {
-    mockShutdownEngineWorker.mockImplementation(() => { throw new Error('boom'); });
+    mockShutdownEngineWorker.mockImplementation(() => {
+      throw new Error('boom');
+    });
 
     expect(() => disposeFn()).not.toThrow();
     expect(mockDisposeSharedTilePool).toHaveBeenCalled();

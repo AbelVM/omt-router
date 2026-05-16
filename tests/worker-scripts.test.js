@@ -54,7 +54,9 @@ describe('tilesWorker worker script', () => {
     });
 
     global.fetch = vi.fn(() => Promise.reject(new TypeError('network failure')));
-    vi.doMock('../src/graphs/graphBuilder.js', () => ({ parseTile: () => new Uint8Array([1, 2, 3]) }));
+    vi.doMock('../src/graphs/graphBuilder.js', () => ({
+      parseTile: () => new Uint8Array([1, 2, 3]),
+    }));
 
     await import('../src/tiles/tilesWorker.js');
 
@@ -76,7 +78,8 @@ describe('tilesWorker worker script', () => {
       fetchFailed: true,
       fetchError: {
         code: 'MissingAllowOriginHeader',
-        message: 'Cross-origin tile request failed. Ensure Access-Control-Allow-Origin includes this app origin or use a same-origin proxy.',
+        message:
+          'Cross-origin tile request failed. Ensure Access-Control-Allow-Origin includes this app origin or use a same-origin proxy.',
       },
     });
   });
@@ -87,8 +90,12 @@ describe('tilesWorker worker script', () => {
       location: { href: 'https://app.test/app', origin: 'https://app.test' },
     });
 
-    global.fetch = vi.fn(() => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)) }));
-    vi.doMock('../src/graphs/graphBuilder.js', () => ({ parseTile: () => new Uint8Array([4, 5, 6]) }));
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)) })
+    );
+    vi.doMock('../src/graphs/graphBuilder.js', () => ({
+      parseTile: () => new Uint8Array([4, 5, 6]),
+    }));
 
     await import('../src/tiles/tilesWorker.js');
 

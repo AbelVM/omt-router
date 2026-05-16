@@ -138,7 +138,7 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
   // Estimate tile width at this latitude (meters)
   const DEG_TO_RAD = Math.PI / 180;
   const latRad = lat * DEG_TO_RAD;
-  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(latRad)) / (2 ** zoom);
+  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(latRad)) / 2 ** zoom;
   const tileHalfDiag = (Math.sqrt(2) * tileWidthM) / 2;
 
   // Compute how many tiles to include on each side (square budget), then
@@ -147,7 +147,7 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
   const radiusTiles = Math.min(20, approxRadiusTiles); // clamp to reasonable max
 
   const tiles = new Map();
-  const toLon = (x) => ((x / n) * 360) - 180;
+  const toLon = (x) => (x / n) * 360 - 180;
   const toLat = (y) => {
     const ym = 1 - (2 * y) / n;
     return (Math.atan(Math.sinh(Math.PI * ym)) * 180) / Math.PI;
@@ -156,7 +156,7 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
   for (let dx = -radiusTiles; dx <= radiusTiles; dx++) {
     for (let dy = -radiusTiles; dy <= radiusTiles; dy++) {
       const nx = center.x + dx;
-      const ny = isTMS ? (n - 1 - center.y) + dy : center.y + dy;
+      const ny = isTMS ? n - 1 - center.y + dy : center.y + dy;
       const wrappedX = ((nx % n) + n) % n;
       if (ny < 0 || ny >= n) continue;
       const finalY = isTMS ? n - 1 - ny : ny;
@@ -165,7 +165,7 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
       const cx = toLon(wrappedX + 0.5);
       const cy = toLat(finalY + 0.5);
       const dist = haversineDistanceCoords(lng, lat, cx, cy);
-      if (dist <= (radiusMeters + tileHalfDiag)) {
+      if (dist <= radiusMeters + tileHalfDiag) {
         tiles.set(`${zoom}_${wrappedX}_${finalY}`, { z: zoom, x: wrappedX, y: finalY });
       }
     }

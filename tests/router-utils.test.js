@@ -55,11 +55,29 @@ describe('router utilities', () => {
       [0, { id: 0, coords: [0, 0] }],
       [1, { id: 1, coords: [1, 0] }],
     ]);
-    const prepared = buildCH({ nodes, edges: [
-      { source: 0, target: 1, cost: 100, reverseCost: -1, length: 100, travelTime: 100, properties: {}, fibonacciScore: 1 },
-    ] }, 'distance');
+    const prepared = buildCH(
+      {
+        nodes,
+        edges: [
+          {
+            source: 0,
+            target: 1,
+            cost: 100,
+            reverseCost: -1,
+            length: 100,
+            travelTime: 100,
+            properties: {},
+            fibonacciScore: 1,
+          },
+        ],
+      },
+      'distance'
+    );
 
-    const result = validateRouteResult({ found: true, path: [1, 0], cost: 10 }, prepared, { startId: 0, endId: 1 });
+    const result = validateRouteResult({ found: true, path: [1, 0], cost: 10 }, prepared, {
+      startId: 0,
+      endId: 1,
+    });
     expect(result).toEqual({ valid: false, actualCost: null, reason: 'endpoint_mismatch' });
   });
 
@@ -68,9 +86,24 @@ describe('router utilities', () => {
       [0, { id: 0, coords: [0, 0] }],
       [1, { id: 1, coords: [1, 0] }],
     ]);
-    const prepared = buildCH({ nodes, edges: [
-      { source: 0, target: 1, cost: 100, reverseCost: -1, length: 100, travelTime: 100, properties: {}, fibonacciScore: 1 },
-    ] }, 'distance');
+    const prepared = buildCH(
+      {
+        nodes,
+        edges: [
+          {
+            source: 0,
+            target: 1,
+            cost: 100,
+            reverseCost: -1,
+            length: 100,
+            travelTime: 100,
+            properties: {},
+            fibonacciScore: 1,
+          },
+        ],
+      },
+      'distance'
+    );
 
     const invalidResult = validateRouteResult({ found: true, path: [0, 2], cost: 100 }, prepared);
     expect(invalidResult.reason).toBe('invalid_path');
@@ -87,9 +120,36 @@ describe('router utilities', () => {
       [2, { id: 2, coords: [2, 0] }],
     ]);
     const edges = [
-      { source: 0, target: 1, cost: 100, reverseCost: -1, length: 100, travelTime: 100, properties: { class: 'secondary' }, fibonacciScore: 1 },
-      { source: 1, target: 2, cost: 200, reverseCost: -1, length: 200, travelTime: 200, properties: { class: 'primary' }, fibonacciScore: 1 },
-      { source: 1, target: 0, cost: 150, reverseCost: -1, length: 150, travelTime: 150, properties: { class: 'primary' }, fibonacciScore: 1 },
+      {
+        source: 0,
+        target: 1,
+        cost: 100,
+        reverseCost: -1,
+        length: 100,
+        travelTime: 100,
+        properties: { class: 'secondary' },
+        fibonacciScore: 1,
+      },
+      {
+        source: 1,
+        target: 2,
+        cost: 200,
+        reverseCost: -1,
+        length: 200,
+        travelTime: 200,
+        properties: { class: 'primary' },
+        fibonacciScore: 1,
+      },
+      {
+        source: 1,
+        target: 0,
+        cost: 150,
+        reverseCost: -1,
+        length: 150,
+        travelTime: 150,
+        properties: { class: 'primary' },
+        fibonacciScore: 1,
+      },
     ];
 
     const prepared = buildCH({ nodes, edges, mode: 'car' }, 'optimal');
@@ -109,10 +169,34 @@ describe('router utilities', () => {
       [1, { id: 1, coords: [1, 0] }],
       [2, { id: 2, coords: [2, 0] }],
     ]);
-    const prepared = buildCH({ nodes, edges: [
-      { source: 0, target: 1, cost: 100, reverseCost: -1, length: 100, travelTime: 100, properties: {}, fibonacciScore: 1 },
-      { source: 1, target: 2, cost: 200, reverseCost: -1, length: 200, travelTime: 200, properties: {}, fibonacciScore: 1 },
-    ] }, 'distance');
+    const prepared = buildCH(
+      {
+        nodes,
+        edges: [
+          {
+            source: 0,
+            target: 1,
+            cost: 100,
+            reverseCost: -1,
+            length: 100,
+            travelTime: 100,
+            properties: {},
+            fibonacciScore: 1,
+          },
+          {
+            source: 1,
+            target: 2,
+            cost: 200,
+            reverseCost: -1,
+            length: 200,
+            travelTime: 200,
+            properties: {},
+            fibonacciScore: 1,
+          },
+        ],
+      },
+      'distance'
+    );
 
     const validResult = validateRouteResult({ found: true, path: [0, 1, 2], cost: 300 }, prepared);
     expect(validResult.valid).toBe(true);

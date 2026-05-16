@@ -20,7 +20,19 @@ describe('graphMetrics utilities', () => {
 
   it('computes beeline per node and handles missing coordinates', () => {
     expect(beelinePerNode({ coordsArr: [[0, 0]] }, 0, 1)).toBe(0);
-    expect(beelinePerNode({ coordsArr: [[0, 0], [0, 1]], N: 2 }, 0, 1)).toBeGreaterThan(0);
+    expect(
+      beelinePerNode(
+        {
+          coordsArr: [
+            [0, 0],
+            [0, 1],
+          ],
+          N: 2,
+        },
+        0,
+        1
+      )
+    ).toBeGreaterThan(0);
   });
 
   it('computes node degree and average node degree safely', () => {
@@ -32,8 +44,15 @@ describe('graphMetrics utilities', () => {
 
   it('computes node centrality across different graph representations', () => {
     expect(nodeCentrality({ adjPtr: new Int32Array([0, 2, 4]) }, 0)).toBe(2);
-    expect(nodeCentrality({ edges: [{ source: 1 }, { source: 1 }, { source: 2 }], outDegree: [0, 2, 1] }, 1)).toBe(2);
-    expect(nodeCentrality({ edges: [{ source: 0, fibonacciScore: 5 }, { source: 0 }] }, 0, 'car')).toBe(6);
+    expect(
+      nodeCentrality(
+        { edges: [{ source: 1 }, { source: 1 }, { source: 2 }], outDegree: [0, 2, 1] },
+        1
+      )
+    ).toBe(2);
+    expect(
+      nodeCentrality({ edges: [{ source: 0, fibonacciScore: 5 }, { source: 0 }] }, 0, 'car')
+    ).toBe(6);
     expect(nodeCentrality({ edges: [{ source: 0 }, { source: 1 }] }, 0)).toBe(1);
     expect(nodeCentrality({ edges: [], outCarCentrality: [3, 2] }, 1, 'car')).toBe(2);
   });
@@ -41,7 +60,10 @@ describe('graphMetrics utilities', () => {
   it('returns density features for prepared graphs and reuses the sampler cache', () => {
     const preparedGraph = {
       N: 2,
-      coordsArr: [[0, 0], [1, 1]],
+      coordsArr: [
+        [0, 0],
+        [1, 1],
+      ],
     };
 
     const firstResult = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 32 });
@@ -58,14 +80,23 @@ describe('graphMetrics utilities', () => {
       N: 2,
       E: 2,
       adjPtr: new Int32Array([0, 1, 2]),
-      coordsArr: [[0, 0], [0, 1]],
+      coordsArr: [
+        [0, 0],
+        [0, 1],
+      ],
     };
     const rawGraph = {
-      edges: [{ source: 0, fibonacciScore: 3 }, { source: 1, fibonacciScore: 4 }],
+      edges: [
+        { source: 0, fibonacciScore: 3 },
+        { source: 1, fibonacciScore: 4 },
+      ],
       outCarCentrality: [5, 6],
     };
 
-    const metrics = getAllGraphMetrics(preparedGraph, rawGraph, 0, 1, { mode: 'car', densityOpts: { maxRes: 32 } });
+    const metrics = getAllGraphMetrics(preparedGraph, rawGraph, 0, 1, {
+      mode: 'car',
+      densityOpts: { maxRes: 32 },
+    });
     expect(metrics.nodeCount).toBe(2);
     expect(metrics.edgeCount).toBe(2);
     expect(metrics.nodeDegreeSource).toBe(1);

@@ -51,7 +51,8 @@ function classifyFetchError(url, err) {
   if (isCrossOriginUrl(url) && err instanceof TypeError) {
     return {
       code: 'MissingAllowOriginHeader',
-      message: 'Cross-origin tile request failed. Ensure Access-Control-Allow-Origin includes this app origin or use a same-origin proxy.',
+      message:
+        'Cross-origin tile request failed. Ensure Access-Control-Allow-Origin includes this app origin or use a same-origin proxy.',
     };
   }
 

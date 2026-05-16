@@ -23,10 +23,10 @@ function benchmarkResultsSaver() {
           const body = rawBody ? JSON.parse(rawBody) : {};
           const { filename, payload } = body;
 
-          const validName = typeof filename === 'string' && (
-            /^\d{8}_\d{6}_benchmark_[a-z0-9-]+_(parallel|serial)\.json$/i.test(filename) ||
-            /^benchmark_[a-z0-9-]+_(parallel|serial)_\d{8}_\d{6}\.json$/i.test(filename)
-          );
+          const validName =
+            typeof filename === 'string' &&
+            (/^\d{8}_\d{6}_benchmark_[a-z0-9-]+_(parallel|serial)\.json$/i.test(filename) ||
+              /^benchmark_[a-z0-9-]+_(parallel|serial)_\d{8}_\d{6}\.json$/i.test(filename));
           if (!validName || payload == null) {
             res.statusCode = 400;
             res.setHeader('content-type', 'application/json');
@@ -55,15 +55,15 @@ function benchmarkResultsSaver() {
 export default defineConfig({
   plugins: [crossOriginIsolation(), benchmarkResultsSaver()],
   server: {
-    watch: null
+    watch: null,
   },
   resolve: {
     alias: [
       {
         find: 'fs',
-        replacement: resolve(__dirname, 'src/shims/fs-browser.js')
-      }
-    ]
+        replacement: resolve(__dirname, 'src/shims/fs-browser.js'),
+      },
+    ],
   },
   build: {
     target: 'es2020',
@@ -92,9 +92,9 @@ export default defineConfig({
       external: ['perf_hooks', 'crypto', 'fs'],
       transform: {
         define: {
-          'import.meta': '{}'
-        }
-      }
+          'import.meta': '{}',
+        },
+      },
     },
   },
 });

@@ -85,7 +85,9 @@ describe('MapLibreRoutingControl UI helpers', () => {
   it('updates isoline threshold UI for travelTime and distance modes', () => {
     const threshold = { value: '' };
     const unit = { textContent: '' };
-    const isoPanel = { querySelector: (selector) => (selector === '#rp-isoline-threshold' ? threshold : unit) };
+    const isoPanel = {
+      querySelector: (selector) => (selector === '#rp-isoline-threshold' ? threshold : unit),
+    };
     const ctrl = {
       _panel: { querySelector: (selector) => (selector === '#rp-isoline-panel' ? isoPanel : null) },
       _costField: 'travelTime',
@@ -104,7 +106,11 @@ describe('MapLibreRoutingControl UI helpers', () => {
   });
 
   it('does not throw when the isoline panel is missing during threshold updates', () => {
-    const ctrl = { _panel: { querySelector: () => null }, _costField: 'distance', _isoline: { maxCost: 100 } };
+    const ctrl = {
+      _panel: { querySelector: () => null },
+      _costField: 'distance',
+      _isoline: { maxCost: 100 },
+    };
     expect(() => updateIsolineThresholdUI(ctrl)).not.toThrow();
   });
 
@@ -145,7 +151,10 @@ describe('MapLibreRoutingControl UI helpers', () => {
 
     showStats(ctrl, {
       costField: 'distance',
-      coordinates: [[0, 0], [1, 0]],
+      coordinates: [
+        [0, 0],
+        [1, 0],
+      ],
       engine: 'cpu',
       parallelUsed: false,
       cost: 1200,
@@ -160,7 +169,10 @@ describe('MapLibreRoutingControl UI helpers', () => {
     showStats(ctrl, {
       costField: 'travelTime',
       cost: 420,
-      coordinates: [[0, 0], [0, 0]],
+      coordinates: [
+        [0, 0],
+        [0, 0],
+      ],
       engine: 'gpu',
       parallelUsed: true,
     });
@@ -175,18 +187,34 @@ describe('MapLibreRoutingControl UI helpers', () => {
         if (selector === '.rp-mode-btn') {
           return [
             { dataset: { mode: 'car' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() },
-            { dataset: { mode: 'pedestrian' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() },
+            {
+              dataset: { mode: 'pedestrian' },
+              classList: { toggle: vi.fn() },
+              setAttribute: vi.fn(),
+            },
           ];
         }
         if (selector === '.rp-cost-btn') {
           return [
-            { dataset: { costField: 'distance' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() },
-            { dataset: { costField: 'travelTime' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() },
+            {
+              dataset: { costField: 'distance' },
+              classList: { toggle: vi.fn() },
+              setAttribute: vi.fn(),
+            },
+            {
+              dataset: { costField: 'travelTime' },
+              classList: { toggle: vi.fn() },
+              setAttribute: vi.fn(),
+            },
           ];
         }
         if (selector === '.rp-isoline-direction-btn') {
           return [
-            { dataset: { direction: 'from' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() },
+            {
+              dataset: { direction: 'from' },
+              classList: { toggle: vi.fn() },
+              setAttribute: vi.fn(),
+            },
             { dataset: { direction: 'to' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() },
           ];
         }

@@ -16,7 +16,7 @@ Check the live example at [https://abelvm.github.io/omt-router/example](https://
 ## Features
 
 - **Zero backend, zero-provider** — No need for a routing backend or relying on a 3rd party API provider, `omt-router` builds the routing graph on-the-fly from **OpenMapTiles** formatted vector tiles
-- **Multi-engine routing** — bidirectional A*, Adaptive Barrier SSSP, Delta-Stepping, and Ultra Dijkstra
+- **Multi-engine routing** — bidirectional A\*, Adaptive Barrier SSSP, Delta-Stepping, and Ultra Dijkstra
 - **Automatic best engine selection** — runtime engine chooser uses benchmark-derived models and a generated selector module in `src/tuning/tuning.js`
 - **Three transport modes** — `car`, `pedestrian`, `bicycle`; respects OpenMapTiles access tags and road class hierarchy
 - **Two optimization strategies** — route length or travel time
@@ -30,17 +30,16 @@ Check the live example at [https://abelvm.github.io/omt-router/example](https://
 
 - Isolines / isoPHAST: [src/isolines/README.md](src/isolines/README.md)
 
-
 ## Available routing engines
 
 The library includes multiple engines and selects among them at runtime when `engineId: 'auto'` is used.
 
-| Engine ID | Algorithm | Parallel ready | Best fit |
-| --- | --- | :---: | --- |
-| `bidirectional-astar` | [Bidirectional A* with geographic heuristic](https://en.wikipedia.org/wiki/Bidirectional_search) |  | Reliable baseline and fallback engine |
-| `adaptive-barrier` | [Adaptive Barrier SSSP](https://doi.org/10.48550/arXiv.2504.17033) | ✓ | Dense and medium/large graphs, especially with parallel runtime available |
-| `delta-stepping` | [Delta-Stepping SSSP](https://en.wikipedia.org/wiki/Parallel_single-source_shortest_path_algorithm#Delta_stepping_algorithm) | ✓ | Large frontiers and bursty relax phases |
-| `ultra-dijkstra` | [Optimized Dijkstra with 4-ary heap](https://doi.org/10.48550/arXiv.1505.05033) |  | Stable performance on sparse or long-route cases |
+| Engine ID             | Algorithm                                                                                                                    | Parallel ready | Best fit                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | :------------: | ------------------------------------------------------------------------- |
+| `bidirectional-astar` | [Bidirectional A\* with geographic heuristic](https://en.wikipedia.org/wiki/Bidirectional_search)                            |                | Reliable baseline and fallback engine                                     |
+| `adaptive-barrier`    | [Adaptive Barrier SSSP](https://doi.org/10.48550/arXiv.2504.17033)                                                           |       ✓        | Dense and medium/large graphs, especially with parallel runtime available |
+| `delta-stepping`      | [Delta-Stepping SSSP](https://en.wikipedia.org/wiki/Parallel_single-source_shortest_path_algorithm#Delta_stepping_algorithm) |       ✓        | Large frontiers and bursty relax phases                                   |
+| `ultra-dijkstra`      | [Optimized Dijkstra with 4-ary heap](https://doi.org/10.48550/arXiv.1505.05033)                                              |                | Stable performance on sparse or long-route cases                          |
 
 Notes:
 
@@ -111,7 +110,13 @@ You can also use other OpenMapTiles-compatible providers (for example MapTiler) 
 The library exports `MapLibreRoutingControl` for MapLibre GL JS demos and integrations.
 
 ```js
-import { MapLibreRoutingControl, route, getEngineWorkerStatus, onEngineWorkerStatusChange, cancelRunningEngine } from 'omt-router';
+import {
+  MapLibreRoutingControl,
+  route,
+  getEngineWorkerStatus,
+  onEngineWorkerStatusChange,
+  cancelRunningEngine,
+} from 'omt-router';
 
 const control = new MapLibreRoutingControl({
   routeFunction: route,
@@ -134,40 +139,40 @@ map.on('contextmenu', (e) => {
 
 The routing control supports theme selection and custom panel styling via `theme` and `panelClassName`.
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `maplibre` | `object` | — | Required MapLibre GL JS library object (`maplibregl`) used to create markers and bounds. |
-| `tileJsonUrl` | `string` | — | Optional metadata endpoint returning `{ tiles: [urlTemplate] }`. Used when `urlTemplate` is not provided. |
-| `urlTemplate` | `string` | — | Optional tile URL template (`{z}/{x}/{y}.pbf`) for vector tiles. If provided, no metadata fetch is needed. |
-| `routeFunction` | `function` | `route` | Optional custom route implementation returning the routing result. |
-| `getEngineWorkerStatus` | `function` | — | Optional callback that returns the current engine worker status. |
-| `onEngineWorkerStatusChange` | `function` | — | Optional subscription hook for engine status changes. |
-| `cancelRunningEngine` | `function` | — | Optional cancel callback used when a route request times out or the control is removed. |
-| `defaultMode` | `string` | `car` | Initial transport mode: `car`, `pedestrian`, or `bicycle`. |
-| `defaultCostField` | `string` | `distance` | Initial cost optimization: `distance`, `travelTime`, or `optimal`. |
-| `theme` | `string` | `light` | UI theme for the control panel. Use `auto`, `light`, or `dark`. |
-| `panelClassName` | `string` | `` | Additional CSS class(es) added to the control panel root. |
-| `routeTimeoutMs` | `number` | `20000` | Route request timeout in milliseconds. |
-| `routeOptions` | `object` | `{ maxAutoRadius: 8, maxAcceptableSnapDistanceM: 60 }` | Passed through to the route engine. |
-| `showGraph` | `boolean` | `false` | Whether to render the internal graph overlay. |
-| `routeSourceId` | `string` | `omtr-route-source` | Map source ID for the route GeoJSON. |
-| `routeCasingLayerId` | `string` | `omtr-route-casing` | Map layer ID for the route casing line. |
-| `routeLayerId` | `string` | `omtr-route-line` | Map layer ID for the route line. |
-| `graphSourceId` | `string` | `omtr-graph-source` | Map source ID for the graph overlay GeoJSON. |
-| `graphLayerId` | `string` | `omtr-graph-line` | Map layer ID for the graph overlay line. |
-| `mapPosition` | `string` | `top-left` | Suggested MapLibre control position. |
-| `startColor` | `string` | `#2563eb` | Start route color. |
-| `endColor` | `string` | `#dc2626` | End route color. |
-| `locale` | `string` | `auto` | Base locale code to use, or `auto` to detect the browser language. |
-| `locale_override` | `object` | — | Partial locale text overrides merged into the selected locale. |
-| `localeOverride` | `object` | — | Legacy alias for `locale_override`. |
-| `tileUrlTransform` | `function` | — | Optional transformer applied to tile URLs on each request. |
-| `tileProxyTemplate` | `string` | — | Optional proxy template for route tile requests. |
-| `features` | `string` | `both` | Which features to show in the control panel: `routing`, `isolines`, or `both`. |
-| `isolineSourceId` | `string` | `omtr-isoline-source` | Map source ID for isoline GeoJSON polygons. |
-| `isolineFillLayerId` | `string` | `omtr-isoline-fill` | Map layer ID for isoline fill polygon. |
-| `isolineOutlineLayerId` | `string` | `omtr-isoline-outline` | Map layer ID for isoline outline. |
-| `isolineMaxCost` | `number` | `100 (m) / 900 (s)` | Default isoline max cost (interpreted as metres when `costField === 'distance'`, or seconds when `costField === 'travelTime'` or `costField === 'optimal'`). By default the control uses `100` metres for distance-based isolines and `900` seconds (15 minutes) for time-based isolines. The control UI displays minutes automatically for travel-time based cost fields. |
+| Option                       | Type       | Default                                                | Description                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------- | ---------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maplibre`                   | `object`   | —                                                      | Required MapLibre GL JS library object (`maplibregl`) used to create markers and bounds.                                                                                                                                                                                                                                                                                   |
+| `tileJsonUrl`                | `string`   | —                                                      | Optional metadata endpoint returning `{ tiles: [urlTemplate] }`. Used when `urlTemplate` is not provided.                                                                                                                                                                                                                                                                  |
+| `urlTemplate`                | `string`   | —                                                      | Optional tile URL template (`{z}/{x}/{y}.pbf`) for vector tiles. If provided, no metadata fetch is needed.                                                                                                                                                                                                                                                                 |
+| `routeFunction`              | `function` | `route`                                                | Optional custom route implementation returning the routing result.                                                                                                                                                                                                                                                                                                         |
+| `getEngineWorkerStatus`      | `function` | —                                                      | Optional callback that returns the current engine worker status.                                                                                                                                                                                                                                                                                                           |
+| `onEngineWorkerStatusChange` | `function` | —                                                      | Optional subscription hook for engine status changes.                                                                                                                                                                                                                                                                                                                      |
+| `cancelRunningEngine`        | `function` | —                                                      | Optional cancel callback used when a route request times out or the control is removed.                                                                                                                                                                                                                                                                                    |
+| `defaultMode`                | `string`   | `car`                                                  | Initial transport mode: `car`, `pedestrian`, or `bicycle`.                                                                                                                                                                                                                                                                                                                 |
+| `defaultCostField`           | `string`   | `distance`                                             | Initial cost optimization: `distance`, `travelTime`, or `optimal`.                                                                                                                                                                                                                                                                                                         |
+| `theme`                      | `string`   | `light`                                                | UI theme for the control panel. Use `auto`, `light`, or `dark`.                                                                                                                                                                                                                                                                                                            |
+| `panelClassName`             | `string`   | ``                                                     | Additional CSS class(es) added to the control panel root.                                                                                                                                                                                                                                                                                                                  |
+| `routeTimeoutMs`             | `number`   | `20000`                                                | Route request timeout in milliseconds.                                                                                                                                                                                                                                                                                                                                     |
+| `routeOptions`               | `object`   | `{ maxAutoRadius: 8, maxAcceptableSnapDistanceM: 60 }` | Passed through to the route engine.                                                                                                                                                                                                                                                                                                                                        |
+| `showGraph`                  | `boolean`  | `false`                                                | Whether to render the internal graph overlay.                                                                                                                                                                                                                                                                                                                              |
+| `routeSourceId`              | `string`   | `omtr-route-source`                                    | Map source ID for the route GeoJSON.                                                                                                                                                                                                                                                                                                                                       |
+| `routeCasingLayerId`         | `string`   | `omtr-route-casing`                                    | Map layer ID for the route casing line.                                                                                                                                                                                                                                                                                                                                    |
+| `routeLayerId`               | `string`   | `omtr-route-line`                                      | Map layer ID for the route line.                                                                                                                                                                                                                                                                                                                                           |
+| `graphSourceId`              | `string`   | `omtr-graph-source`                                    | Map source ID for the graph overlay GeoJSON.                                                                                                                                                                                                                                                                                                                               |
+| `graphLayerId`               | `string`   | `omtr-graph-line`                                      | Map layer ID for the graph overlay line.                                                                                                                                                                                                                                                                                                                                   |
+| `mapPosition`                | `string`   | `top-left`                                             | Suggested MapLibre control position.                                                                                                                                                                                                                                                                                                                                       |
+| `startColor`                 | `string`   | `#2563eb`                                              | Start route color.                                                                                                                                                                                                                                                                                                                                                         |
+| `endColor`                   | `string`   | `#dc2626`                                              | End route color.                                                                                                                                                                                                                                                                                                                                                           |
+| `locale`                     | `string`   | `auto`                                                 | Base locale code to use, or `auto` to detect the browser language.                                                                                                                                                                                                                                                                                                         |
+| `locale_override`            | `object`   | —                                                      | Partial locale text overrides merged into the selected locale.                                                                                                                                                                                                                                                                                                             |
+| `localeOverride`             | `object`   | —                                                      | Legacy alias for `locale_override`.                                                                                                                                                                                                                                                                                                                                        |
+| `tileUrlTransform`           | `function` | —                                                      | Optional transformer applied to tile URLs on each request.                                                                                                                                                                                                                                                                                                                 |
+| `tileProxyTemplate`          | `string`   | —                                                      | Optional proxy template for route tile requests.                                                                                                                                                                                                                                                                                                                           |
+| `features`                   | `string`   | `both`                                                 | Which features to show in the control panel: `routing`, `isolines`, or `both`.                                                                                                                                                                                                                                                                                             |
+| `isolineSourceId`            | `string`   | `omtr-isoline-source`                                  | Map source ID for isoline GeoJSON polygons.                                                                                                                                                                                                                                                                                                                                |
+| `isolineFillLayerId`         | `string`   | `omtr-isoline-fill`                                    | Map layer ID for isoline fill polygon.                                                                                                                                                                                                                                                                                                                                     |
+| `isolineOutlineLayerId`      | `string`   | `omtr-isoline-outline`                                 | Map layer ID for isoline outline.                                                                                                                                                                                                                                                                                                                                          |
+| `isolineMaxCost`             | `number`   | `100 (m) / 900 (s)`                                    | Default isoline max cost (interpreted as metres when `costField === 'distance'`, or seconds when `costField === 'travelTime'` or `costField === 'optimal'`). By default the control uses `100` metres for distance-based isolines and `900` seconds (15 minutes) for time-based isolines. The control UI displays minutes automatically for travel-time based cost fields. |
 
 All unspecified text fields in `locale_override` are filled from the selected built-in locale, and unsupported override keys are ignored.
 
@@ -266,17 +271,18 @@ const control = new MapLibreRoutingControl({
       timedOut: 'El enrutamiento agotó el tiempo y fue cancelado. Prueba otra ruta.',
       cancelled: 'Enrutamiento cancelado.',
       tileCors: 'Solicitud de mosaico bloqueada. Comprueba permisos CORS.',
-      poorSnap: 'No se encontró ruta porque los puntos se ajustaron mal. Usa puntos más cercanos a la vía.',
+      poorSnap:
+        'No se encontró ruta porque los puntos se ajustaron mal. Usa puntos más cercanos a la vía.',
       noNode: 'No se encontró ruta porque un punto no pudo enlazar con la red cargada.',
       noPath: 'No se encontró ruta porque la red está desconectada o el corredor es muy estrecho.',
       incompletePath: 'El motor devolvió una ruta incompleta. Revisa los datos de la red.',
-      noRoute: 'No hay ruta entre estos puntos. Puede deberse a una red desconectada o un fallo de enrutamiento.',
+      noRoute:
+        'No hay ruta entre estos puntos. Puede deberse a una red desconectada o un fallo de enrutamiento.',
       routeErrorPrefix: 'Error de enrutamiento —',
     },
   },
 });
 ```
-
 
 When a custom locale object is provided, the control resolves the base locale from `locale` (or legacy `language` when present), then merges only supported text keys while preserving the built-in locale shape.
 
@@ -313,35 +319,34 @@ const metadata = await fetch('https://tiles.openfreemap.org/planet').then((r) =>
 const urlTemplate = metadata.tiles[0];
 
 const result = await route(
-  [-3.7038, 40.4168],   // origin  [lng, lat]
-  [-3.6937, 40.4101],   // destination
-  'car',                // 'car' | 'pedestrian' | 'bicycle'
+  [-3.7038, 40.4168], // origin  [lng, lat]
+  [-3.6937, 40.4101], // destination
+  'car', // 'car' | 'pedestrian' | 'bicycle'
   urlTemplate,
   { costField: 'travelTime' } // 'distance' | 'travelTime' | 'optimal'
 );
 
-console.log(result.found);        // true
-console.log(result.coordinates);  // [[lng, lat], ...]  — draw on a map
-console.log(result.cost);         // total route cost for the selected costField
+console.log(result.found); // true
+console.log(result.coordinates); // [[lng, lat], ...]  — draw on a map
+console.log(result.cost); // total route cost for the selected costField
 ```
 
 MapTiler (or another provider) also works:
 
 ```js
-const urlTemplate =
-  'https://api.maptiler.com/tiles/v3-openmaptiles/{z}/{x}/{y}.pbf?key=YOUR_KEY';
+const urlTemplate = 'https://api.maptiler.com/tiles/v3-openmaptiles/{z}/{x}/{y}.pbf?key=YOUR_KEY';
 ```
 
 The returned object:
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `found` | `boolean` | Whether a path was found |
-| `path` | `number[]` | Sequence of internal node IDs |
-| `coordinates` | `[number, number][]` | `[lng, lat]` pairs ready for GeoJSON |
-| `cost` | `number` | Total route cost (`distance` in metres or `travelTime` in seconds) |
-| `costField` | `string` | Cost field used to optimize the route (`optimal` uses priority-weighted travel time) |
-| `partialGraph` | `boolean` | `true` when route was computed against a partial graph with missing tiles |
+| Field          | Type                 | Description                                                                          |
+| -------------- | -------------------- | ------------------------------------------------------------------------------------ |
+| `found`        | `boolean`            | Whether a path was found                                                             |
+| `path`         | `number[]`           | Sequence of internal node IDs                                                        |
+| `coordinates`  | `[number, number][]` | `[lng, lat]` pairs ready for GeoJSON                                                 |
+| `cost`         | `number`             | Total route cost (`distance` in metres or `travelTime` in seconds)                   |
+| `costField`    | `string`             | Cost field used to optimize the route (`optimal` uses priority-weighted travel time) |
+| `partialGraph` | `boolean`            | `true` when route was computed against a partial graph with missing tiles            |
 
 ---
 
@@ -351,24 +356,23 @@ The returned object:
 
 High-level convenience function. Fetches the necessary tiles, builds the graph, and returns the route.
 
-
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `start` | `[lng, lat]` | — | Origin coordinate |
-| `end` | `[lng, lat]` | — | Destination coordinate |
-| `mode` | `string` | — | `'car'`, `'pedestrian'`, or `'bicycle'` |
-| `urlTemplate` | `string` | — | MVT tile URL with `{z}`, `{x}`, `{y}` placeholders |
-| `options.zoom` | `number` | `14` | Tile zoom level |
-| `options.schema` | `string` | `'zxy'` | Tile schema: `'zxy'` or `'tms'` |
-| `options.radius` | `number` | `auto-computed` | Optional fixed tile radius around the route corridor |
-| `options.maxAutoRadius` | `number` | `8` | Maximum radius used by adaptive retry loop (floored to integer and clamped ≤ 10) |
-| `options.engineId` | `string` | `auto` | Engine selector hint: `'auto'` (default) or one of `'bidirectional-astar'`, `'adaptive-barrier'`, `'delta-stepping'`, `'ultra-dijkstra'`. When `'auto'`, the runtime selector chooses the engine. |
-| `options.costField` | `string` | `'distance'` | Route optimization target: `'distance'`, `'travelTime'`, or `'optimal'` |
-| `options.penalties` | `object` | `{ intersectionPenaltySec: 0, turnPenaltySec: 0, turnAngleThresholdDeg: 25 }` | Travel-time penalty controls: `intersectionPenaltySec` is applied during graph preparation (`buildCH()`); `turnPenaltySec` is accepted but currently ignored by engine routing; `turnAngleThresholdDeg` is validated. |
-| `options.maxAcceptableSnapDistanceM` | `number` | `60` | Maximum allowed snap distance from endpoint to graph node |
-| `options.includeGraph` | `boolean` | `false` | When true, the returned result includes the prepared `graph` object (useful for debugging). |
-| `options.tileProxyTemplate` | `string` | — | Optional same-origin proxy template. Supports `{url}` (encoded), or the template may be concatenated with the encoded tile URL; placeholders `{z}`, `{x}`, `{y}` are also supported. |
-| `options.tileUrlTransform` | `(rawUrl, tile) => string` | — | Optional per-tile URL rewrite hook. Must return a string; otherwise an error is thrown. |
+| Parameter                            | Type                       | Default                                                                       | Description                                                                                                                                                                                                           |
+| ------------------------------------ | -------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`                              | `[lng, lat]`               | —                                                                             | Origin coordinate                                                                                                                                                                                                     |
+| `end`                                | `[lng, lat]`               | —                                                                             | Destination coordinate                                                                                                                                                                                                |
+| `mode`                               | `string`                   | —                                                                             | `'car'`, `'pedestrian'`, or `'bicycle'`                                                                                                                                                                               |
+| `urlTemplate`                        | `string`                   | —                                                                             | MVT tile URL with `{z}`, `{x}`, `{y}` placeholders                                                                                                                                                                    |
+| `options.zoom`                       | `number`                   | `14`                                                                          | Tile zoom level                                                                                                                                                                                                       |
+| `options.schema`                     | `string`                   | `'zxy'`                                                                       | Tile schema: `'zxy'` or `'tms'`                                                                                                                                                                                       |
+| `options.radius`                     | `number`                   | `auto-computed`                                                               | Optional fixed tile radius around the route corridor                                                                                                                                                                  |
+| `options.maxAutoRadius`              | `number`                   | `8`                                                                           | Maximum radius used by adaptive retry loop (floored to integer and clamped ≤ 10)                                                                                                                                      |
+| `options.engineId`                   | `string`                   | `auto`                                                                        | Engine selector hint: `'auto'` (default) or one of `'bidirectional-astar'`, `'adaptive-barrier'`, `'delta-stepping'`, `'ultra-dijkstra'`. When `'auto'`, the runtime selector chooses the engine.                     |
+| `options.costField`                  | `string`                   | `'distance'`                                                                  | Route optimization target: `'distance'`, `'travelTime'`, or `'optimal'`                                                                                                                                               |
+| `options.penalties`                  | `object`                   | `{ intersectionPenaltySec: 0, turnPenaltySec: 0, turnAngleThresholdDeg: 25 }` | Travel-time penalty controls: `intersectionPenaltySec` is applied during graph preparation (`buildCH()`); `turnPenaltySec` is accepted but currently ignored by engine routing; `turnAngleThresholdDeg` is validated. |
+| `options.maxAcceptableSnapDistanceM` | `number`                   | `60`                                                                          | Maximum allowed snap distance from endpoint to graph node                                                                                                                                                             |
+| `options.includeGraph`               | `boolean`                  | `false`                                                                       | When true, the returned result includes the prepared `graph` object (useful for debugging).                                                                                                                           |
+| `options.tileProxyTemplate`          | `string`                   | —                                                                             | Optional same-origin proxy template. Supports `{url}` (encoded), or the template may be concatenated with the encoded tile URL; placeholders `{z}`, `{x}`, `{y}` are also supported.                                  |
+| `options.tileUrlTransform`           | `(rawUrl, tile) => string` | —                                                                             | Optional per-tile URL rewrite hook. Must return a string; otherwise an error is thrown.                                                                                                                               |
 
 The route result also includes runtime metadata fields such as `engine`, optional `fallback`, `startSnapDistanceM`, `endSnapDistanceM`, and diagnostic fields `partialGraph`, `hasMissingTiles`, and `missingTileErrors`. `partialGraph` is `true` whenever the route was calculated against a graph with missing tiles. On failure the result includes a `reason` (for example `no_path`, `no_node`, `poor_snap`, `incomplete_path`, `tile_cors`).
 
@@ -376,11 +380,11 @@ The route result also includes runtime metadata fields such as `engine`, optiona
 
 Batch routing helper that runs multiple `route()` requests in parallel. Useful when you need to compute many independent routes in the same session while reusing the shared tile cache and worker pool.
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `requests` | `Array<Object>` | — | Array of route request objects. Each item must include `start`, `end`, `mode`, and may include `costField`. |
-| `urlTemplate` | `string` | — | Tile URL template with `{z}`, `{x}`, `{y}` placeholders. |
-| `options` | `object` | `undefined` | Same options as `route()`, including `useWorkerPool` (`false`), `engineWorkerPoolSize` (`undefined`), and `engineWorkerMaxPoolSize` (`undefined`). |
+| Parameter     | Type            | Default     | Description                                                                                                                                        |
+| ------------- | --------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requests`    | `Array<Object>` | —           | Array of route request objects. Each item must include `start`, `end`, `mode`, and may include `costField`.                                        |
+| `urlTemplate` | `string`        | —           | Tile URL template with `{z}`, `{x}`, `{y}` placeholders.                                                                                           |
+| `options`     | `object`        | `undefined` | Same options as `route()`, including `useWorkerPool` (`false`), `engineWorkerPoolSize` (`undefined`), and `engineWorkerMaxPoolSize` (`undefined`). |
 
 Each request object has the shape:
 
@@ -398,7 +402,7 @@ Example:
 ```js
 const batch = [
   { start: [-3.7038, 40.4168], end: [-3.6937, 40.4101], mode: 'car', costField: 'distance' },
-  { start: [-3.7020, 40.4080], end: [-3.7050, 40.4150], mode: 'pedestrian', costField: 'travelTime' },
+  { start: [-3.702, 40.408], end: [-3.705, 40.415], mode: 'pedestrian', costField: 'travelTime' },
 ];
 
 const results = await routeBatch(batch, urlTemplate, {
@@ -451,7 +455,7 @@ Key options:
 - `snapDistancesM`: snap search ladder (default `[250, 500, 800]`)
 - `maxAcceptableSnapDistanceM`: snap-quality guard (default `60`)
 - `graphCategory`: optional selector hint (`city-center`, `city-consolidated`, `suburban`, `countryside`)
- - `engineId`: `'auto'` or one of `'bidirectional-astar'`, `'adaptive-barrier'`, `'delta-stepping'`, `'ultra-dijkstra'`. When provided, forwarded to `queryRoute()` as an engine selection hint.
+- `engineId`: `'auto'` or one of `'bidirectional-astar'`, `'adaptive-barrier'`, `'delta-stepping'`, `'ultra-dijkstra'`. When provided, forwarded to `queryRoute()` as an engine selection hint.
 
 ### `buildCH(graph, costField?)`
 
@@ -553,11 +557,11 @@ The returned result includes selected engine metadata and fallback information w
 
 Road filtering follows the [OpenMapTiles transportation schema](https://openmaptiles.org/schema/#transportation):
 
-| Mode | Allowed classes | Excluded |
-| --- | --- | --- |
-| `car` | motorway(_link), trunk(_link), primary(_link), secondary(_link), tertiary(_link), minor, service, track | pedestrian/footway/cycleway/steps/bridleway/corridor subclasses |
-| `pedestrian` | path, minor, service, track (+ pedestrian/footway/steps/path/corridor/platform subclasses) | motorways and non-foot-access roads |
-| `bicycle` | path, minor, service, tertiary, secondary, track (+ cycleway/path subclasses) | motorway, motorway_link, non-bicycle-access roads |
+| Mode         | Allowed classes                                                                                              | Excluded                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| `car`        | motorway(\_link), trunk(\_link), primary(\_link), secondary(\_link), tertiary(\_link), minor, service, track | pedestrian/footway/cycleway/steps/bridleway/corridor subclasses |
+| `pedestrian` | path, minor, service, track (+ pedestrian/footway/steps/path/corridor/platform subclasses)                   | motorways and non-foot-access roads                             |
+| `bicycle`    | path, minor, service, tertiary, secondary, track (+ cycleway/path subclasses)                                | motorway, motorway_link, non-bicycle-access roads               |
 
 Per-class default speeds (km/h) are used to compute `travelTime` edges (motorway 120 → path/pedestrian 5).
 

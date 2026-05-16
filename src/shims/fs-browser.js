@@ -3,5 +3,5 @@ export function writeFileSync() {
 }
 
 export default {
-  writeFileSync
+  writeFileSync,
 };

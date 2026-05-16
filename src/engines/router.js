@@ -31,7 +31,7 @@ if (typeof PowerPool !== 'undefined' && PowerPool.prototype?._postToWorkerObj) {
     startTime,
     wantResponse,
     correlationKey,
-    pendingPromise,
+    pendingPromise
   ) {
     const canBypassWrapper =
       prepared &&
@@ -53,7 +53,7 @@ if (typeof PowerPool !== 'undefined' && PowerPool.prototype?._postToWorkerObj) {
         obj.lastActive = startTime;
         if (this._isIdle) this._updateIdleState();
         return wantResponse ? pendingPromise : true;
-      } catch (err) {
+      } catch (_err) {
         // Fallback to the original behavior if direct postMessage fails.
       }
     }
@@ -65,7 +65,7 @@ if (typeof PowerPool !== 'undefined' && PowerPool.prototype?._postToWorkerObj) {
       startTime,
       wantResponse,
       correlationKey,
-      pendingPromise,
+      pendingPromise
     );
   };
 }
@@ -93,7 +93,7 @@ import {
   validateEngineId,
 } from '../utils/routeValidation.js';
 import EngineMainWorker from './engineMainWorker?worker&inline';
-import { getAllGraphMetrics } from '../graphs/graphMetrics.js'; 
+import { getAllGraphMetrics } from '../graphs/graphMetrics.js';
 
 /**
  * @typedef {[number, number]} LatLng
@@ -326,7 +326,8 @@ function ensureEngineWorker() {
 
     if (message.ok) {
       emitEngineWorkerStatus({
-        state: _engineWorkerJobs.size > 0 ? ENGINE_WORKER_STATES.RUNNING : ENGINE_WORKER_STATES.IDLE,
+        state:
+          _engineWorkerJobs.size > 0 ? ENGINE_WORKER_STATES.RUNNING : ENGINE_WORKER_STATES.IDLE,
         running: _engineWorkerJobs.size > 0,
         engineId: _engineWorkerJobs.size > 0 ? _engineWorkerStatus.engineId : null,
         requestId: _engineWorkerJobs.size > 0 ? _engineWorkerStatus.requestId : null,
@@ -346,7 +347,12 @@ function ensureEngineWorker() {
       startedAt: null,
       lastError: message.error?.message ?? 'engine worker error',
     });
-    reject(makeEngineError(message.error?.message ?? 'engine worker failed', EngineErrorCode.ENGINE_WORKER_FAILED));
+    reject(
+      makeEngineError(
+        message.error?.message ?? 'engine worker failed',
+        EngineErrorCode.ENGINE_WORKER_FAILED
+      )
+    );
   };
 
   _engineWorker.onerror = (event) => {
@@ -457,7 +463,9 @@ function attachPreparedWorkerTransferMethods(prepared) {
       isDetachedArray(this.revAdjFrom) ||
       isDetachedArray(this.revAdjCost)
     ) {
-      throw new Error('Prepared graph was transferred without a main-thread backup and cannot be reclaimed.');
+      throw new Error(
+        'Prepared graph was transferred without a main-thread backup and cannot be reclaimed.'
+      );
     }
 
     ensurePreparedCoordsArrays(this);
@@ -506,10 +514,14 @@ function getPreparedWorkerTransferables(serializedPrepared) {
   ];
 }
 
-async function runEngineDirect(selectedEngine, startId, endId, prepared, beelineM, {
-  forceSerialRouting = false,
-  parallelPolicy = null,
-} = {}) {
+async function runEngineDirect(
+  selectedEngine,
+  startId,
+  endId,
+  prepared,
+  beelineM,
+  { forceSerialRouting = false, parallelPolicy = null } = {}
+) {
   if (prepared?.reclaimFromWorker) {
     prepared.reclaimFromWorker();
   }
@@ -546,9 +558,10 @@ async function runEngineDirect(selectedEngine, startId, endId, prepared, beeline
 
 async function getEngineWorkerPool(maxSize = null) {
   if (typeof Worker === 'undefined') return null;
-  const desiredSize = Number.isFinite(Number(maxSize)) && Number(maxSize) > 0
-    ? Math.min(Math.max(1, Math.floor(Number(maxSize))), ENGINE_WORKER_POOL_MAX_SIZE)
-    : ENGINE_WORKER_POOL_DEFAULT_SIZE;
+  const desiredSize =
+    Number.isFinite(Number(maxSize)) && Number(maxSize) > 0
+      ? Math.min(Math.max(1, Math.floor(Number(maxSize))), ENGINE_WORKER_POOL_MAX_SIZE)
+      : ENGINE_WORKER_POOL_DEFAULT_SIZE;
 
   if (_engineWorkerPool && _engineWorkerPoolSize >= desiredSize) {
     return _engineWorkerPool;
@@ -586,12 +599,19 @@ async function getEngineWorkerPool(maxSize = null) {
   return _engineWorkerPool;
 }
 
-async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
-  forceSerialRouting = false,
-  parallelPolicy = null,
-} = {}) {
+async function runEngineInWorker(
+  selectedEngine,
+  startId,
+  endId,
+  prepared,
+  { forceSerialRouting = false, parallelPolicy = null } = {}
+) {
   const worker = ensureEngineWorker();
-  if (!worker) throw makeEngineError('engine worker is unavailable', EngineErrorCode.ENGINE_WORKER_UNAVAILABLE);
+  if (!worker)
+    throw makeEngineError(
+      'engine worker is unavailable',
+      EngineErrorCode.ENGINE_WORKER_UNAVAILABLE
+    );
 
   const requestId = ++_engineWorkerRequestId;
   const startedAt = Date.now();
@@ -620,7 +640,7 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
       const serializedPrepared = serializePreparedForEngineWorker(prepared);
       worker.postMessage(
         { type: 'prepare', prepared: serializedPrepared },
-        getPreparedWorkerTransferables(serializedPrepared),
+        getPreparedWorkerTransferables(serializedPrepared)
       );
       _engineWorkerPreparedIdInWorker = preparedId;
     }
@@ -638,13 +658,19 @@ async function runEngineInWorker(selectedEngine, startId, endId, prepared, {
   });
 }
 
-async function runEngineInWorkerPool(selectedEngine, startId, endId, prepared, {
-  forceSerialRouting = false,
-  parallelPolicy = null,
-  engineWorkerPoolSize = null,
-} = {}) {
+async function runEngineInWorkerPool(
+  selectedEngine,
+  startId,
+  endId,
+  prepared,
+  { forceSerialRouting = false, parallelPolicy = null, engineWorkerPoolSize = null } = {}
+) {
   const pool = await getEngineWorkerPool(engineWorkerPoolSize);
-  if (!pool) throw makeEngineError('engine worker pool is unavailable', EngineErrorCode.ENGINE_WORKER_UNAVAILABLE);
+  if (!pool)
+    throw makeEngineError(
+      'engine worker pool is unavailable',
+      EngineErrorCode.ENGINE_WORKER_UNAVAILABLE
+    );
 
   const requestId = `request-${++_engineWorkerRequestId}`;
   const serializedPrepared = clonePreparedForEngineWorker(prepared);
@@ -661,13 +687,13 @@ async function runEngineInWorkerPool(selectedEngine, startId, endId, prepared, {
       parallelPolicy,
     },
     transferables,
-    { awaitResponse: true, zeroCopy: true },
+    { awaitResponse: true, zeroCopy: true }
   );
 
   if (!response || response.ok !== true) {
     throw makeEngineError(
       `engine worker pool failed: ${response?.error?.message ?? 'unknown error'}`,
-      EngineErrorCode.ENGINE_WORKER_FAILED,
+      EngineErrorCode.ENGINE_WORKER_FAILED
     );
   }
 
@@ -679,7 +705,7 @@ export function getEngineWorkerStatus() {
 }
 
 export function onEngineWorkerStatusChange(listener) {
-  if (typeof listener !== 'function') return () => { };
+  if (typeof listener !== 'function') return () => {};
   _engineWorkerStatusListeners.add(listener);
   listener({ ..._engineWorkerStatus });
   return () => {
@@ -698,7 +724,9 @@ export function cancelRunningEngine(reason = 'cancelled') {
   });
 
   terminateEngineWorker();
-  rejectAllEngineJobs(makeEngineError(`routing cancelled: ${reason}`, EngineErrorCode.ENGINE_CANCELLED));
+  rejectAllEngineJobs(
+    makeEngineError(`routing cancelled: ${reason}`, EngineErrorCode.ENGINE_CANCELLED)
+  );
 
   emitEngineWorkerStatus({
     state: ENGINE_WORKER_STATES.IDLE,
@@ -732,7 +760,9 @@ export function shutdownEngineWorker(reason = 'shutdown') {
       requestCount: _engineWorkerJobs.size,
     });
 
-    rejectAllEngineJobs(makeEngineError(`engine shutdown: ${reason}`, EngineErrorCode.ENGINE_SHUTDOWN));
+    rejectAllEngineJobs(
+      makeEngineError(`engine shutdown: ${reason}`, EngineErrorCode.ENGINE_SHUTDOWN)
+    );
   }
 
   terminateEngineWorker();
@@ -762,8 +792,6 @@ function buildRouteCacheKey(prepared, startId, endId, engineId) {
     engineId,
   ].join(':');
 }
-
-
 
 function getPenaltyKey(costField, penalties = {}) {
   if (!isTravelTimeCostField(costField)) return 'none';
@@ -911,7 +939,9 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   // Flat triples [src, tgt, cost, src, tgt, cost, ...] for CSR pass 1/2.
   const fwdRaw = new Int32Array(maxDE * 3);
   const revRaw = new Int32Array(maxDE * 3);
-  let eCount = 0, fwdLen = 0, revLen = 0;
+  let eCount = 0,
+    fwdLen = 0,
+    revLen = 0;
   // Use Map<src, Set<tgt>> for deduplication
   const seen = new Map();
 
@@ -932,26 +962,32 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
     edgeTgt[eCount] = tgt;
     edgeCostInt[eCount] = costInt;
     eCount++;
-    fwdRaw[fwdLen++] = src; fwdRaw[fwdLen++] = tgt; fwdRaw[fwdLen++] = costInt;
-    revRaw[revLen++] = tgt; revRaw[revLen++] = src; revRaw[revLen++] = costInt;
+    fwdRaw[fwdLen++] = src;
+    fwdRaw[fwdLen++] = tgt;
+    fwdRaw[fwdLen++] = costInt;
+    revRaw[revLen++] = tgt;
+    revRaw[revLen++] = src;
+    revRaw[revLen++] = costInt;
   };
 
   for (const edge of edges) {
     const useTravelTime = isTravelTimeCostField(costField);
-    const fwdFloat = edge.cost !== -1
-      ? useTravelTime
-        ? costField === 'optimal'
-          ? getOptimalTravelTimeCost(edge, graph.mode)
-          : edge.travelTime
-        : edge.length
-      : -1;
-    const bwdFloat = edge.reverseCost !== -1
-      ? useTravelTime
-        ? costField === 'optimal'
-          ? getOptimalTravelTimeCost(edge, graph.mode)
-          : edge.travelTime
-        : edge.length
-      : -1;
+    const fwdFloat =
+      edge.cost !== -1
+        ? useTravelTime
+          ? costField === 'optimal'
+            ? getOptimalTravelTimeCost(edge, graph.mode)
+            : edge.travelTime
+          : edge.length
+        : -1;
+    const bwdFloat =
+      edge.reverseCost !== -1
+        ? useTravelTime
+          ? costField === 'optimal'
+            ? getOptimalTravelTimeCost(edge, graph.mode)
+            : edge.travelTime
+          : edge.length
+        : -1;
     if (fwdFloat !== -1) addEdge(edge.source, edge.target, fwdFloat);
     if (bwdFloat !== -1) addEdge(edge.target, edge.source, bwdFloat);
   }
@@ -976,7 +1012,9 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   // Pass 2: fill (cursor tracks next write position per node)
   const adjCursor = adjPtr.slice(0, N); // copy of prefix sums as write cursors
   for (let i = 0; i < fwdLen; i += 3) {
-    const src = fwdRaw[i], tgt = fwdRaw[i + 1], cost = fwdRaw[i + 2];
+    const src = fwdRaw[i],
+      tgt = fwdRaw[i + 1],
+      cost = fwdRaw[i + 2];
     const pos = adjCursor[src]++;
     adjTo[pos] = tgt;
     adjCost[pos] = cost;
@@ -991,7 +1029,9 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   for (let u = 0; u < N; u++) revAdjPtr[u + 1] += revAdjPtr[u];
   const revCursor = revAdjPtr.slice(0, N);
   for (let i = 0; i < revLen; i += 3) {
-    const tgt = revRaw[i], src = revRaw[i + 1], cost = revRaw[i + 2];
+    const tgt = revRaw[i],
+      src = revRaw[i + 1],
+      cost = revRaw[i + 2];
     const pos = revCursor[tgt]++;
     revAdjFrom[pos] = src;
     revAdjCost[pos] = cost;
@@ -1057,11 +1097,21 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   }
 
   return {
-    edgeSrc: chEdgeSrc, edgeTgt: chEdgeTgt, edgeCostInt: chEdgeCostInt,
-    adjPtr, adjTo, adjCost,
+    edgeSrc: chEdgeSrc,
+    edgeTgt: chEdgeTgt,
+    edgeCostInt: chEdgeCostInt,
+    adjPtr,
+    adjTo,
+    adjCost,
     adjCostMap,
-    revAdjPtr, revAdjFrom, revAdjCost,
-    N, E, nodes, coordsArr, costField,
+    revAdjPtr,
+    revAdjFrom,
+    revAdjCost,
+    N,
+    E,
+    nodes,
+    coordsArr,
+    costField,
     penalties: normalizedPenalties,
     penaltyKey: getPenaltyKey(costField, normalizedPenalties),
     distScale: DIST_SCALE,
@@ -1078,25 +1128,35 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
  * @returns {Promise<RouteResult>}
  * @throws {Error} When route request arguments are invalid.
  */
-export async function queryRoute(startId, endId, prepared, {
-  forceEngine = null,
-  engineId = 'auto',
-  graphCategory: _graphCategory = '',
-  costField: _costField = prepared.costField ?? 'distance',
-  useCache = true,
-  allowFallback = true,
-  forceSerialRouting = false,
-  useWorkerPool = false,
-  engineWorkerPoolSize = null,
-  engineWorkerMaxPoolSize = null,
-} = {}) {
+export async function queryRoute(
+  startId,
+  endId,
+  prepared,
+  {
+    forceEngine = null,
+    engineId = 'auto',
+    graphCategory: _graphCategory = '',
+    costField: _costField = prepared.costField ?? 'distance',
+    useCache = true,
+    allowFallback = true,
+    forceSerialRouting = false,
+    useWorkerPool = false,
+    engineWorkerPoolSize = null,
+    _engineWorkerMaxPoolSize = null,
+  } = {}
+) {
   if (!Number.isInteger(startId) || startId < 0) {
     throw new Error('Invalid startId: expected a non-negative integer.');
   }
   if (!Number.isInteger(endId) || endId < 0) {
     throw new Error('Invalid endId: expected a non-negative integer.');
   }
-  if (!prepared || typeof prepared !== 'object' || !Array.isArray(prepared.coordsArr) || !ArrayBuffer.isView(prepared.adjPtr)) {
+  if (
+    !prepared ||
+    typeof prepared !== 'object' ||
+    !Array.isArray(prepared.coordsArr) ||
+    !ArrayBuffer.isView(prepared.adjPtr)
+  ) {
     throw new Error('Invalid prepared graph object: expected result of buildCH().');
   }
 
@@ -1115,18 +1175,13 @@ export async function queryRoute(startId, endId, prepared, {
   const beelineM = haversine(startNodeCoords, endNodeCoords);
   const hasParallelRuntime = PARALLEL_ROUTING_RUNTIME_AVAILABLE;
 
-  const selectedEngine = engineId === 'auto'
-    ? selectBestEngine(prepared.metrics)
-    : engineId;
+  const selectedEngine = engineId === 'auto' ? selectBestEngine(prepared.metrics) : engineId;
   const normalizedSelectedEngine = normalizeEngineId(selectedEngine, 'bidirectional-astar');
   let resolvedForceSerialRouting = Boolean(forceSerialRouting);
   let parallelPolicy = null;
 
   if (!resolvedForceSerialRouting) {
-    parallelPolicy = getParallelPolicyForEngine(
-      normalizedSelectedEngine,
-      hasParallelRuntime,
-    );
+    parallelPolicy = getParallelPolicyForEngine(normalizedSelectedEngine, hasParallelRuntime);
     resolvedForceSerialRouting = !parallelPolicy;
   }
 
@@ -1159,7 +1214,7 @@ export async function queryRoute(startId, endId, prepared, {
       }
 
       logger.warn(
-        `route cache stale/invalid (${cachedValidation.reason ?? 'unknown'}), recomputing (${cacheKey})`,
+        `route cache stale/invalid (${cachedValidation.reason ?? 'unknown'}), recomputing (${cacheKey})`
       );
     }
   }
@@ -1183,16 +1238,26 @@ export async function queryRoute(startId, endId, prepared, {
           parallelPolicy,
         });
       } catch (error) {
-        if (error?.code === EngineErrorCode.ENGINE_CANCELLED || error?.code === EngineErrorCode.ENGINE_WORKER_BUSY) {
+        if (
+          error?.code === EngineErrorCode.ENGINE_CANCELLED ||
+          error?.code === EngineErrorCode.ENGINE_WORKER_BUSY
+        ) {
           throw error;
         }
         logger.warn(
-          `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`,
+          `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`
         );
-        result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
-          forceSerialRouting: resolvedForceSerialRouting,
-          parallelPolicy,
-        });
+        result = await runEngineDirect(
+          normalizedSelectedEngine,
+          startId,
+          endId,
+          prepared,
+          beelineM,
+          {
+            forceSerialRouting: resolvedForceSerialRouting,
+            parallelPolicy,
+          }
+        );
       }
     }
   } else {
@@ -1207,7 +1272,7 @@ export async function queryRoute(startId, endId, prepared, {
         throw error;
       }
       logger.warn(
-        `engine worker pool unavailable (${error?.code ?? 'unknown_error'}), falling back to route worker singleton or main thread`,
+        `engine worker pool unavailable (${error?.code ?? 'unknown_error'}), falling back to route worker singleton or main thread`
       );
       try {
         result = await runEngineInWorker(normalizedSelectedEngine, startId, endId, prepared, {
@@ -1215,10 +1280,17 @@ export async function queryRoute(startId, endId, prepared, {
           parallelPolicy,
         });
       } catch (_fallbackError) {
-        result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
-          forceSerialRouting: resolvedForceSerialRouting,
-          parallelPolicy,
-        });
+        result = await runEngineDirect(
+          normalizedSelectedEngine,
+          startId,
+          endId,
+          prepared,
+          beelineM,
+          {
+            forceSerialRouting: resolvedForceSerialRouting,
+            parallelPolicy,
+          }
+        );
       }
     }
   }
@@ -1228,7 +1300,7 @@ export async function queryRoute(startId, endId, prepared, {
   let validation = validateRouteResult(result, prepared, { startId, endId });
   if (result?.found && !validation.valid && allowFallback) {
     logger.warn(
-      `engine "${normalizedSelectedEngine}" returned an invalid route (${validation.reason}), retrying with bidirectional A*`,
+      `engine "${normalizedSelectedEngine}" returned an invalid route (${validation.reason}), retrying with bidirectional A*`
     );
     fallback = {
       from: normalizedSelectedEngine,
@@ -1257,7 +1329,7 @@ export async function queryRoute(startId, endId, prepared, {
 
   if (!result?.found && normalizedSelectedEngine !== 'bidirectional-astar' && allowFallback) {
     logger.warn(
-      `engine "${normalizedSelectedEngine}" returned no path, retrying with bidirectional A* for correctness`,
+      `engine "${normalizedSelectedEngine}" returned no path, retrying with bidirectional A* for correctness`
     );
     fallback = {
       from: normalizedSelectedEngine,
@@ -1293,15 +1365,10 @@ export function prepareRoutableGraph(
   graph,
   startCoords,
   endCoords,
-  {
-    snapDistancesM,
-    maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
-  } = {},
+  { snapDistancesM, maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M } = {}
 ) {
   const distances =
-    Array.isArray(snapDistancesM) && snapDistancesM.length > 0
-      ? snapDistancesM
-      : [250, 500, 800];
+    Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];
 
   let workingGraph = graph;
   let startId = -1;
@@ -1323,8 +1390,18 @@ export function prepareRoutableGraph(
   let endCandidate = { type: 'none' };
 
   for (const maxDistM of distances) {
-    startCandidate = chooseEndpointCandidate(startCoords, workingGraph, maxDistM, maxAcceptableSnapDistanceM);
-    endCandidate = chooseEndpointCandidate(endCoords, workingGraph, maxDistM, maxAcceptableSnapDistanceM);
+    startCandidate = chooseEndpointCandidate(
+      startCoords,
+      workingGraph,
+      maxDistM,
+      maxAcceptableSnapDistanceM
+    );
+    endCandidate = chooseEndpointCandidate(
+      endCoords,
+      workingGraph,
+      maxDistM,
+      maxAcceptableSnapDistanceM
+    );
     usedSnapDistanceM = maxDistM;
     if (startCandidate.type !== 'none' && endCandidate.type !== 'none') break;
   }
@@ -1345,7 +1422,10 @@ export function prepareRoutableGraph(
     };
   }
 
-  if (startCandidate.type === 'segment' && startCandidate.snapDistanceM <= maxAcceptableSnapDistanceM) {
+  if (
+    startCandidate.type === 'segment' &&
+    startCandidate.snapDistanceM <= maxAcceptableSnapDistanceM
+  ) {
     const snapResult = createAugmentedGraph(workingGraph, startCandidate.segmentSnap);
     workingGraph = snapResult;
     startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
@@ -1356,7 +1436,12 @@ export function prepareRoutableGraph(
   }
 
   if (startSnapApplied) {
-    endCandidate = findEndpointCandidate(endCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+    endCandidate = findEndpointCandidate(
+      endCoords,
+      workingGraph,
+      distances,
+      maxAcceptableSnapDistanceM
+    );
     endSnapDistanceM = endCandidate.snapDistanceM;
   }
 
@@ -1407,7 +1492,12 @@ export function prepareRoutableGraph(
  * @throws {Error} When input coordinates or the graph are invalid.
  */
 export async function computeRoute(startCoords, endCoords, graph, options = {}) {
-  if (!graph || typeof graph !== 'object' || !(graph.nodes instanceof Map) || !Array.isArray(graph.edges)) {
+  if (
+    !graph ||
+    typeof graph !== 'object' ||
+    !(graph.nodes instanceof Map) ||
+    !Array.isArray(graph.edges)
+  ) {
     throw new Error('Invalid graph: expected object with nodes Map and edges array.');
   }
 
@@ -1428,19 +1518,26 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     logger.warn('turn penalties are currently ignored; using standard engine routing');
   }
 
-  logger.log(() => `computeRoute: graph has ${graph.nodes.size} nodes, ${graph.edges.length} edges`);
+  logger.log(
+    () => `computeRoute: graph has ${graph.nodes.size} nodes, ${graph.edges.length} edges`
+  );
 
   const distances =
-    Array.isArray(snapDistancesM) && snapDistancesM.length > 0
-      ? snapDistancesM
-      : [250, 500, 800];
+    Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];
 
   let startId = -1;
   let endId = -1;
   let usedSnapDistance = distances[distances.length - 1];
 
   if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
-    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: 'no_node' };
+    return {
+      path: [],
+      coordinates: [],
+      cost: Infinity,
+      costField,
+      found: false,
+      reason: 'no_node',
+    };
   }
 
   let workingGraph = graph;
@@ -1453,22 +1550,37 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   logger.log(() => `nearestNode: start=${startId}, end=${endId}, snap=${usedSnapDistance} m`);
 
   if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
-    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: RouteFailureReason.NO_NODE };
+    return {
+      path: [],
+      coordinates: [],
+      cost: Infinity,
+      costField,
+      found: false,
+      reason: RouteFailureReason.NO_NODE,
+    };
   }
 
   if (startId === -1 || endId === -1) {
     logger.warn(() => `No node found within ${usedSnapDistance} m of start or end coordinates`);
   }
 
-  let startSnapDistanceM = startId === -1
-    ? Infinity
-    : haversine(startCoords, workingGraph.nodes.get(startId).coords);
-  let endSnapDistanceM = endId === -1
-    ? Infinity
-    : haversine(endCoords, workingGraph.nodes.get(endId).coords);
+  let startSnapDistanceM =
+    startId === -1 ? Infinity : haversine(startCoords, workingGraph.nodes.get(startId).coords);
+  let endSnapDistanceM =
+    endId === -1 ? Infinity : haversine(endCoords, workingGraph.nodes.get(endId).coords);
 
-  let startCandidate = findEndpointCandidate(startCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
-  let endCandidate = findEndpointCandidate(endCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+  let startCandidate = findEndpointCandidate(
+    startCoords,
+    workingGraph,
+    distances,
+    maxAcceptableSnapDistanceM
+  );
+  let endCandidate = findEndpointCandidate(
+    endCoords,
+    workingGraph,
+    distances,
+    maxAcceptableSnapDistanceM
+  );
   let startSegmentSnap = startCandidate.segmentSnap;
   let endSegmentSnap = endCandidate.segmentSnap;
   let startSnapApplied = false;
@@ -1486,7 +1598,12 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     startSnapDistanceM = startCandidate.snapDistanceM;
     startSnapApplied = true;
 
-    endCandidate = findEndpointCandidate(endCoords, workingGraph, distances, maxAcceptableSnapDistanceM);
+    endCandidate = findEndpointCandidate(
+      endCoords,
+      workingGraph,
+      distances,
+      maxAcceptableSnapDistanceM
+    );
     endSegmentSnap = endCandidate.segmentSnap;
     endSnapDistanceM = endCandidate.snapDistanceM;
   } else if (startCandidate.type === 'node') {
@@ -1506,15 +1623,23 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   }
 
   if (startId === -1 || endId === -1) {
-    return { path: [], coordinates: [], cost: Infinity, costField, found: false, reason: RouteFailureReason.NO_NODE };
+    return {
+      path: [],
+      coordinates: [],
+      cost: Infinity,
+      costField,
+      found: false,
+      reason: RouteFailureReason.NO_NODE,
+    };
   }
 
   if (
-    startSnapDistanceM > maxAcceptableSnapDistanceM
-    || endSnapDistanceM > maxAcceptableSnapDistanceM
+    startSnapDistanceM > maxAcceptableSnapDistanceM ||
+    endSnapDistanceM > maxAcceptableSnapDistanceM
   ) {
     logger.warn(
-      () => `Poor snap quality: start=${startSnapDistanceM.toFixed(0)} m, end=${endSnapDistanceM.toFixed(0)} m`,
+      () =>
+        `Poor snap quality: start=${startSnapDistanceM.toFixed(0)} m, end=${endSnapDistanceM.toFixed(0)} m`
     );
     return {
       path: [],
@@ -1554,10 +1679,18 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   });
 
   if (!result.found) {
-    const canFallbackWithStartSnap = startSegmentSnap && !startSnapApplied && startSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;
-    const canFallbackWithEndSnap = endSegmentSnap && !endSnapApplied && endSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;
+    const canFallbackWithStartSnap =
+      startSegmentSnap &&
+      !startSnapApplied &&
+      startSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;
+    const canFallbackWithEndSnap =
+      endSegmentSnap && !endSnapApplied && endSegmentSnap.distanceM <= maxAcceptableSnapDistanceM;
 
-    if ((result.reason === RouteFailureReason.NO_PATH || result.reason === RouteFailureReason.INCOMPLETE_PATH) && (canFallbackWithStartSnap || canFallbackWithEndSnap)) {
+    if (
+      (result.reason === RouteFailureReason.NO_PATH ||
+        result.reason === RouteFailureReason.INCOMPLETE_PATH) &&
+      (canFallbackWithStartSnap || canFallbackWithEndSnap)
+    ) {
       let fallbackGraph = workingGraph;
       let fallbackStartId = startId;
       let fallbackEndId = endId;
@@ -1575,10 +1708,21 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       }
 
       if (fallbackGraph !== workingGraph) {
-        const fallbackPrepared = getPreparedGraph(fallbackGraph, costField, normalizedPenalties, fallbackStartId, fallbackEndId);
-        const fallbackResult = await queryRoute(fallbackStartId, fallbackEndId, fallbackPrepared, { graphCategory, costField });
+        const fallbackPrepared = getPreparedGraph(
+          fallbackGraph,
+          costField,
+          normalizedPenalties,
+          fallbackStartId,
+          fallbackEndId
+        );
+        const fallbackResult = await queryRoute(fallbackStartId, fallbackEndId, fallbackPrepared, {
+          graphCategory,
+          costField,
+        });
         if (fallbackResult.found) {
-          const fallbackCoordinates = fallbackResult.path.map((id) => fallbackGraph.nodes.get(id).coords);
+          const fallbackCoordinates = fallbackResult.path.map(
+            (id) => fallbackGraph.nodes.get(id).coords
+          );
           return {
             ...fallbackResult,
             coordinates: fallbackCoordinates,
@@ -1591,9 +1735,22 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       }
     }
 
-    if ((startSnapApplied || endSnapApplied) && (result.reason === RouteFailureReason.NO_PATH || result.reason === RouteFailureReason.INCOMPLETE_PATH)) {
-      const basePrepared = getPreparedGraph(baseGraph, costField, normalizedPenalties, baseStartId, baseEndId);
-      const baseResult = await queryRoute(baseStartId, baseEndId, basePrepared, { graphCategory, costField });
+    if (
+      (startSnapApplied || endSnapApplied) &&
+      (result.reason === RouteFailureReason.NO_PATH ||
+        result.reason === RouteFailureReason.INCOMPLETE_PATH)
+    ) {
+      const basePrepared = getPreparedGraph(
+        baseGraph,
+        costField,
+        normalizedPenalties,
+        baseStartId,
+        baseEndId
+      );
+      const baseResult = await queryRoute(baseStartId, baseEndId, basePrepared, {
+        graphCategory,
+        costField,
+      });
       if (baseResult.found) {
         const baseCoordinates = baseResult.path.map((id) => baseGraph.nodes.get(id).coords);
         return {
@@ -1651,7 +1808,14 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
   return { ...result, coordinates, costField, engine, startSnapDistanceM, endSnapDistanceM };
 }
 
-export function prepareGraph(graph, costField = 'distance', penalties = {}, sourceId = -1, targetId = -1, opts = {}) {
+export function prepareGraph(
+  graph,
+  costField = 'distance',
+  penalties = {},
+  sourceId = -1,
+  targetId = -1,
+  opts = {}
+) {
   const normalizedPenalties = normalizePenalties(penalties);
   return getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targetId, opts);
 }

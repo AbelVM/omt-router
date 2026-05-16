@@ -31,7 +31,14 @@ export const ways = {
       'road',
       'minor',
     ]),
-    exclude_subclass: new Set(['pedestrian', 'footway', 'steps', 'cycleway', 'bridleway', 'corridor']),
+    exclude_subclass: new Set([
+      'pedestrian',
+      'footway',
+      'steps',
+      'cycleway',
+      'bridleway',
+      'corridor',
+    ]),
   },
   pedestrian: {
     class: new Set([
@@ -54,7 +61,7 @@ export const ways = {
       'byway',
       'steps',
       'unclassified',
-      'minor'
+      'minor',
     ]),
     subclass: new Set(['pedestrian', 'footway', 'steps', 'path', 'corridor', 'platform']),
     foot: new Set(['yes', 'designated', 'permissive', 'use_sidepath']),
@@ -150,7 +157,7 @@ export const WAY_PRIORITIES = {
     byway: 1.0,
     steps: 1.0,
     unclassified: 1.0,
-    minor: 1.0
+    minor: 1.0,
   },
 };
 

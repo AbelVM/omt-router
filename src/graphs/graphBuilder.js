@@ -11,10 +11,7 @@ import Pbf from 'pbf';
 import { u82o } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { ways, getDefaultSpeedKmh } from '../utils/ways_defaults.js';
-import {
-  haversineDistanceCoords,
-  isWithinDistanceMetersCoords,
-} from '../utils/misc.js';
+import { haversineDistanceCoords, isWithinDistanceMetersCoords } from '../utils/misc.js';
 
 const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router/graph' });
 const COORD_KEY_SCALE = 1e6;
@@ -183,8 +180,10 @@ export function parseTile(buffer, x, y, z, mode) {
         // naturally stitches the graph across tile seams — no proximity snap
         // needed.
         const clipped = clipSegmentToTile(
-          line[j].x, line[j].y,
-          line[j + 1].x, line[j + 1].y,
+          line[j].x,
+          line[j].y,
+          line[j + 1].x,
+          line[j + 1].y,
           layer.extent
         );
         if (!clipped) continue;
@@ -234,8 +233,10 @@ export function parseTile(buffer, x, y, z, mode) {
  * @returns {[number,number,number,number,boolean]|null}
  */
 function clipSegmentToTile(x1, y1, x2, y2, extent) {
-  const dx = x2 - x1, dy = y2 - y1;
-  let t0 = 0, t1 = 1;
+  const dx = x2 - x1,
+    dy = y2 - y1;
+  let t0 = 0,
+    t1 = 1;
 
   // X slab [0, extent]
   if (dx === 0) {
@@ -261,13 +262,7 @@ function clipSegmentToTile(x1, y1, x2, y2, extent) {
     if (t0 > t1) return null;
   }
 
-  return [
-    x1 + t0 * dx,
-    y1 + t0 * dy,
-    x1 + t1 * dx,
-    y1 + t1 * dy,
-    t0 !== 0 || t1 !== 1,
-  ];
+  return [x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy, t0 !== 0 || t1 !== 1];
 }
 
 function projectPointToSegment(lng, lat, x1, y1, x2, y2) {
@@ -507,10 +502,23 @@ function createGraphAccumulator(mode) {
           for (const { coords: existingCoords, id } of bucket) {
             const dx = existingCoords[0] - lng;
             const dy = existingCoords[1] - lat;
-            if (dx > BOUNDARY_MATCH_DEG || dx < -BOUNDARY_MATCH_DEG || dy > BOUNDARY_MATCH_DEG || dy < -BOUNDARY_MATCH_DEG) {
+            if (
+              dx > BOUNDARY_MATCH_DEG ||
+              dx < -BOUNDARY_MATCH_DEG ||
+              dy > BOUNDARY_MATCH_DEG ||
+              dy < -BOUNDARY_MATCH_DEG
+            ) {
               continue;
             }
-            if (isWithinDistanceMetersCoords(existingCoords[0], existingCoords[1], lng, lat, BOUNDARY_MATCH_DISTANCE_M)) {
+            if (
+              isWithinDistanceMetersCoords(
+                existingCoords[0],
+                existingCoords[1],
+                lng,
+                lat,
+                BOUNDARY_MATCH_DISTANCE_M
+              )
+            ) {
               nodeIndex.set(resolvedKey, id);
               return id;
             }
@@ -701,7 +709,6 @@ export function mergeSegments(batches, mode) {
   return finalizeGraph(accumulator);
 }
 
-
 /**
  * Build a routing graph from a set of OpenMapTiles vector tiles for a specific
  * transport mode.  Mirrors the pgRouting edge-table produced by osm2pgrouting:
@@ -781,7 +788,11 @@ function isFatalTileError(error) {
   );
 }
 
-export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000, maxConcurrentTiles } = {}) {
+export async function buildGraphAsync(
+  tiles,
+  mode,
+  { pool, cache, ttl = 300_000, maxConcurrentTiles } = {}
+) {
   if (!ways[mode]) {
     throw new Error(`Unknown transport mode "${mode}". Valid values: car, pedestrian, bicycle.`);
   }
@@ -865,4 +876,3 @@ export async function buildGraphAsync(tiles, mode, { pool, cache, ttl = 300_000,
   // a complete graph that may later produce false negatives.
   return graph;
 }
-

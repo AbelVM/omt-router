@@ -10,7 +10,7 @@ import worker from './MapLibreRoutingControl.isoline.worker?worker&inline.js';
  * @returns {Worker|null} Worker instance or null when workers are unavailable.
  */
 function _ensureIsolineWorker(ctrl) {
-  if (ctrl._isolineWorker) return ctrl._isolineWorker;  
+  if (ctrl._isolineWorker) return ctrl._isolineWorker;
   if (typeof Worker === 'undefined') return null;
   try {
     // The imported `worker` may be a Worker constructor (Vite returns a
@@ -33,7 +33,12 @@ function _ensureIsolineWorker(ctrl) {
         const pending = ctrl._isolinePendingRequests && ctrl._isolinePendingRequests.get(id);
         if (!pending) return;
         if (type === 'result') pending.resolve(result);
-        else pending.reject(Object.assign(new Error(error?.message || 'Isoline worker error'), { code: error?.code }));
+        else
+          pending.reject(
+            Object.assign(new Error(error?.message || 'Isoline worker error'), {
+              code: error?.code,
+            })
+          );
       } finally {
         ctrl._isolinePendingRequests && ctrl._isolinePendingRequests.delete(id);
       }
@@ -42,7 +47,11 @@ function _ensureIsolineWorker(ctrl) {
       const err = new Error(ev?.message ?? 'Isoline worker error');
       if (ctrl._isolinePendingRequests) {
         for (const [id, p] of ctrl._isolinePendingRequests) {
-          try { p.reject(err); } catch (_e) { void _e; }
+          try {
+            p.reject(err);
+          } catch (_e) {
+            void _e;
+          }
           ctrl._isolinePendingRequests.delete(id);
         }
       }
@@ -69,7 +78,11 @@ async function computeIsolineInWorker(ctrl, params) {
   if (!ctrl._isolinePendingRequests) ctrl._isolinePendingRequests = new Map();
   if (ctrl._isolinePendingRequests.size) {
     for (const [id, p] of ctrl._isolinePendingRequests) {
-      try { p.reject(new Error('isoline cancelled')); } catch (_e) { void _e; }
+      try {
+        p.reject(new Error('isoline cancelled'));
+      } catch (_e) {
+        void _e;
+      }
       ctrl._isolinePendingRequests.delete(id);
     }
   }
@@ -97,16 +110,16 @@ async function computeIsolineInWorker(ctrl, params) {
       const graphForTransfer = {};
       for (const key of Object.keys(g)) {
         const val = g[key];
-          if (ArrayBuffer.isView(val) && val.buffer) {
-            // copy the typed array to avoid neutering original cache
-            try {
-              const copy = val.slice();
-              graphForTransfer[key] = copy;
-              transferList.push(copy.buffer);
-            } catch (_err) {
-              // Fallback: if slice fails for some reason, include original (will be structured-cloned)
-              graphForTransfer[key] = val;
-            }
+        if (ArrayBuffer.isView(val) && val.buffer) {
+          // copy the typed array to avoid neutering original cache
+          try {
+            const copy = val.slice();
+            graphForTransfer[key] = copy;
+            transferList.push(copy.buffer);
+          } catch (_err) {
+            // Fallback: if slice fails for some reason, include original (will be structured-cloned)
+            graphForTransfer[key] = val;
+          }
         } else {
           graphForTransfer[key] = val;
         }
@@ -138,8 +151,7 @@ const ENGINE_LABELS = Object.freeze({
 const ENGINE_BADGE_ICONS = Object.freeze({
   parallel:
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="m4.9 4.9 2.2 2.2"/><path d="m16.9 16.9 2.2 2.2"/><path d="m16.9 7.1 2.2-2.2"/><path d="m4.9 19.1 2.2-2.2"/></svg>',
-  cpu:
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
+  cpu: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M10 7V4"/><path d="M14 7V4"/><path d="M10 20v-3"/><path d="M14 20v-3"/><path d="M7 10H4"/><path d="M7 14H4"/><path d="M20 10h-3"/><path d="M20 14h-3"/></svg>',
 });
 
 const RAD = Math.PI / 180;
@@ -183,7 +195,9 @@ export function getRouteDistance(coords) {
  * @returns {[number, number]|null} Parsed coordinates or null if invalid.
  */
 export function parseCoords(str) {
-  const [a, b] = String(str || '').split(',').map((s) => parseFloat(s.trim()));
+  const [a, b] = String(str || '')
+    .split(',')
+    .map((s) => parseFloat(s.trim()));
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   if (a < -90 || a > 90 || b < -180 || b > 180) return null;
   return [b, a];
@@ -303,11 +317,16 @@ export async function tryIsoline(ctrl) {
   }
 
   const calcId = ++ctrl._calcId;
+  try {
     try {
-      try {
-        ctrl._cancelRunningEngine?.('isoline_cancelled');
-      } catch (_e) { void _e; }
-    ctrl._setStatus(`<span class="rp-spinner"></span>${ctrl._text.status?.calculatingIsoline || 'Calculating isoline'}`, 'loading');
+      ctrl._cancelRunningEngine?.('isoline_cancelled');
+    } catch (_e) {
+      void _e;
+    }
+    ctrl._setStatus(
+      `<span class="rp-spinner"></span>${ctrl._text.status?.calculatingIsoline || 'Calculating isoline'}`,
+      'loading'
+    );
     const point = [ctrl._isoline.point[0], ctrl._isoline.point[1]];
 
     let graph = null;
@@ -315,9 +334,10 @@ export async function tryIsoline(ctrl) {
       const zoom = 14;
       const speedsKmh = { car: 65, bicycle: 15, pedestrian: 5 };
       const speedKmh = speedsKmh[ctrl._mode] ?? 65;
-      const radiusMeters = (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal')
-        ? Number(ctrl._isoline.maxCost) * (speedKmh / 3.6)
-        : Number(ctrl._isoline.maxCost);
+      const radiusMeters =
+        ctrl._costField === 'travelTime' || ctrl._costField === 'optimal'
+          ? Number(ctrl._isoline.maxCost) * (speedKmh / 3.6)
+          : Number(ctrl._isoline.maxCost);
 
       const multiplier = Number(ctrl._options.isolineTileSearchMultiplier ?? 2);
       const extraMeters = Number(ctrl._options.isolineTileSearchExtraMeters ?? 500);
@@ -359,7 +379,10 @@ export async function tryIsoline(ctrl) {
     }
 
     if (graph?.hasMissingTiles) {
-      ctrl._setStatus(ctrl._text.status?.tileCors || ctrl._text.status?.noGraph || 'Missing tiles', 'error');
+      ctrl._setStatus(
+        ctrl._text.status?.tileCors || ctrl._text.status?.noGraph || 'Missing tiles',
+        'error'
+      );
       return;
     }
 
@@ -421,7 +444,9 @@ export async function tryIsoline(ctrl) {
 
       try {
         const values = Array.isArray(fc.features)
-          ? fc.features.map((f) => Number(f?.properties?.valueMax ?? f?.properties?.break)).filter(Number.isFinite)
+          ? fc.features
+              .map((f) => Number(f?.properties?.valueMax ?? f?.properties?.break))
+              .filter(Number.isFinite)
           : [];
         let minVal = 0;
         let maxVal = 1;
@@ -434,8 +459,10 @@ export async function tryIsoline(ctrl) {
           }
         }
 
-        const smallColor = ctrl._isoline.direction === 'from' ? ctrl._options.startColor : ctrl._options.endColor;
-        const bigColor = ctrl._isoline.direction === 'from' ? ctrl._options.endColor : ctrl._options.startColor;
+        const smallColor =
+          ctrl._isoline.direction === 'from' ? ctrl._options.startColor : ctrl._options.endColor;
+        const bigColor =
+          ctrl._isoline.direction === 'from' ? ctrl._options.endColor : ctrl._options.startColor;
         const eps = Math.max(1e-6, (maxVal - minVal) * 1e-6);
         const expr = [
           'interpolate-hcl',
@@ -454,18 +481,33 @@ export async function tryIsoline(ctrl) {
         if (ctrl._map && typeof ctrl._map.getLayer === 'function') {
           if (ctrl._map.getLayer(ctrl._options.isolineFillLayerId)) {
             ctrl._map.setPaintProperty(ctrl._options.isolineFillLayerId, 'fill-color', expr);
-            ctrl._map.setPaintProperty(ctrl._options.isolineFillLayerId, 'fill-outline-color', expr);
-            ctrl._map.setLayoutProperty(ctrl._options.isolineFillLayerId, 'fill-sort-key', ['-', ['get', 'valueMax']]);
+            ctrl._map.setPaintProperty(
+              ctrl._options.isolineFillLayerId,
+              'fill-outline-color',
+              expr
+            );
+            ctrl._map.setLayoutProperty(ctrl._options.isolineFillLayerId, 'fill-sort-key', [
+              '-',
+              ['get', 'valueMax'],
+            ]);
           }
           if (ctrl._map.getLayer(ctrl._options.isolineOutlineLayerId)) {
             ctrl._map.setPaintProperty(ctrl._options.isolineOutlineLayerId, 'text-color', expr);
           }
         }
-      } catch (_e) { void _e; }
+      } catch (_e) {
+        void _e;
+      }
 
       try {
-        ctrl._centerMapOnSource(ctrl._options.isolineSourceId, { padding: 100, maxZoom: 16, duration: 600 });
-      } catch (_e) { void _e; }
+        ctrl._centerMapOnSource(ctrl._options.isolineSourceId, {
+          padding: 100,
+          maxZoom: 16,
+          duration: 600,
+        });
+      } catch (_e) {
+        void _e;
+      }
     }
 
     ctrl._setStatus('', '');
@@ -477,7 +519,9 @@ export async function tryIsoline(ctrl) {
       if (src && typeof src.setData === 'function') {
         src.setData({ type: 'FeatureCollection', features: [] });
       }
-    } catch (_e) { void _e; }
+    } catch (_e) {
+      void _e;
+    }
     if (ctrl._mounted) ctrl._setStatus(ctrl._text.status?.noRoute || 'Isoline failed', 'error');
   }
 }
@@ -520,13 +564,19 @@ export async function tryRoute(ctrl) {
   }, ctrl._routeTimeoutMs);
 
   try {
-    const result = await ctrl._routeFunction(ctrl._origin, ctrl._dest, ctrl._mode, ctrl._urlTemplate, {
-      costField: ctrl._costField,
-      tileUrlTransform: ctrl._tileUrlTransform,
-      tileProxyTemplate: ctrl._tileProxyTemplate,
-      includeGraph: ctrl._options.showGraph,
-      ...ctrl._routeOptions,
-    });
+    const result = await ctrl._routeFunction(
+      ctrl._origin,
+      ctrl._dest,
+      ctrl._mode,
+      ctrl._urlTemplate,
+      {
+        costField: ctrl._costField,
+        tileUrlTransform: ctrl._tileUrlTransform,
+        tileProxyTemplate: ctrl._tileProxyTemplate,
+        includeGraph: ctrl._options.showGraph,
+        ...ctrl._routeOptions,
+      }
+    );
 
     if (!ctrl._mounted || id !== ctrl._calcId) return;
     if (!result.found || !result.coordinates?.length) {
@@ -561,8 +611,18 @@ export async function tryRoute(ctrl) {
     }
 
     if (coords.length > 1) {
-      console.log('[dbg] requesting _centerMapOnSource (route)', ctrl._options.routeSourceId, !!ctrl._map?.getSource?.(ctrl._options.routeSourceId), 'coords.length=', coords.length);
-      ctrl._centerMapOnSource(ctrl._options.routeSourceId, { padding: 100, maxZoom: 16, duration: 600 });
+      console.log(
+        '[dbg] requesting _centerMapOnSource (route)',
+        ctrl._options.routeSourceId,
+        !!ctrl._map?.getSource?.(ctrl._options.routeSourceId),
+        'coords.length=',
+        coords.length
+      );
+      ctrl._centerMapOnSource(ctrl._options.routeSourceId, {
+        padding: 100,
+        maxZoom: 16,
+        duration: 600,
+      });
     }
 
     ctrl._showStats(result);
@@ -575,12 +635,13 @@ export async function tryRoute(ctrl) {
     if (!ctrl._mounted || id !== ctrl._calcId) return;
     console.error('[omt-router] routing error:', err);
     if (err?.code === 'engine_cancelled') {
-      ctrl._setStatus(
-        timedOut ? ctrl._text.status.timedOut : ctrl._text.status.cancelled,
-        'error'
-      );
+      ctrl._setStatus(timedOut ? ctrl._text.status.timedOut : ctrl._text.status.cancelled, 'error');
     } else {
-      const errorMessage = err?.message || (typeof err === 'string' ? err : ctrl._text.status.unknownError ?? 'Unknown routing error');
+      const errorMessage =
+        err?.message ||
+        (typeof err === 'string'
+          ? err
+          : (ctrl._text.status.unknownError ?? 'Unknown routing error'));
       ctrl._setStatus(`${ctrl._text.status.routeErrorPrefix} ${errorMessage}`, 'error');
     }
     ctrl._clearRoute();

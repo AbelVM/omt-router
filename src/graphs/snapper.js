@@ -26,10 +26,10 @@ export function safeCosLat(lat) {
  */
 export function isValidCoords(coords) {
   return (
-    Array.isArray(coords)
-    && coords.length === 2
-    && Number.isFinite(coords[0])
-    && Number.isFinite(coords[1])
+    Array.isArray(coords) &&
+    coords.length === 2 &&
+    Number.isFinite(coords[0]) &&
+    Number.isFinite(coords[1])
   );
 }
 
@@ -89,13 +89,13 @@ export function getNearbyNodeIds(graph, coords, maxDistM) {
  */
 export function nearestNode(coords, graph, maxDistM = 500) {
   if (
-    !graph
-    || typeof graph !== 'object'
-    || !graph.nodes
-    || typeof graph.nodes !== 'object'
-    || typeof graph.nodes.get !== 'function'
-    || typeof graph.nodes.has !== 'function'
-    || typeof graph.nodes.size !== 'number'
+    !graph ||
+    typeof graph !== 'object' ||
+    !graph.nodes ||
+    typeof graph.nodes !== 'object' ||
+    typeof graph.nodes.get !== 'function' ||
+    typeof graph.nodes.has !== 'function' ||
+    typeof graph.nodes.size !== 'number'
   ) {
     throw new Error('Invalid graph: expected object with nodes Map.');
   }
@@ -226,7 +226,12 @@ export function projectPointOnSegment(coords, a, b, cosLat) {
  * @param {number} [snapDistanceLimitM=DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M]
  * @returns {object|null}
  */
-export function findClosestSegmentProjection(coords, graph, maxDistM, snapDistanceLimitM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M) {
+export function findClosestSegmentProjection(
+  coords,
+  graph,
+  maxDistM,
+  snapDistanceLimitM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M
+) {
   const nodeIds = getNearbyNodeIds(graph, coords, maxDistM + SEGMENT_SNAP_EXTRA_M);
   const incident = buildIncidentEdgeIndex(graph);
   const candidateEdges = new Set();
@@ -259,12 +264,13 @@ export function findClosestSegmentProjection(coords, graph, maxDistM, snapDistan
     const { t, projected } = projection;
 
     const clampedT = Math.max(0, Math.min(1, t));
-    const projectedCoords = clampedT === t
-      ? [projected[0] / cosLat, projected[1]]
-      : [
-          (a[0] * cosLat + (b[0] * cosLat - a[0] * cosLat) * clampedT) / cosLat,
-          a[1] + (b[1] - a[1]) * clampedT,
-        ];
+    const projectedCoords =
+      clampedT === t
+        ? [projected[0] / cosLat, projected[1]]
+        : [
+            (a[0] * cosLat + (b[0] * cosLat - a[0] * cosLat) * clampedT) / cosLat,
+            a[1] + (b[1] - a[1]) * clampedT,
+          ];
 
     const distanceM = haversine(coords, projectedCoords);
     if (distanceM > maxDistM || distanceM > snapDistanceLimitM) return;
@@ -445,7 +451,12 @@ export function createAugmentedGraph(graph, snap) {
  * @param {number} [maxAcceptableSnapDistanceM=DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M]
  * @returns {object}
  */
-export function chooseEndpointCandidate(coords, graph, maxDistM, maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M) {
+export function chooseEndpointCandidate(
+  coords,
+  graph,
+  maxDistM,
+  maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M
+) {
   const candidate = {
     type: 'none',
     nodeId: -1,
@@ -464,7 +475,12 @@ export function chooseEndpointCandidate(coords, graph, maxDistM, maxAcceptableSn
     candidate.nodeSnapDistanceM = haversine(coords, node?.coords ?? [NaN, NaN]);
   }
 
-  const segmentSnap = findClosestSegmentProjection(coords, graph, maxDistM, maxAcceptableSnapDistanceM);
+  const segmentSnap = findClosestSegmentProjection(
+    coords,
+    graph,
+    maxDistM,
+    maxAcceptableSnapDistanceM
+  );
   if (segmentSnap) {
     candidate.segmentSnap = segmentSnap;
     candidate.segmentSnapDistanceM = segmentSnap.distanceM;
@@ -495,11 +511,14 @@ export function chooseEndpointCandidate(coords, graph, maxDistM, maxAcceptableSn
  * @param {number} [maxAcceptableSnapDistanceM=DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M]
  * @returns {object}
  */
-export function findEndpointCandidate(coords, graph, snapDistancesM, maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M) {
+export function findEndpointCandidate(
+  coords,
+  graph,
+  snapDistancesM,
+  maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M
+) {
   const distances =
-    Array.isArray(snapDistancesM) && snapDistancesM.length > 0
-      ? snapDistancesM
-      : [250, 500, 800];
+    Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];
 
   let candidate = {
     type: 'none',
@@ -526,7 +545,12 @@ export function findEndpointCandidate(coords, graph, snapDistancesM, maxAcceptab
  * @param {number} [maxAcceptableSnapDistanceM=DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M]
  * @returns {{graph: object, nodeId: number, snapDistanceM: number}|null}
  */
-export function tryAddSegmentSnap(graph, coords, maxDistM, maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M) {
+export function tryAddSegmentSnap(
+  graph,
+  coords,
+  maxDistM,
+  maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M
+) {
   if (!isValidCoords(coords)) return null;
   const snap = findClosestSegmentProjection(coords, graph, maxDistM, maxAcceptableSnapDistanceM);
   if (!snap) return null;

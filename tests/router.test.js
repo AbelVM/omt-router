@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { buildCH, validateRouteResult, prepareGraph, computeRoute, RouteFailureReason } from '../src/engines/router.js';
+import {
+  buildCH,
+  validateRouteResult,
+  prepareGraph,
+  computeRoute,
+  RouteFailureReason,
+} from '../src/engines/router.js';
 
 function createSimpleGraph() {
   const nodes = new Map([
     [0, { coords: [0, 0] }],
     [1, { coords: [1, 0] }],
   ]);
-  const edges = [
-    { source: 0, target: 1, cost: 1, length: 10, travelTime: 5, reverseCost: -1 },
-  ];
+  const edges = [{ source: 0, target: 1, cost: 1, length: 10, travelTime: 5, reverseCost: -1 }];
   return { nodes, edges, mode: 'car' };
 }
 
@@ -32,7 +36,10 @@ describe('router utilities', () => {
     expect(missingResult.valid).toBe(false);
     expect(missingResult.reason).toBe(RouteFailureReason.MISSING_RESULT);
 
-    const wrongPath = validateRouteResult({ found: true, path: [0, 0, 1], cost: 1 }, prepared, { startId: 0, endId: 1 });
+    const wrongPath = validateRouteResult({ found: true, path: [0, 0, 1], cost: 1 }, prepared, {
+      startId: 0,
+      endId: 1,
+    });
     expect(wrongPath.valid).toBe(false);
     expect(wrongPath.reason).toBe(RouteFailureReason.INVALID_PATH);
   });
@@ -41,11 +48,17 @@ describe('router utilities', () => {
     const graph = createSimpleGraph();
     const prepared = buildCH(graph, 'distance');
 
-    const mismatch = validateRouteResult({ found: true, path: [1, 0], cost: 1 }, prepared, { startId: 0, endId: 1 });
+    const mismatch = validateRouteResult({ found: true, path: [1, 0], cost: 1 }, prepared, {
+      startId: 0,
+      endId: 1,
+    });
     expect(mismatch.valid).toBe(false);
     expect(mismatch.reason).toBe(RouteFailureReason.ENDPOINT_MISMATCH);
 
-    const costMismatch = validateRouteResult({ found: true, path: [0, 1], cost: 100 }, prepared, { startId: 0, endId: 1 });
+    const costMismatch = validateRouteResult({ found: true, path: [0, 1], cost: 100 }, prepared, {
+      startId: 0,
+      endId: 1,
+    });
     expect(costMismatch.valid).toBe(false);
     expect(costMismatch.reason).toBe(RouteFailureReason.COST_MISMATCH);
   });
@@ -60,7 +73,9 @@ describe('router utilities', () => {
   });
 
   it('throws when computeRoute receives an invalid graph object', async () => {
-    await expect(computeRoute([0, 0], [1, 1], null)).rejects.toThrow('Invalid graph: expected object with nodes Map and edges array.');
+    await expect(computeRoute([0, 0], [1, 1], null)).rejects.toThrow(
+      'Invalid graph: expected object with nodes Map and edges array.'
+    );
   });
 
   it('returns a valid route when origin and destination snap to the same node', async () => {

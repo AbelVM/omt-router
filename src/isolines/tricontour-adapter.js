@@ -48,21 +48,21 @@ function closeRing(r) {
 
 // monotone chain convex hull; returns closed hull ring or [].
 function convexHull(points) {
-  const uniq = Array.from(
-    new Map(points.map(p => [`${p[0]},${p[1]}`, p])).values()
-  );
+  const uniq = Array.from(new Map(points.map((p) => [`${p[0]},${p[1]}`, p])).values());
   if (uniq.length <= 1) return uniq;
   uniq.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
   const lower = [];
   for (const p of uniq) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
+      lower.pop();
     lower.push(p);
   }
   const upper = [];
   for (let i = uniq.length - 1; i >= 0; i--) {
     const p = uniq[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
+      upper.pop();
     upper.push(p);
   }
   upper.pop();
@@ -97,7 +97,10 @@ function ringMatchesHull(ring, hull, eps = 1e-6) {
     for (let offset = 0; offset < n; offset++) {
       let ok = true;
       for (let i = 0; i < n; i++) {
-        if (!approxEqual(r[(i + offset) % n], h[i])) { ok = false; break; }
+        if (!approxEqual(r[(i + offset) % n], h[i])) {
+          ok = false;
+          break;
+        }
       }
       if (ok) return true;
     }
@@ -107,7 +110,10 @@ function ringMatchesHull(ring, hull, eps = 1e-6) {
     for (let offset = 0; offset < n; offset++) {
       let ok = true;
       for (let i = 0; i < n; i++) {
-        if (!approxEqual(r[(i + offset) % n], hr[i])) { ok = false; break; }
+        if (!approxEqual(r[(i + offset) % n], hr[i])) {
+          ok = false;
+          break;
+        }
       }
       if (ok) return true;
     }
@@ -124,7 +130,6 @@ function ringMatchesHull(ring, hull, eps = 1e-6) {
 }
 
 // normalizePolygonRings removed — not used in current pipeline
-
 
 /**
  * Convert d3-tricontour isobands output into GeoJSON FeatureCollection.
@@ -145,17 +150,22 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
   }
   const triOut = Array.from(tri.isobands(points));
   // Filter out bands with no coordinates or that exceed maxCost (if specified)
-  const bands = triOut.filter(band => Array.isArray(band.coordinates) && band.coordinates.length > 0 && (maxCost > 0 ? band.valueMax <= maxCost : true));
+  const bands = triOut.filter(
+    (band) =>
+      Array.isArray(band.coordinates) &&
+      band.coordinates.length > 0 &&
+      (maxCost > 0 ? band.valueMax <= maxCost : true)
+  );
 
   // no debug logging here
 
   // compute domain hull from the input points once (map to [x,y])
-  const hull = convexHull(points.map(p => [p[0], p[1]]));
+  const hull = convexHull(points.map((p) => [p[0], p[1]]));
 
   // If tricontour produced no polygon geometry for any band, fall back
   // to a simple polygon built from the domain hull or reachable points.
   if (!bands || bands.length === 0) {
-    const coords2 = points.map(p => [p[0], p[1]]);
+    const coords2 = points.map((p) => [p[0], p[1]]);
     let ring = null;
     if (Array.isArray(hull) && hull.length >= 4) {
       ring = hull.slice();
@@ -173,14 +183,20 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
     } else if (coords2.length === 1) {
       const a = coords2[0];
       const eps = 1e-6;
-      ring = [[a[0] - eps, a[1] - eps], [a[0] + eps, a[1] - eps], [a[0] + eps, a[1] + eps], [a[0] - eps, a[1] + eps], [a[0] - eps, a[1] - eps]];
+      ring = [
+        [a[0] - eps, a[1] - eps],
+        [a[0] + eps, a[1] - eps],
+        [a[0] + eps, a[1] + eps],
+        [a[0] - eps, a[1] + eps],
+        [a[0] - eps, a[1] - eps],
+      ];
     }
 
-    const maxVal = (breaks && breaks.length) ? breaks[breaks.length - 1] : 0;
+    const maxVal = breaks && breaks.length ? breaks[breaks.length - 1] : 0;
     const feature = {
       type: 'Feature',
       properties: { value: 0, valueMin: 0, valueMax: maxVal, bandIndex: 0 },
-      geometry: { type: 'Polygon', coordinates: ring ? [ring] : [] }
+      geometry: { type: 'Polygon', coordinates: ring ? [ring] : [] },
     };
     return { type: 'FeatureCollection', features: [feature] };
   }
@@ -208,40 +224,43 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
           value: band.value,
           valueMin: band.value,
           valueMax: band.valueMax,
-          bandIndex
+          bandIndex,
         },
         geometry: {
           type: 'MultiPolygon',
-          coordinates: []
-        }
+          coordinates: [],
+        },
       };
     }
 
     // 2) remove hull artifacts (rings that match domain hull)
-    const goodRings = rings.filter(r => !ringMatchesHull(r, hull));
+    const goodRings = rings.filter((r) => !ringMatchesHull(r, hull));
     if (goodRings.length === 0) {
       return {
         type: 'Feature',
         properties: {
-          label: costField === 'distance' ? `${band.valueMax} m` : `${Math.round(band.valueMax / 60)} min`,
+          label:
+            costField === 'distance'
+              ? `${band.valueMax} m`
+              : `${Math.round(band.valueMax / 60)} min`,
           valueMin: band.value,
           valueMax: band.valueMax,
-          bandIndex
+          bandIndex,
         },
         geometry: {
           type: 'MultiPolygon',
-          coordinates: []
-        }
+          coordinates: [],
+        },
       };
     }
 
     // 3) build nodes and containment tree
-    const nodes = goodRings.map(r => ({
+    const nodes = goodRings.map((r) => ({
       ring: r,
       area: Math.abs(signedArea(r)),
       bbox: computeBBox(r),
       parent: null,
-      children: []
+      children: [],
     }));
 
     // sort by descending area
@@ -274,13 +293,21 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
 
     // 4) parity topology -> build polygons (outer shells with holes)
     function nodeDepth(node) {
-      let depth = 0; let p = node.parent;
-      while (p) { depth++; p = p.parent; }
+      let depth = 0;
+      let p = node.parent;
+      while (p) {
+        depth++;
+        p = p.parent;
+      }
       return depth;
     }
 
-    function ensureCCW(ring) { return signedArea(ring) > 0 ? ring : ring.slice().reverse(); }
-    function ensureCW(ring) { return signedArea(ring) < 0 ? ring : ring.slice().reverse(); }
+    function ensureCCW(ring) {
+      return signedArea(ring) > 0 ? ring : ring.slice().reverse();
+    }
+    function ensureCW(ring) {
+      return signedArea(ring) < 0 ? ring : ring.slice().reverse();
+    }
 
     const polygons = [];
     for (const node of nodes) {
@@ -301,12 +328,16 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
     return {
       type: 'Feature',
       properties: {
-        label: costField === 'distance' ? `${band.valueMax} m` : `${Math.round(band.valueMax / 60)} min`,
+        label:
+          costField === 'distance' ? `${band.valueMax} m` : `${Math.round(band.valueMax / 60)} min`,
         valueMin: band.value,
         valueMax: band.valueMax,
-        bandIndex
+        bandIndex,
       },
-      geometry: polygons.length === 1 ? { type: 'Polygon', coordinates: polygons[0] } : { type: 'MultiPolygon', coordinates: polygons }
+      geometry:
+        polygons.length === 1
+          ? { type: 'Polygon', coordinates: polygons[0] }
+          : { type: 'MultiPolygon', coordinates: polygons },
     };
   });
   // return final FeatureCollection

@@ -35,9 +35,7 @@ function createSimpleGraph() {
     [0, { coords: [0, 0] }],
     [1, { coords: [1, 0] }],
   ]);
-  const edges = [
-    { source: 0, target: 1, cost: 1, length: 10, travelTime: 5, reverseCost: -1 },
-  ];
+  const edges = [{ source: 0, target: 1, cost: 1, length: 10, travelTime: 5, reverseCost: -1 }];
   return { nodes, edges, mode: 'car' };
 }
 
@@ -62,7 +60,10 @@ afterEach(() => {
 describe('engine worker cancellation and busy handling', () => {
   it('rejects a pending worker route request when cancelled', async () => {
     const graph = createSimpleGraph();
-    const routePromise = computeRoute([0, 0], [1, 0], graph, { costField: 'distance', engineId: 'bidirectional-astar' });
+    const routePromise = computeRoute([0, 0], [1, 0], graph, {
+      costField: 'distance',
+      engineId: 'bidirectional-astar',
+    });
 
     expect(getEngineWorkerStatus().running).toBe(true);
     expect(mockWorkerInstances).toHaveLength(1);
@@ -80,7 +81,11 @@ describe('engine worker cancellation and busy handling', () => {
     shouldThrowOnRun = true;
     const graph = createSimpleGraph();
 
-    await expect(computeRoute([0, 0], [1, 0], graph, { costField: 'distance', engineId: 'bidirectional-astar' }))
-      .rejects.toMatchObject({ code: 'engine_worker_busy' });
+    await expect(
+      computeRoute([0, 0], [1, 0], graph, {
+        costField: 'distance',
+        engineId: 'bidirectional-astar',
+      })
+    ).rejects.toMatchObject({ code: 'engine_worker_busy' });
   });
 });

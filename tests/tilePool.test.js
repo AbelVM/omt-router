@@ -17,7 +17,9 @@ describe('tilePool module', () => {
 
   it('creates and disposes a shared pool when Worker is available', async () => {
     vi.stubGlobal('Worker', class WorkerStub {});
-    vi.doMock('../src/tiles/tilesWorker?worker&inline.js', () => ({ default: class WorkerThread {} }));
+    vi.doMock('../src/tiles/tilesWorker?worker&inline.js', () => ({
+      default: class WorkerThread {},
+    }));
 
     const { getSharedTilePool, disposeSharedTilePool } = await import('../src/tiles/tilePool.js');
     const pool = getSharedTilePool();

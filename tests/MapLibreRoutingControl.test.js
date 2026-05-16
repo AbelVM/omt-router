@@ -131,33 +131,41 @@ function createPanelStub() {
   const pointIcon = createElementStub({ id: 'rp-point-icon' });
   pointIcon.classList = { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() };
 
-  const routePanel = createElementStub({ querySelectorAllMap: {
-    '.rp-mode-btn': [modeBtnA, modeBtnB],
-    '.rp-cost-btn': [costBtnA, costBtnB],
-  }});
-  const isoPanel = createElementStub({ selectorMap: {
-    '#rp-isoline-threshold': isoThreshold,
-  }, querySelectorAllMap: {
-    '.rp-mode-btn': [isoModeBtnA, isoModeBtnB],
-    '.rp-cost-btn': [isoCostBtnA, isoCostBtnB],
-  }});
+  const routePanel = createElementStub({
+    querySelectorAllMap: {
+      '.rp-mode-btn': [modeBtnA, modeBtnB],
+      '.rp-cost-btn': [costBtnA, costBtnB],
+    },
+  });
+  const isoPanel = createElementStub({
+    selectorMap: {
+      '#rp-isoline-threshold': isoThreshold,
+    },
+    querySelectorAllMap: {
+      '.rp-mode-btn': [isoModeBtnA, isoModeBtnB],
+      '.rp-cost-btn': [isoCostBtnA, isoCostBtnB],
+    },
+  });
 
-  const panel = createElementStub({ selectorMap: {
-    '#rp-routing-panel': routePanel,
-    '#rp-isoline-panel': isoPanel,
-    '#rp-origin': originInput,
-    '#rp-dest': destInput,
-    '#rp-status': statusEl,
-    '#rp-status-isoline': statusElIsoline,
-    '#rp-swap-btn': swapBtn,
-    '#rp-tab-routing': tabRoutingBtn,
-    '#rp-tab-isoline': tabIsolineBtn,
-    '#rp-isoline-point': isoPoint,
-    '#rp-isoline-threshold': isoThreshold,
-    '#rp-isoline-panel .rp-point-icon': pointIcon,
-  }, querySelectorAllMap: {
-    '.rp-isoline-direction-btn': [isoDirBtnFrom, isoDirBtnTo],
-  }});
+  const panel = createElementStub({
+    selectorMap: {
+      '#rp-routing-panel': routePanel,
+      '#rp-isoline-panel': isoPanel,
+      '#rp-origin': originInput,
+      '#rp-dest': destInput,
+      '#rp-status': statusEl,
+      '#rp-status-isoline': statusElIsoline,
+      '#rp-swap-btn': swapBtn,
+      '#rp-tab-routing': tabRoutingBtn,
+      '#rp-tab-isoline': tabIsolineBtn,
+      '#rp-isoline-point': isoPoint,
+      '#rp-isoline-threshold': isoThreshold,
+      '#rp-isoline-panel .rp-point-icon': pointIcon,
+    },
+    querySelectorAllMap: {
+      '.rp-isoline-direction-btn': [isoDirBtnFrom, isoDirBtnTo],
+    },
+  });
 
   return {
     panel,
@@ -219,7 +227,11 @@ describe('MapLibreRoutingControl', () => {
         }
       },
       addSource(id, source) {
-        this.sources.set(id, { ...source, setData: vi.fn(), getBounds: vi.fn(() => new LngLatBoundsStub([0, 0], [1, 1])) });
+        this.sources.set(id, {
+          ...source,
+          setData: vi.fn(),
+          getBounds: vi.fn(() => new LngLatBoundsStub([0, 0], [1, 1])),
+        });
       },
       addLayer(layer) {
         this.layers.add(layer.id);
@@ -479,7 +491,10 @@ describe('MapLibreRoutingControl', () => {
       found: true,
       costField: 'distance',
       cost: 1200,
-      coordinates: [[0, 0], [0.01, 0]],
+      coordinates: [
+        [0, 0],
+        [0.01, 0],
+      ],
       engine: 'cpu',
       parallelUsed: false,
     }));
@@ -546,7 +561,10 @@ describe('MapLibreRoutingControl', () => {
 
     control._mounted = true;
     control._map = fakeMap;
-    fakeMap.addSource(control._options.isolineSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    fakeMap.addSource(control._options.isolineSourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
     fakeMap.addLayer({ id: control._options.isolineFillLayerId });
     fakeMap.addLayer({ id: control._options.isolineOutlineLayerId });
     control._isoline = { point: [0, 0], direction: 'from' };
@@ -555,7 +573,8 @@ describe('MapLibreRoutingControl', () => {
     await control._tryIsoline();
 
     const fillColorCall = fakeMap.setPaintProperty.mock.calls.find(
-      ([layerId, property]) => layerId === control._options.isolineFillLayerId && property === 'fill-color'
+      ([layerId, property]) =>
+        layerId === control._options.isolineFillLayerId && property === 'fill-color'
     );
     expect(fillColorCall).toBeDefined();
     const expression = fillColorCall[2];
@@ -581,10 +600,12 @@ describe('MapLibreRoutingControl', () => {
 
   it('loads tile template once and caches the promise', async () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
-    global.fetch = vi.fn(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ tiles: ['https://tile.example/{z}/{x}/{y}.pbf'] }),
-    }));
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ tiles: ['https://tile.example/{z}/{x}/{y}.pbf'] }),
+      })
+    );
     control._tileJsonUrl = 'https://meta.example/tile.json';
 
     const first = await control._loadTileTemplate();
@@ -693,7 +714,9 @@ describe('MapLibreRoutingControl', () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
     control._statusEl = createElementStub();
     control._text = { status: { tileMetadata: 'Tile error', tileUrl: 'Missing tile url' } };
-    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' }));
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' })
+    );
 
     control.setTileJsonUrl('https://example.com/tiles.json');
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -705,22 +728,28 @@ describe('MapLibreRoutingControl', () => {
 
   it('loads tile template promise and rejects on invalid tiles array', async () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
-    global.fetch = vi.fn(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ tiles: [] }),
-    }));
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ tiles: [] }),
+      })
+    );
     control._tileJsonUrl = 'https://example.com/bad.json';
 
-    await expect(control._loadTileTemplate()).rejects.toThrow('Tile metadata response does not contain a valid tiles array.');
+    await expect(control._loadTileTemplate()).rejects.toThrow(
+      'Tile metadata response does not contain a valid tiles array.'
+    );
   });
 
   it('loads tile template and triggers routing retry when origin and destination are set', async () => {
     const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
     const oldFetch = global.fetch;
-    global.fetch = vi.fn(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ tiles: ['https://example.com/{z}/{x}/{y}.pbf'] }),
-    }));
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ tiles: ['https://example.com/{z}/{x}/{y}.pbf'] }),
+      })
+    );
     control._origin = [0, 0];
     control._dest = [1, 1];
     control._tryRoute = vi.fn();
@@ -804,7 +833,16 @@ describe('MapLibreRoutingControl', () => {
       costLabels: { distance: 'km' },
     };
 
-    control._showStats({ costField: 'distance', cost: 1234, coordinates: [[0, 0], [0, 0]], engine: 'cpu', parallelUsed: false });
+    control._showStats({
+      costField: 'distance',
+      cost: 1234,
+      coordinates: [
+        [0, 0],
+        [0, 0],
+      ],
+      engine: 'cpu',
+      parallelUsed: false,
+    });
 
     expect(control._statsEl.hidden).toBe(false);
     expect(control._engineBadgeEl.innerHTML).toContain('CPU');

@@ -39,7 +39,7 @@ export function haversineDistanceCoords(lng1, lat1, lng2, lat2) {
   const sinHalfLng = Math.sin(dLng / 2);
   const sinHalfDistance = Math.hypot(
     sinHalfLat,
-    Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinHalfLng,
+    Math.cos(lat1Rad) * Math.cos(lat2Rad) * sinHalfLng
   );
   return 2 * EARTH_RADIUS_M * Math.asin(sinHalfDistance);
 }
@@ -59,10 +59,9 @@ export function isWithinDistanceMeters([lng1, lat1], [lng2, lat2], maxDistanceM)
   return isWithinDistanceMetersCoords(lng1, lat1, lng2, lat2, maxDistanceM);
 }
 
-
 /**
  * Generates "pretty" breaks for any order of magnitude, including billions.
- * 
+ *
  * @param {number} min - Minimum value of the data.
  * @param {number} max - Maximum value of the data.
  * @param {number} n - Target number of intervals (approximate).

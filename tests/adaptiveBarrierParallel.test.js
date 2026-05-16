@@ -22,7 +22,14 @@ function makeRandomGraph(N, E, maxWeight = 15, seed = 1) {
     const v = Math.floor(rand() * N);
     if (u === v) continue;
     const weight = Math.floor(rand() * maxWeight) + 1;
-    edges.push({ source: u, target: v, length: weight, travelTime: weight, cost: weight, reverseCost: -1 });
+    edges.push({
+      source: u,
+      target: v,
+      length: weight,
+      travelTime: weight,
+      cost: weight,
+      reverseCost: -1,
+    });
   }
   return { nodes, edges };
 }

@@ -34,7 +34,8 @@ export const ROUTER_TUNING = Object.freeze({
 });
 
 const IS_BROWSER_RUNTIME = typeof window !== 'undefined' && typeof navigator !== 'undefined';
-const HAS_PARALLEL_ROUTING_RUNTIME = IS_BROWSER_RUNTIME &&
+const HAS_PARALLEL_ROUTING_RUNTIME =
+  IS_BROWSER_RUNTIME &&
   typeof SharedArrayBuffer !== 'undefined' &&
   typeof Worker !== 'undefined' &&
   typeof crossOriginIsolated === 'boolean' &&
@@ -72,13 +73,13 @@ const RUNTIME_MODEL_PROFILE_CACHE = (() => {
     const means = Array.isArray(model.runtimeScalerMean)
       ? model.runtimeScalerMean
       : Array.isArray(model.scaler_mean)
-      ? model.scaler_mean
-      : null;
+        ? model.scaler_mean
+        : null;
     const scales = Array.isArray(model.runtimeScalerScale)
       ? model.runtimeScalerScale
       : Array.isArray(model.scaler_scale)
-      ? model.scaler_scale
-      : null;
+        ? model.scaler_scale
+        : null;
     const classes = Array.isArray(model.classes) ? model.classes : null;
     const regressors = model.runtimeRegressors || model.regressors;
     const fallbackEngine = typeof model.fallbackEngine === 'string' ? model.fallbackEngine : null;
@@ -116,11 +117,11 @@ const RUNTIME_MODEL_PROFILE_CACHE = (() => {
       hasValidRegressors,
       minConfidence: Math.max(
         ML_MIN_CONFIDENCE_FLOOR,
-        Number.isFinite(model.minConfidence) ? model.minConfidence : 0,
+        Number.isFinite(model.minConfidence) ? model.minConfidence : 0
       ),
       minMargin: Math.max(
         ML_MIN_MARGIN_FLOOR,
-        Number.isFinite(model.minMargin) ? model.minMargin : 0,
+        Number.isFinite(model.minMargin) ? model.minMargin : 0
       ),
     });
   }
@@ -238,7 +239,7 @@ export function resolveMlFeatureValues(features = {}) {
   const safeE = safeNumber(safeERaw, safeNumber(edgeCountRaw, safeN));
   const safeBeelineKm = safeNumber(
     safeBeelineKmRaw,
-    Math.max(0.25, safeNumber(haversineDistanceRaw, 0) / 1000),
+    Math.max(0.25, safeNumber(haversineDistanceRaw, 0) / 1000)
   );
   const beelinePerNode = safeNumber(beelinePerNodeRaw, safeBeelineKm / safeN);
   const edgesPerKm = safeNumber(edgesPerKmRaw, safeE / safeBeelineKm);
@@ -248,7 +249,7 @@ export function resolveMlFeatureValues(features = {}) {
   const emptyRatio = safeNumber(emptyRatioRaw, 1);
   const avgBranchFactor = safeNumber(
     avgBranchFactorRaw,
-    safeNumber(avgOutDegreeRaw, safeNumber(averageNodeDegreeRaw, safeE / safeN)),
+    safeNumber(avgOutDegreeRaw, safeNumber(averageNodeDegreeRaw, safeE / safeN))
   );
   const relativeDensity = safeNumber(relativeDensityRaw, safeNumber(graphDensityRaw, 0));
   const sourceDegree = safeNumber(sourceDegreeRaw, safeNumber(nodeDegreeSourceRaw, 0));
@@ -257,11 +258,11 @@ export function resolveMlFeatureValues(features = {}) {
   const targetCentrality = safeNumber(targetCentralityRaw, safeNumber(nodeCentralityTargetRaw, 0));
   const sourceTargetDegreeRatio = safeNumber(
     sourceTargetDegreeRatioRaw,
-    targetDegree > 0 ? sourceDegree / targetDegree : 0,
+    targetDegree > 0 ? sourceDegree / targetDegree : 0
   );
   const sourceTargetCentralityRatio = safeNumber(
     sourceTargetCentralityRatioRaw,
-    targetCentrality > 0 ? sourceCentrality / targetCentrality : 0,
+    targetCentrality > 0 ? sourceCentrality / targetCentrality : 0
   );
 
   const logN = Math.log1p(safeN);

@@ -1,4 +1,10 @@
-import { fmtDistance, formatDuration, formatEngineBadgeName, getEngineBadgeIcon, fmtTime } from './MapLibreRoutingControl.core.js';
+import {
+  fmtDistance,
+  formatDuration,
+  formatEngineBadgeName,
+  getEngineBadgeIcon,
+  fmtTime,
+} from './MapLibreRoutingControl.core.js';
 
 /**
  * Build the interactive control panel HTML for routing and isoline features.
@@ -6,7 +12,7 @@ import { fmtDistance, formatDuration, formatEngineBadgeName, getEngineBadgeIcon,
  * @returns {string} HTML markup for the control panel.
  */
 export function buildPanelMarkup(ctrl) {
-    const routingHtml = `
+  const routingHtml = `
 
       <div class="rp-modes" style="--rp-columns:3">
         <button type="button" class="rp-mode-btn" data-mode="pedestrian" aria-pressed="false" title="${ctrl._text.modeTitles.pedestrian}">
@@ -76,10 +82,12 @@ export function buildPanelMarkup(ctrl) {
       <div class="rp-status" id="rp-status" role="status" aria-live="polite" hidden></div>
     `;
 
-  const isoThresholdDisplay = (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal')
-    ? Math.round((Number(ctrl._isoline.maxCost) || 0) / 60)
-    : (Number(ctrl._isoline.maxCost) || 0);
-  const isoThresholdUnit = (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') ? 'min' : 'm';
+  const isoThresholdDisplay =
+    ctrl._costField === 'travelTime' || ctrl._costField === 'optimal'
+      ? Math.round((Number(ctrl._isoline.maxCost) || 0) / 60)
+      : Number(ctrl._isoline.maxCost) || 0;
+  const isoThresholdUnit =
+    ctrl._costField === 'travelTime' || ctrl._costField === 'optimal' ? 'min' : 'm';
 
   const isolineHtml = `
       <div class="rp-section" id="rp-isoline-controls">
@@ -134,7 +142,7 @@ export function buildPanelMarkup(ctrl) {
       <div class="rp-status" id="rp-status-isoline" role="status" aria-live="polite" hidden></div>
     `;
 
-    if (ctrl._features === 'both') {
+  if (ctrl._features === 'both') {
     const routingActive = ctrl._activeTab === 'routing';
     const isolineActive = ctrl._activeTab === 'isoline';
     return `
@@ -164,19 +172,26 @@ export function buildPanelMarkup(ctrl) {
  */
 export function updateIsolineThresholdUI(ctrl) {
   try {
-    const isoPanel = ctrl._panel && ctrl._panel.querySelector ? ctrl._panel.querySelector('#rp-isoline-panel') : null;
+    const isoPanel =
+      ctrl._panel && ctrl._panel.querySelector
+        ? ctrl._panel.querySelector('#rp-isoline-panel')
+        : null;
     if (!isoPanel) return;
     const isoThreshold = isoPanel.querySelector('#rp-isoline-threshold');
     const isoUnit = isoPanel.querySelector('#rp-isoline-threshold-unit');
     if (!isoThreshold || !isoUnit) return;
     if (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') {
       isoUnit.textContent = 'min';
-      isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost) ? Math.round(ctrl._isoline.maxCost / 60) : '';
+      isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost)
+        ? Math.round(ctrl._isoline.maxCost / 60)
+        : '';
     } else {
       isoUnit.textContent = 'm';
       isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost) ? ctrl._isoline.maxCost : '';
     }
-  } catch (_e) { void _e; }
+  } catch (_e) {
+    void _e;
+  }
 }
 
 /**
@@ -186,9 +201,10 @@ export function updateIsolineThresholdUI(ctrl) {
  * @param {string} [cls] Optional CSS class for status styling.
  */
 export function setStatus(ctrl, html, cls = '') {
-  const target = ctrl._activeTab === 'isoline'
-    ? (ctrl._statusElIsoline || ctrl._statusEl)
-    : (ctrl._statusEl || ctrl._statusElIsoline);
+  const target =
+    ctrl._activeTab === 'isoline'
+      ? ctrl._statusElIsoline || ctrl._statusEl
+      : ctrl._statusEl || ctrl._statusElIsoline;
   if (!target) return;
 
   const other = target === ctrl._statusEl ? ctrl._statusElIsoline : ctrl._statusEl;
@@ -228,15 +244,20 @@ export function showStats(ctrl, result) {
     return;
   }
 
-  const distanceM = result.costField === 'distance' ? result.cost : getRouteDistanceFallback(result.coordinates);
-  const timeText = result.costField !== 'distance' ? formatDurationSeconds(result.cost) : fmtTime(distanceM, ctrl._mode);
+  const distanceM =
+    result.costField === 'distance' ? result.cost : getRouteDistanceFallback(result.coordinates);
+  const timeText =
+    result.costField !== 'distance'
+      ? formatDurationSeconds(result.cost)
+      : fmtTime(distanceM, ctrl._mode);
   const engine = result.engine ?? 'cpu';
   const parallelUsed = Boolean(result.parallelUsed);
 
   ctrl._statDistEl.textContent = fmtDistance(distanceM);
   ctrl._statTimeEl.textContent = timeText;
   ctrl._statDistLabelEl.textContent = ctrl._text.stats.distance;
-  ctrl._statTimeLabelEl.textContent = ctrl._costField === 'distance' ? ctrl._text.stats.estTime : ctrl._text.stats.travelTime;
+  ctrl._statTimeLabelEl.textContent =
+    ctrl._costField === 'distance' ? ctrl._text.stats.estTime : ctrl._text.stats.travelTime;
   ctrl._statsEl.hidden = false;
   ctrl._engineBadgeEl.className = `rp-engine ${parallelUsed ? 'rp-engine--parallel' : 'rp-engine--cpu'}`;
   const costLabel = ctrl._text.costLabels[ctrl._costField] ?? ctrl._text.costLabels.distance;
@@ -317,7 +338,9 @@ export function syncModeAndCostUI(ctrl) {
 
     // Ensure isoline threshold UI matches the selected costField
     updateIsolineThresholdUI(ctrl);
-  } catch (_e) { void _e; }
+  } catch (_e) {
+    void _e;
+  }
 }
 
 /**
@@ -335,7 +358,9 @@ export function resetOtherUI(ctrl, activeTab) {
       const _optIso = ctrl._options.isolineMaxCost;
       const _defaultIso = Number.isFinite(Number(_optIso))
         ? Number(_optIso)
-        : ((ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') ? 15 * 60 : 100);
+        : ctrl._costField === 'travelTime' || ctrl._costField === 'optimal'
+          ? 15 * 60
+          : 100;
       ctrl._isoline = ctrl._isoline || { point: null, direction: 'from', maxCost: _defaultIso };
       ctrl._isoline.point = null;
       ctrl._isoline.direction = 'from';
@@ -351,10 +376,14 @@ export function resetOtherUI(ctrl, activeTab) {
         if (isoThreshold && isoUnit) {
           if (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') {
             isoUnit.textContent = 'min';
-            isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost) ? Math.round(ctrl._isoline.maxCost / 60) : '';
+            isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost)
+              ? Math.round(ctrl._isoline.maxCost / 60)
+              : '';
           } else {
             isoUnit.textContent = 'm';
-            isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost) ? ctrl._isoline.maxCost : '';
+            isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost)
+              ? ctrl._isoline.maxCost
+              : '';
           }
         }
 
@@ -395,5 +424,7 @@ export function resetOtherUI(ctrl, activeTab) {
         statusRoute.className = 'rp-status';
       }
     }
-  } catch (_e) { void _e; }
+  } catch (_e) {
+    void _e;
+  }
 }
