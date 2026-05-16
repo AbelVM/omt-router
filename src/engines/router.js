@@ -151,7 +151,7 @@ const ENGINE_ID_ALIASES = Object.freeze({
 });
 
 const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
-const ENGINE_WORKER_POOL_MAX_SIZE = Math.max(1, _hwConcurrency - 1);
+const ENGINE_WORKER_POOL_MAX_SIZE = Math.max(1, Math.floor(_hwConcurrency / 2));
 const ENGINE_WORKER_POOL_DEFAULT_SIZE = Math.min(8, ENGINE_WORKER_POOL_MAX_SIZE);
 let _engineWorkerPool = null;
 let _engineWorkerPoolSize = 0;

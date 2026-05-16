@@ -250,6 +250,11 @@ function resetBenchmarkRunState() {
   _updateScheduled = false;
 }
 
+function getBenchmarkRouteConcurrency() {
+  const hw = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency ?? 4 : 4;
+  return Math.max(1, Math.min(8, Math.floor(hw / 2)));
+}
+
 function createUIResultRow(result) {
   if (!result || typeof result !== 'object') return result;
   const row = { ...result };
@@ -550,126 +555,135 @@ runBtn.addEventListener('click', async () => {
     let successfulRouteCount = 0;
     let finishedEarly = false;
     const successThreshold = maxSuccessRoutes > 0 ? maxSuccessRoutes : Infinity;
+    const routeConcurrency = Math.min(routes.length, getBenchmarkRouteConcurrency());
+    const queuedRoutes = routes.map((routeDef, routeIndex) => ({ routeDef, routeIndex }));
+    let nextRouteIndex = 0;
 
-    // Benchmark nesting order:
-    //   1) route
-    //   2) shared-array-buffer / pass status (parallel vs serial)
-    //   3) engine selection for that pass
-    //   4) repeated run iterations per engine
-    outerRouteLoop: for (let routeIndex = 0; routeIndex < totalRoutes; routeIndex++) {
-      if (_stopped) throw new Error('Benchmark stopped by user');
-      const routeDef = routes[routeIndex];
+    const runNextRoute = async () => {
+      while (nextRouteIndex < queuedRoutes.length && !_stopped && !finishedEarly) {
+        const currentIndex = nextRouteIndex;
+        nextRouteIndex += 1;
+        const { routeDef, routeIndex } = queuedRoutes[currentIndex];
 
-      for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
-        if (_stopped) throw new Error('Benchmark stopped by user');
-        const pass = runPasses[passIndex];
-        _runContext = {
-          ...baseRunContext,
-          passIndex: passIndex + 1,
-          totalPasses: runPasses.length,
-          parallelOrSerial: pass.parallelOrSerial,
-          sharedArrayBuffer: pass.sharedArrayBuffer,
-          forceSerialRouting: pass.forceSerialRouting,
-        };
-
-        startedTasks += 1;
-
-        await runBenchmark(
-          {
-            routes: [routeDef],
-            urlTemplate,
-            mode,
-            zoom,
-            nRuns,
-            routePauseMs,
+        for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
+          if (_stopped) throw new Error('Benchmark stopped by user');
+          const pass = runPasses[passIndex];
+          _runContext = {
+            ...baseRunContext,
+            passIndex: passIndex + 1,
+            totalPasses: runPasses.length,
+            parallelOrSerial: pass.parallelOrSerial,
+            sharedArrayBuffer: pass.sharedArrayBuffer,
             forceSerialRouting: pass.forceSerialRouting,
-            clearCacheOnCategoryBoundary: false,
-            clearCachesAfterEachRoute: true,
-            pool: sharedPool,
-            signal: _abortController.signal,
-            pauseController: {
-              isPaused: () => _paused,
-              waitForResume: (signal) => waitForBenchmarkResume(signal),
-            },
-            onEngineStatus: (status) => {
-              _engineWorkerStatus = status ?? {
-                state: 'idle',
-                engineId: null,
-                running: false,
-                lastError: null,
-              };
-              scheduleUIUpdate();
-            },
-            engineRunTimeoutMs: 20_000,
-          },
-          (progress) => {
-            if (_stopped && !finishedEarly) throw new Error('Benchmark stopped by user');
+          };
 
-            const { routeName, result, pauseMs, phase } = progress;
-            const displayCompleted = completedTasks + (progress.done ? 1 : 0);
-            const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
-            const statusSuffix = formatStatusSuffix(progress);
-            const passPrefix =
-              runPasses.length > 1
-                ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
-                : '';
-            const activeTasks = Math.max(0, startedTasks - displayCompleted);
-            const pausedSuffix = _paused ? ' — paused' : '';
+          startedTasks += 1;
 
-            progressBarEl.style.width = `${pct}%`;
-            if (pauseStateEl) pauseStateEl.hidden = !_paused;
-            progressTextEl.textContent = progress.done
-              ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
-              : phase === 'pausing'
-                ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
-                : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
+          try {
+            await runBenchmark(
+              {
+                routes: [routeDef],
+                urlTemplate,
+                mode,
+                zoom,
+                nRuns,
+                routePauseMs,
+                forceSerialRouting: pass.forceSerialRouting,
+                clearCacheOnCategoryBoundary: false,
+                clearCachesAfterEachRoute: true,
+                pool: sharedPool,
+                signal: _abortController.signal,
+                pauseController: {
+                  isPaused: () => _paused,
+                  waitForResume: (signal) => waitForBenchmarkResume(signal),
+                },
+                onEngineStatus: (status) => {
+                  _engineWorkerStatus = status ?? {
+                    state: 'idle',
+                    engineId: null,
+                    running: false,
+                    lastError: null,
+                  };
+                  scheduleUIUpdate();
+                },
+                engineRunTimeoutMs: 20_000,
+              },
+              (progress) => {
+                if (_stopped && !finishedEarly) throw new Error('Benchmark stopped by user');
 
-            if (result) {
-              result._routeOrdinal = routeIndex + 1;
-              result._sab = Boolean(_runContext?.sharedArrayBuffer);
-              result._passIndex = passIndex;
-              result._insertedAt = performance.now();
-              _pendingResultBuffer.push({
-                passIndex: result._passIndex,
-                routeIndex,
-                _insertedAt: result._insertedAt,
-              });
-              _currentResultCount += 1;
-              const savePromise = saveResultToDB(runId, passIndex, routeIndex, result);
-              if (_currentRunId) {
-                savePromise.finally(() => {
-                  _pendingResultBuffer = _pendingResultBuffer.filter(
-                    (pending) =>
-                      pending.passIndex !== passIndex ||
-                      pending.routeIndex !== routeIndex ||
-                      pending._insertedAt !== result._insertedAt
-                  );
-                });
+                const { routeName, result, pauseMs, phase } = progress;
+                const displayCompleted = completedTasks + (progress.done ? 1 : 0);
+                const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
+                const statusSuffix = formatStatusSuffix(progress);
+                const passPrefix =
+                  runPasses.length > 1
+                    ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
+                    : '';
+                const activeTasks = Math.max(0, startedTasks - displayCompleted);
+                const pausedSuffix = _paused ? ' — paused' : '';
+
+                progressBarEl.style.width = `${pct}%`;
+                if (pauseStateEl) pauseStateEl.hidden = !_paused;
+                progressTextEl.textContent = progress.done
+                  ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
+                  : phase === 'pausing'
+                    ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
+                    : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
+
+                if (result) {
+                  result._routeOrdinal = routeIndex + 1;
+                  result._sab = Boolean(_runContext?.sharedArrayBuffer);
+                  result._passIndex = passIndex;
+                  result._insertedAt = performance.now();
+                  _pendingResultBuffer.push({
+                    passIndex: result._passIndex,
+                    routeIndex,
+                    _insertedAt: result._insertedAt,
+                  });
+                  _currentResultCount += 1;
+                  const savePromise = saveResultToDB(runId, passIndex, routeIndex, result);
+                  if (_currentRunId) {
+                    savePromise.finally(() => {
+                      _pendingResultBuffer = _pendingResultBuffer.filter(
+                        (pending) =>
+                          pending.passIndex !== passIndex ||
+                          pending.routeIndex !== routeIndex ||
+                          pending._insertedAt !== result._insertedAt
+                      );
+                    });
+                  }
+                  savePromise.catch((saveErr) => {
+                    console.warn('[benchmark] Failed to persist benchmark row:', saveErr);
+                  });
+                  _routeCompletionTimes.push(performance.now());
+                  if (!result.error) successfulRouteCount += 1;
+                  void appendRow(createUIResultRow(result));
+                  _pendingSummaryUpdate = true;
+                  _pendingChartRedraw = true;
+                  scheduleUIUpdate();
+                  if (successfulRouteCount >= successThreshold) {
+                    _stopped = true;
+                    finishedEarly = true;
+                    _abortController?.abort();
+                  }
+                }
+
+                if (progress.done) {
+                  completedTasks += 1;
+                }
               }
-              savePromise.catch((saveErr) => {
-                console.warn('[benchmark] Failed to persist benchmark row:', saveErr);
-              });
-              _routeCompletionTimes.push(performance.now());
-              if (!result.error) successfulRouteCount += 1;
-              void appendRow(createUIResultRow(result));
-              _pendingSummaryUpdate = true;
-              _pendingChartRedraw = true;
-              scheduleUIUpdate();
-              if (successfulRouteCount >= successThreshold) {
-                _stopped = true;
-                finishedEarly = true;
-              }
-            }
-
-            if (progress.done) {
-              completedTasks += 1;
-            }
+            );
+          } catch (err) {
+            if (err?.name !== 'AbortError') throw err;
           }
-        );
 
-        if (finishedEarly) break outerRouteLoop;
+          if (finishedEarly) break;
+        }
       }
-    }
+    };
+
+    const routeWorkers = Array.from({ length: routeConcurrency }, () => runNextRoute());
+    await Promise.all(routeWorkers);
 
     const runResults = await getReportResults();
     if (runResults.length > 0) {
