@@ -169,6 +169,8 @@
       <table id="results-table">
         <thead>
           <tr>
+            <th>#</th>
+            <th>SAB</th>
             <th data-col="name">Route</th>
           <th data-col="category">Category</th>
           <th data-col="lengthCategory">Length</th>
@@ -182,11 +184,20 @@
           <th data-col="winner">Winner</th>
           <th data-col="auto_matches_winner" class="num">🎯</th>
           <th data-col="auto_vs_winner_pct" class="num">Regret</th>
-          <th>Engine Errors</th>
+          <th>Error</th>
           </tr>
         </thead>
         <tbody id="results-tbody"></tbody>
       </table>
+    </div>
+    <div class="table-actions">
+      <div class="pagination" id="pagination-controls" hidden>
+        <div id="pagination-info" class="pagination-info"></div>
+        <div class="pagination-buttons">
+          <button id="pagination-prev" type="button" class="btn btn-secondary btn-small" disabled>Previous</button>
+          <button id="pagination-next" type="button" class="btn btn-secondary btn-small" disabled>Next</button>
+        </div>
+      </div>
     </div>
   </section>
 

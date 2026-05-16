@@ -83,6 +83,26 @@ export function clearBenchmarkCache() {
   }
 }
 
+export function disposeBenchmarkResources() {
+  if (_pool) {
+    try {
+      _pool.shutdown();
+    } catch (err) {
+      console.warn('[benchmark] Failed to shutdown shared pool:', err);
+    }
+    _pool = null;
+  }
+
+  if (_cache) {
+    try {
+      _cache.clear();
+    } catch (err) {
+      console.warn('[benchmark] Failed to clear shared cache:', err);
+    }
+    _cache = null;
+  }
+}
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function median(arr) {
@@ -1115,6 +1135,15 @@ export async function runBenchmark(config, onProgress = () => {}) {
     onProgress({ current: routes.length, total: routes.length, done: true, results });
     return results;
   } finally {
+    try {
+      if (cache && typeof cache.clear === 'function') cache.clear();
+      if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') {
+        graphCacheInstance.clear();
+      }
+    } catch (err) {
+      console.warn('[benchmark] Failed to clear benchmark caches on exit:', err);
+    }
+
     unsubscribeEngineStatus?.();
     emitEngineStatus(getEngineWorkerStatus());
   }

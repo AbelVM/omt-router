@@ -6,6 +6,7 @@ import {
 import {
   runBenchmark,
   clearBenchmarkCache,
+  disposeBenchmarkResources,
   getSharedPool,
   downloadCSV,
   drawScatter,
@@ -44,6 +45,11 @@ const densityEl = root.getElementById('density');
 const histogramEl = root.getElementById('histogram');
 const bubbleEl = root.getElementById('bubble');
 const urlInputEl = root.getElementById('url-input');
+const paginationControlsEl = root.getElementById('pagination-controls');
+const paginationInfoEl = root.getElementById('pagination-info');
+const paginationPrevBtn = root.getElementById('pagination-prev');
+const paginationNextBtn = root.getElementById('pagination-next');
+const resultsTableEl = root.getElementById('results-table');
 const modeSelectEl = root.getElementById('mode-select');
 const runsInputEl = root.getElementById('runs-input');
 const pauseInputEl = root.getElementById('pause-input');
@@ -202,15 +208,18 @@ successRoutesInput.addEventListener('keyup', updateRouteCount);
 updateRouteCount();
 
 // ── State ─────────────────────────────────────────────────────────────────
+const RESULTS_PAGE_SIZE = 250;
 let _results = [];
-let _sortCol = 'name';
-let _sortAsc  = true;
+let _sortCol = '_insertedAt';
+let _sortAsc  = false;
+let _currentPage = 1;
 let _stopped  = false;
 let _paused = false;
 let _pauseResolvers = [];
 let benchmarkStartTime = null;
 let _stopwatchRaf = null;
 let _cleanupTooltip = null;
+let _routeCompletionTimes = [];
 let _chartScatter = null;
 let _chartDensity = null;
 let _chartHistogram = null;
@@ -226,6 +235,16 @@ let _updateScheduled = false;
 let _pendingChartRedraw = false;
 let _pendingSummaryUpdate = false;
 window.__benchmarkResults = [];
+
+function resetBenchmarkRunState() {
+  _runContext = null;
+  _passResults = null;
+  _passContexts = null;
+  _routeCompletionTimes = [];
+  _pendingSummaryUpdate = false;
+  _pendingChartRedraw = false;
+  _updateScheduled = false;
+}
 
 function scheduleUIUpdate() {
   if (_updateScheduled) return;
@@ -404,6 +423,7 @@ runBtn.addEventListener('click', async () => {
   _pendingChartRedraw = false;
   _updateScheduled = false;
   _results = [];
+  _routeCompletionTimes = [];
   window.__benchmarkResults = _results;
   runBtn.disabled = true;
   stopBtn.disabled = false;
@@ -451,6 +471,11 @@ runBtn.addEventListener('click', async () => {
     let finishedEarly = false;
     const successThreshold = maxSuccessRoutes > 0 ? maxSuccessRoutes : Infinity;
 
+    // Benchmark nesting order:
+    //   1) route
+    //   2) shared-array-buffer / pass status (parallel vs serial)
+    //   3) engine selection for that pass
+    //   4) repeated run iterations per engine
     outerRouteLoop:
     for (let routeIndex = 0; routeIndex < totalRoutes; routeIndex++) {
       if (_stopped) throw new Error('Benchmark stopped by user');
@@ -480,7 +505,7 @@ runBtn.addEventListener('click', async () => {
             routePauseMs,
             forceSerialRouting: pass.forceSerialRouting,
             clearCacheOnCategoryBoundary: false,
-            clearCachesAfterEachRoute: false,
+            clearCachesAfterEachRoute: true,
             pool: sharedPool,
             signal: _abortController.signal,
             pauseController: {
@@ -514,8 +539,12 @@ runBtn.addEventListener('click', async () => {
                 : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
 
             if (result) {
+              result._routeOrdinal = routeIndex + 1;
+              result._sab = Boolean(_runContext?.sharedArrayBuffer);
+              result._insertedAt = performance.now();
               _passResults[passIndex].push(result);
               _results.push(result);
+              _routeCompletionTimes.push(performance.now());
               if (!result.error) successfulRouteCount += 1;
               appendRow(result);
               _pendingSummaryUpdate = true;
@@ -574,6 +603,8 @@ runBtn.addEventListener('click', async () => {
     resumePausedBenchmark();
     _abortController = null;
     _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
+    resetBenchmarkRunState();
+    disposeBenchmarkResources();
   }
 });
 
@@ -583,44 +614,44 @@ stopBtn.addEventListener('click', async () => {
   resumePausedBenchmark();
   _abortController?.abort();
 
-  if (_results.length > 0) {
-    showReport(_results, buildReportContext());
-    const savedPaths = [];
+if (Array.isArray(_results) && _results.length > 0) {
+      const combinedContext = { ...buildReportContext(), ..._runContext };
+      showReport(_results, combinedContext);
+      const savedPaths = [];
 
-    if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
-      for (let passIndex = 0; passIndex < _passResults.length; passIndex++) {
-        const passResults = _passResults[passIndex];
-        const passContext = _passContexts[passIndex];
-        if (passResults.length > 0) {
-          try {
-            const saveResult = await saveBenchmarkArtifact(passResults, passContext);
-            if (saveResult?.path) savedPaths.push(saveResult.path);
-            console.log('[benchmark] Stop requested; pass saved:', saveResult?.path ?? saveResult);
-          } catch (err) {
-            console.error('[benchmark] Failed to save JSON report on stop:', err);
-            if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
+      if (Array.isArray(_passResults) && Array.isArray(_passContexts)) {
+        for (let passIndex = 0; passIndex < _passResults.length; passIndex++) {
+          const passResults = Array.isArray(_passResults) ? _passResults[passIndex] : null;
+          const passContext = Array.isArray(_passContexts) ? _passContexts[passIndex] : null;
+          if (Array.isArray(passResults) && passResults.length > 0 && passContext) {
+            try {
+              const saveResult = await saveBenchmarkArtifact(passResults, passContext);
+              if (saveResult?.path) savedPaths.push(saveResult.path);
+              console.log('[benchmark] Stop requested; pass saved:', saveResult?.path ?? saveResult);
+            } catch (err) {
+              console.error('[benchmark] Failed to save JSON report on stop:', err);
+              if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
+            }
           }
         }
       }
-    }
 
-    if (savedPaths.length > 0) {
-      if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
-    } else {
-      try {
-        const context = buildReportContext();
-        const saveResult = await saveBenchmarkArtifact(_results, context);
-        if (saveResult?.path) {
-          if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${saveResult.path}`;
-        } else if (reportStatusEl) {
-          reportStatusEl.textContent = 'Report ready';
+      if (savedPaths.length > 0) {
+        if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
+      } else {
+        try {
+          const saveResult = await saveBenchmarkArtifact(_results, combinedContext);
+          if (saveResult?.path) {
+            if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${saveResult.path}`;
+          } else if (reportStatusEl) {
+            reportStatusEl.textContent = 'Report ready';
+          }
+        } catch (err) {
+          console.error('[benchmark] Failed to save JSON report on stop:', err);
+          if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
         }
-      } catch (err) {
-        console.error('[benchmark] Failed to save JSON report on stop:', err);
-        if (reportStatusEl) reportStatusEl.textContent = 'Report generated; JSON save failed';
       }
     }
-  }
 });
 
 // ── Download ──────────────────────────────────────────────────────────────
@@ -691,6 +722,137 @@ resultsTableSortHeaders.forEach(th => {
   });
 });
 
+if (paginationPrevBtn) {
+  paginationPrevBtn.addEventListener('click', () => {
+    if (_currentPage > 1) {
+      _currentPage -= 1;
+      renderTable(_results);
+    }
+  });
+}
+if (paginationNextBtn) {
+  paginationNextBtn.addEventListener('click', () => {
+    const pageCount = getPageCount(_results);
+    if (_currentPage < pageCount) {
+      _currentPage += 1;
+      renderTable(_results);
+    }
+  });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getPageCount(results) {
+  return Math.max(1, Math.ceil((Array.isArray(results) ? results.length : 0) / RESULTS_PAGE_SIZE));
+}
+
+function formatErrorDetails(r) {
+  const lines = [];
+  if (r.error) {
+    lines.push(`Route error: ${r.error}`);
+  }
+  if (r.routeError) {
+    lines.push(`Route error: ${r.routeError}`);
+  }
+
+  const engineErrors = [
+    { key: 'bidirectional_astar_error', label: 'A★ error' },
+    { key: 'bidirectional_astar_timed_error', label: 'A★ timed error' },
+    { key: 'bidirectional_astar_warm_error', label: 'A★ warmup error' },
+    { key: 'adaptive_barrier_error', label: 'Barrier error' },
+    { key: 'adaptive_barrier_timed_error', label: 'Barrier timed error' },
+    { key: 'adaptive_barrier_warm_error', label: 'Barrier warmup error' },
+    { key: 'delta_stepping_error', label: 'Delta error' },
+    { key: 'delta_stepping_timed_error', label: 'Delta timed error' },
+    { key: 'delta_stepping_warm_error', label: 'Delta warmup error' },
+    { key: 'ultra_dijkstra_error', label: 'Dijkstra error' },
+    { key: 'ultra_dijkstra_timed_error', label: 'Dijkstra timed error' },
+    { key: 'ultra_dijkstra_warm_error', label: 'Dijkstra warmup error' },
+  ];
+  engineErrors.forEach(({ key, label }) => {
+    if (r[key]) {
+      lines.push(`${label}: ${r[key]}`);
+    }
+  });
+
+  if (lines.length === 0) {
+    lines.push('No route or engine errors');
+  }
+  return lines;
+}
+
+function showTooltip(text, event) {
+  const tooltipEl = root.getElementById('tooltip');
+  if (!tooltipEl) return;
+  tooltipEl.hidden = false;
+  tooltipEl.innerHTML = text.map(line => `<div>${escapeHtml(line)}</div>`).join('');
+  const margin = 12;
+  const x = event.clientX + margin;
+  const y = event.clientY + margin;
+  tooltipEl.style.left = `${x}px`;
+  tooltipEl.style.top = `${y}px`;
+}
+
+function hideTooltip() {
+  const tooltipEl = root.getElementById('tooltip');
+  if (!tooltipEl) return;
+  tooltipEl.hidden = true;
+}
+
+if (resultsTableEl) {
+  resultsTableEl.addEventListener('pointerover', (event) => {
+    const target = event.target.closest('[data-error-tooltip]');
+    if (!target) return;
+    const lines = target.dataset.errorTooltip ? JSON.parse(target.dataset.errorTooltip) : null;
+    if (!lines) return;
+    showTooltip(lines, event);
+  });
+  resultsTableEl.addEventListener('pointermove', (event) => {
+    const target = event.target.closest('[data-error-tooltip]');
+    if (!target) return;
+    const tooltipEl = root.getElementById('tooltip');
+    if (!tooltipEl || tooltipEl.hidden) return;
+    const margin = 12;
+    tooltipEl.style.left = `${event.clientX + margin}px`;
+    tooltipEl.style.top = `${event.clientY + margin}px`;
+  });
+  resultsTableEl.addEventListener('pointerout', (event) => {
+    if (event.target.closest('[data-error-tooltip]')) {
+      hideTooltip();
+    }
+  });
+}
+
+function renderPaginationControls(results) {
+  const pageCount = getPageCount(results);
+  const totalRows = Array.isArray(results) ? results.length : 0;
+  if (!paginationControlsEl || !paginationInfoEl) return;
+  if (totalRows <= RESULTS_PAGE_SIZE) {
+    paginationControlsEl.hidden = true;
+    return;
+  }
+  paginationControlsEl.hidden = false;
+  const start = (_currentPage - 1) * RESULTS_PAGE_SIZE + 1;
+  const end = Math.min(totalRows, _currentPage * RESULTS_PAGE_SIZE);
+  paginationInfoEl.textContent = `Showing ${start}–${end} of ${totalRows} routes — page ${_currentPage}/${pageCount}`;
+  if (paginationPrevBtn) paginationPrevBtn.disabled = _currentPage <= 1;
+  if (paginationNextBtn) paginationNextBtn.disabled = _currentPage >= pageCount;
+}
+
+function getVisiblePageRows(sortedRows) {
+  const pageCount = getPageCount(sortedRows);
+  if (_currentPage > pageCount) _currentPage = pageCount;
+  const start = (_currentPage - 1) * RESULTS_PAGE_SIZE;
+  return sortedRows.slice(start, start + RESULTS_PAGE_SIZE);
+}
+
 // ── Rendering helpers ─────────────────────────────────────────────────────
 
 function fmtMs(v) {
@@ -752,11 +914,40 @@ function updateBenchmarkStopwatch(endTime = performance.now()) {
   if (!benchmarkStopwatchEl || benchmarkStartTime == null) return;
   const elapsedMs = endTime - benchmarkStartTime;
   const runCount = Math.max(0, _results.length);
-  const averageMs = runCount > 0 ? elapsedMs / runCount : 0;
+  const elapsedSec = elapsedMs / 1000;
+  const fullAverageRoutesPerSec = runCount > 0 && elapsedSec > 0 ? runCount / elapsedSec : 0;
+  let latestWindowRoutesPerSec = 0;
+  let latestWindowText = `latest ${Math.min(10, runCount)} avg — routes/sec`;
+  let latestWindowWarn = false;
+
+  if (_routeCompletionTimes.length > 1) {
+    const times = _routeCompletionTimes;
+    const sampleSize = Math.min(10, times.length);
+    const windowStartIndex = times.length - sampleSize;
+    const windowDurationSec = (times[times.length - 1] - times[windowStartIndex]) / 1000;
+    const effectiveWindowSec = Math.max(windowDurationSec, 0.001);
+    latestWindowRoutesPerSec = sampleSize / effectiveWindowSec;
+    latestWindowText = `latest ${sampleSize} avg ${latestWindowRoutesPerSec.toFixed(2)} routes/sec`;
+
+    const rates = [];
+    for (let i = windowStartIndex + 1; i < times.length; i += 1) {
+      const intervalSec = Math.max((times[i] - times[i - 1]) / 1000, 0.001);
+      rates.push(1 / intervalSec);
+    }
+
+    if (rates.length > 0) {
+      const meanRate = rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
+      const variance = rates.reduce((sum, rate) => sum + (rate - meanRate) ** 2, 0) / rates.length;
+      const stddev = Math.sqrt(variance);
+      latestWindowWarn = latestWindowRoutesPerSec > fullAverageRoutesPerSec + (1.5 * stddev);
+    }
+  }
+
   benchmarkStopwatchEl.hidden = false;
   benchmarkStopwatchEl.innerHTML = `
     <strong>${formatDuration(elapsedMs)}</strong>
-    <span>${runCount.toLocaleString()} routes${runCount > 0 ? ` · avg ${averageMs.toFixed(1)} ms / route` : ''}</span>
+    <span>avg ${fullAverageRoutesPerSec.toFixed(2)} routes/sec</span>
+    <span class="${latestWindowWarn ? 'metric--warn' : ''}">${latestWindowText}</span>
   `;
 }
 
@@ -831,12 +1022,27 @@ function formatEngineErrors(r) {
 
 function appendRow(r) {
   resultsSectionEl.hidden = false;
-  const tr = document.createElement('tr');
-  tr.innerHTML = buildRowHTML(r);
-  resultsTbodyEl.appendChild(tr);
+  _currentPage = 1;
+  renderTable(_results);
 }
 
-function buildRowHTML(r) {
+function formatErrorColumn(r) {
+  const hasError = Boolean(r.error || r.routeError || r.any_engine_error || r.bidirectional_astar_error || r.adaptive_barrier_error || r.delta_stepping_error || r.ultra_dijkstra_error || r.bidirectional_astar_timed_error || r.adaptive_barrier_timed_error || r.delta_stepping_timed_error || r.ultra_dijkstra_timed_error || r.bidirectional_astar_warm_error || r.adaptive_barrier_warm_error || r.delta_stepping_warm_error || r.ultra_dijkstra_warm_error);
+  const icon = hasError ? '⚠' : '✓';
+  const statusLabel = hasError ? 'Error' : 'OK';
+  const tooltipLines = hasError ? formatErrorDetails(r) : ['No route or engine errors'];
+  return `
+    <td class="error-bool ${hasError ? 'has-error' : 'no-error'}" data-error-tooltip='${escapeHtml(JSON.stringify(tooltipLines))}'>${icon}</td>
+  `;
+}
+
+function formatSabColumn(r) {
+  const hasSab = Boolean(r._sab);
+  return `<td class="sab-bool ${hasSab ? 'has-sab' : 'no-sab'}">${hasSab ? '✓' : '—'}</td>`;
+}
+
+function buildRowHTML(r, ordinal) {
+  const displayOrdinal = r._routeOrdinal ?? ordinal;
   const barrierParallelFlag = r.adaptive_barrier_parallel ? '✓' : '—';
   const deltaParallelFlag = r.delta_stepping_parallel ? '✓' : '—';
   const pickBadge = formatPickBadge(r.auto_engine);
@@ -844,6 +1050,8 @@ function buildRowHTML(r) {
   const hitIndicator = formatHitIndicator(r);
   const regretCell = formatRegret(r.auto_vs_winner_pct);
   return `
+    <td class="num ordinal-col">${displayOrdinal}</td>
+    ${formatSabColumn(r)}
     <td>${r.name}</td>
     <td>${r.category}</td>
     <td>${r.lengthCategory}</td>
@@ -857,7 +1065,7 @@ function buildRowHTML(r) {
     <td>${winnerCell}</td>
     <td class="num">${hitIndicator}</td>
     <td class="num">${regretCell}</td>
-    <td>${formatEngineErrors(r)}</td>
+    ${formatErrorColumn(r)}
   `;
 }
 
@@ -1004,7 +1212,9 @@ function renderTable(results) {
     if (typeof va === 'string') return _sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
     return _sortAsc ? va - vb : vb - va;
   });
-  resultsTbodyEl.innerHTML = sorted.map(r => `<tr>${buildRowHTML(r)}</tr>`).join('');
+  const visibleRows = getVisiblePageRows(sorted);
+  resultsTbodyEl.innerHTML = visibleRows.map((r, index) => `<tr>${buildRowHTML(r, (_currentPage - 1) * RESULTS_PAGE_SIZE + index + 1)}</tr>`).join('');
+  renderPaginationControls(results);
 }
 
 function updateSummary(results) {

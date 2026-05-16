@@ -52,6 +52,7 @@
       color: var(--text);
     }
     .stopwatch strong { font-size: 14px; }
+    .stopwatch .metric--warn { color: var(--red); font-weight: 700; }
 
     section {
       background: var(--surface);
@@ -369,6 +370,18 @@
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
     td.faster { color: var(--green); font-weight: 600; }
     td.slower { color: var(--red); }
+    td.ordinal-col { text-align: right; width: 56px; color: var(--subtext); }
+    td.sab-bool { white-space: nowrap; text-align: center; font-weight: 700; width: 42px; }
+    td.sab-bool.has-sab { color: #15803d; }
+    td.sab-bool.no-sab { color: #6b7280; }
+    td.error-bool { white-space: nowrap; text-align: center; font-weight: 700; }
+    td.error-bool.has-error { color: #b91c1c; }
+    td.error-bool.no-error { color: #15803d; }
+    .table-actions { display: flex; justify-content: flex-end; margin-top: 8px; margin-bottom: 0; gap: 12px; width: 100%; }
+    .pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; width: 100%; }
+    .pagination-info { font-size: 12px; color: var(--subtext); }
+    .pagination-buttons { display: flex; gap: 8px; }
+    .btn-small { padding: 6px 10px; font-size: 12px; }
 
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 900px) {
