@@ -70,9 +70,11 @@ export function getSharedPool() {
   return _pool;
 }
 
+const BENCHMARK_CACHE_TTL = 10_000;
+
 export function getSharedCache() {
   if (!_cache) {
-    _cache = new PowerCache({ maxEntries: 10_000, defaultTTL: 600_000 });
+    _cache = new PowerCache({ maxEntries: 10_000, defaultTTL: BENCHMARK_CACHE_TTL });
   }
   return _cache;
 }
