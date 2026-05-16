@@ -274,6 +274,10 @@ function normalizeEngineErrorCode(error) {
   return null;
 }
 
+const ENGINE_WORKER_POOL_DEFAULT_SIZE = typeof navigator !== 'undefined'
+  ? Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 5) - 1))
+  : 4;
+
 function normalizeEngineError(error) {
   return normalizeEngineErrorMessage(error);
 }
@@ -302,10 +306,13 @@ async function runEngineQuery(
     useCache: false,
     allowFallback,
     forceSerialRouting,
+    useWorkerPool: true,
+    engineWorkerPoolSize: ENGINE_WORKER_POOL_DEFAULT_SIZE,
   });
 
   const guards = [routePromise];
   const cleanup = [];
+  let abortPromise = null;
 
   if (Number.isFinite(engineRunTimeoutMs) && engineRunTimeoutMs > 0) {
     guards.push(
@@ -320,16 +327,15 @@ async function runEngineQuery(
   }
 
   if (signal) {
-    guards.push(
-      new Promise((_, reject) => {
-        const abortHandler = () => {
-          cancelRunningEngine({ reason: 'benchmark_aborted', engineId });
-          reject(createAbortError());
-        };
-        signal.addEventListener('abort', abortHandler, { once: true });
-        cleanup.push(() => signal.removeEventListener('abort', abortHandler));
-      })
-    );
+    abortPromise = new Promise((_, reject) => {
+      const abortHandler = () => {
+        cancelRunningEngine({ reason: 'benchmark_aborted', engineId });
+        reject(createAbortError());
+      };
+      signal.addEventListener('abort', abortHandler, { once: true });
+      cleanup.push(() => signal.removeEventListener('abort', abortHandler));
+    });
+    guards.push(abortPromise);
   }
 
   try {
@@ -337,6 +343,7 @@ async function runEngineQuery(
   } finally {
     cleanup.forEach((fn) => fn());
     routePromise.catch(() => {});
+    abortPromise?.catch(() => {});
   }
 }
 
@@ -1029,7 +1036,6 @@ export async function runBenchmark(config, onProgress = () => {}) {
     engineRunTimeoutMs = 20_000,
     pool: suppliedPool,
     cache: suppliedCache,
-    graphCache = null,
   } = config;
 
   const normalizedPauseMs = Math.max(0, Math.floor(routePauseMs));
@@ -1041,7 +1047,6 @@ export async function runBenchmark(config, onProgress = () => {}) {
 
   const pool = suppliedPool ?? getSharedPool();
   const cache = suppliedCache ?? getSharedCache();
-  const graphCacheInstance = graphCache || null; // allow passing a graph cache if needed
   const results = [];
   const emitEngineStatus = (status) => {
     if (typeof onEngineStatus === 'function') {
@@ -1055,22 +1060,45 @@ export async function runBenchmark(config, onProgress = () => {}) {
 
   // Group routes by city/category
   let prevCategory = null;
+  const maxConcurrentRoutes = Math.max(
+    1,
+    Math.min(routes.length, pool?.maxSize ?? routes.length)
+  );
+  const shouldUseSharedCategoryCache = shouldClearCachesOnCategoryBoundary && maxConcurrentRoutes === 1;
+  const shouldUseIsolatedCache = shouldClearCachesAfterEachRoute || !shouldUseSharedCategoryCache;
 
   const waitForResumeIfPaused = async () => {
     if (!pauseController?.isPaused?.() || isAbortSignalAborted(signal)) return;
     await pauseController.waitForResume(signal);
   };
 
+  const buildRouteCache = () =>
+    shouldUseIsolatedCache
+      ? new PowerCache({ maxEntries: 10_000, defaultTTL: BENCHMARK_CACHE_TTL })
+      : cache;
+
+  const activeTasks = new Set();
+
   try {
-    for (let i = 0; i < routes.length; i++) {
+    let nextRouteIndex = 0;
+
+    const scheduleRoute = async (routeIndex) => {
+      const routeDef = routes[routeIndex];
+      await waitForResumeIfPaused();
       if (isAbortSignalAborted(signal)) {
         cancelRunningEngine({ reason: 'benchmark_aborted' });
         throw createAbortError();
       }
-      await waitForResumeIfPaused();
 
-      const routeDef = routes[i];
-      onProgress({ current: i, total: routes.length, routeName: routeDef.name, results });
+      onProgress({
+        current: routeIndex,
+        total: routes.length,
+        routeIndex,
+        routeName: routeDef.name,
+        results,
+      });
+
+      const routeCache = buildRouteCache();
 
       let result;
       try {
@@ -1081,7 +1109,7 @@ export async function runBenchmark(config, onProgress = () => {}) {
           zoom,
           nRuns,
           pool,
-          cache,
+          routeCache,
           costField,
           {
             signal,
@@ -1090,8 +1118,9 @@ export async function runBenchmark(config, onProgress = () => {}) {
             onPhase: (phaseInfo) => {
               if (mutedPhases.has(phaseInfo?.phase)) return;
               onProgress({
-                current: i,
+                current: routeIndex,
                 total: routes.length,
+                routeIndex,
                 routeName: routeDef.name,
                 phase: phaseInfo?.phase,
                 phaseInfo,
@@ -1141,48 +1170,71 @@ export async function runBenchmark(config, onProgress = () => {}) {
         };
       }
 
-      results.push(result);
+      result._routeIndex = routeIndex;
+      results[routeIndex] = result;
       onProgress({
-        current: i + 1,
+        current: routeIndex + 1,
         total: routes.length,
+        routeIndex,
         routeName: routeDef.name,
         result,
         results,
+        done: true,
       });
 
-      const nextCategory = routes[i + 1]?.category ?? null;
-      if (shouldClearCachesAfterEachRoute) {
-        cache.clear();
-        if (graphCacheInstance && typeof graphCacheInstance.clear === 'function')
-          graphCacheInstance.clear();
-      } else if (shouldClearCachesOnCategoryBoundary) {
+      if (shouldUseSharedCategoryCache) {
+        const nextCategory = routes[routeIndex + 1]?.category ?? null;
         if (routeDef.category !== prevCategory && prevCategory !== null) {
-          // Defensive: should not happen, but just in case
           cache.clear();
-          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function')
-            graphCacheInstance.clear();
         }
         if (routeDef.category !== nextCategory) {
-          // Last route of this category
           cache.clear();
-          if (graphCacheInstance && typeof graphCacheInstance.clear === 'function')
-            graphCacheInstance.clear();
+        }
+        prevCategory = routeDef.category;
+      }
+
+      if (shouldUseIsolatedCache) {
+        routeCache.clear();
+      }
+
+      return routeDef;
+    };
+
+    while (nextRouteIndex < routes.length || activeTasks.size > 0) {
+      while (activeTasks.size < maxConcurrentRoutes && nextRouteIndex < routes.length) {
+        await waitForResumeIfPaused();
+        if (isAbortSignalAborted(signal)) {
+          cancelRunningEngine({ reason: 'benchmark_aborted' });
+          throw createAbortError();
+        }
+
+        const routeIndex = nextRouteIndex++;
+        const routeDef = routes[routeIndex];
+        const task = scheduleRoute(routeIndex);
+        const observedTask = task.catch((err) => {
+          if (err?.name === 'AbortError') return;
+          throw err;
+        });
+        activeTasks.add(observedTask);
+        observedTask.finally(() => activeTasks.delete(observedTask));
+
+        if (normalizedPauseMs > 0 && nextRouteIndex < routes.length) {
+          await waitForResumeIfPaused();
+          onProgress({
+            current: routeIndex + 1,
+            total: routes.length,
+            routeIndex,
+            routeName: routeDef.name,
+            pauseMs: normalizedPauseMs,
+            phase: 'pausing',
+            results,
+          });
+          await sleep(normalizedPauseMs, signal);
         }
       }
-      prevCategory = routeDef.category;
 
-      if (normalizedPauseMs > 0 && i < routes.length - 1) {
-        await waitForResumeIfPaused();
-        onProgress({
-          current: i + 1,
-          total: routes.length,
-          routeName: routeDef.name,
-          pauseMs: normalizedPauseMs,
-          phase: 'pausing',
-          results,
-        });
-        await sleep(normalizedPauseMs, signal);
-        await waitForResumeIfPaused();
+      if (activeTasks.size > 0) {
+        await Promise.race(activeTasks);
       }
     }
 
@@ -1190,10 +1242,13 @@ export async function runBenchmark(config, onProgress = () => {}) {
     return results;
   } finally {
     try {
+      await Promise.allSettled(activeTasks);
+    } catch (err) {
+      console.warn('[benchmark] Failed to settle active benchmark tasks on exit:', err);
+    }
+
+    try {
       if (cache && typeof cache.clear === 'function') cache.clear();
-      if (graphCacheInstance && typeof graphCacheInstance.clear === 'function') {
-        graphCacheInstance.clear();
-      }
     } catch (err) {
       console.warn('[benchmark] Failed to clear benchmark caches on exit:', err);
     }

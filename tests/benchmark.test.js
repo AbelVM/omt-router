@@ -378,6 +378,8 @@ describe('Benchmark report artifact generation', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.doUnmock('../benchmark/assets/benchmark.js');
+    vi.doUnmock('chart.js/auto');
   });
 
   it('persists and retrieves run results from IndexedDB across requests', async () => {
@@ -565,6 +567,48 @@ describe('Benchmark report artifact generation', () => {
     expect(savedPaths).toHaveLength(2);
   });
 
+  it('saves per-pass artifacts when DB-loaded results use one-based pass indices', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-onebased', { clearAll: true });
+    await benchDb.saveResultToDB('run-onebased', 0, 0, { id: 'db-row-0', _passIndex: 1 });
+    await benchDb.saveResultToDB('run-onebased', 1, 1, { id: 'db-row-1', _passIndex: 2 });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setPassContexts([
+      { passKey: 'pass-1', description: 'Pass 1' },
+      { passKey: 'pass-2', description: 'Pass 2' },
+    ]);
+
+    const savedPaths = await benchmark.saveRunArtifacts([{ _passIndex: 0, route: 'bad-row' }], {
+      runId: 'run-onebased',
+    });
+    expect(savedPaths).toHaveLength(2);
+
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+
+    const payload1 = JSON.parse(saveCalls[0][1].body).payload;
+    const payload2 = JSON.parse(saveCalls[1][1].body).payload;
+    expect(payload1.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-0' }));
+    expect(payload2.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-1' }));
+    expect(payload1.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+    expect(payload2.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+  });
+
   it('loads DB-only results when saving artifacts for a runId provided in context', async () => {
     const fetchMock = setupFetchAndDOM();
     global.indexedDB = createFakeIndexedDB();
@@ -605,6 +649,37 @@ describe('Benchmark report artifact generation', () => {
     expect(payload2.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-1' }));
     expect(payload1.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
     expect(payload2.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+  });
+
+  it('loads both pass results from IndexedDB for the current run', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-both-passes', { clearAll: true });
+    await benchDb.saveResultToDB('run-both-passes', 0, 0, { id: 'db-row-0', _passIndex: 0 });
+    await benchDb.saveResultToDB('run-both-passes', 1, 1, { id: 'db-row-1', _passIndex: 1 });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setCurrentRunId('run-both-passes');
+
+    const results = await benchmark.getReportResults();
+    expect(results).toHaveLength(2);
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'db-row-0', _passIndex: 0 }),
+        expect.objectContaining({ id: 'db-row-1', _passIndex: 1 }),
+      ])
+    );
   });
 
   it('loads DB-only results when saving artifacts for the current run', async () => {
@@ -650,6 +725,177 @@ describe('Benchmark report artifact generation', () => {
     expect(payload2.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
   });
 
+  it('loads DB-only partial run results and saves empty pass artifacts for missing passes', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-partial-stop', { clearAll: true });
+    await benchDb.saveResultToDB('run-partial-stop', 0, 0, {
+      id: 'db-row-0',
+      _passIndex: 0,
+      _sab: true,
+    });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setCurrentRunId('run-partial-stop');
+    benchmark.setPassContexts([
+      { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+      { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+    ]);
+
+    const savedPaths = await benchmark.saveRunArtifacts([], { runId: 'run-partial-stop' });
+    expect(savedPaths).toHaveLength(2);
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const parallelPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'parallel');
+    const serialPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'serial');
+
+    expect(parallelPayload).toBeDefined();
+    expect(serialPayload).toBeDefined();
+    expect(parallelPayload.rawResults).toEqual([
+      expect.objectContaining({ id: 'db-row-0', _sab: true }),
+    ]);
+    expect(serialPayload.rawResults).toEqual([]);
+  });
+
+  it('skips empty per-pass artifacts when one pass has no results', async () => {
+    const fetchMock = setupFetchAndDOM();
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setPassContexts([
+      { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+      { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+    ]);
+
+    const savedPaths = await benchmark.saveRunArtifacts([
+      { _passIndex: 0, _sab: true, route: 'route-a' },
+    ]);
+
+    expect(savedPaths).toHaveLength(2);
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const parallelPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'parallel');
+    const serialPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'serial');
+    expect(parallelPayload).toBeDefined();
+    expect(serialPayload).toBeDefined();
+    expect(parallelPayload.rawResults).toEqual([
+      expect.objectContaining({ route: 'route-a', _sab: true }),
+    ]);
+    expect(parallelPayload.overview.routesRun).toBe(1);
+    expect(serialPayload.rawResults).toEqual([]);
+    expect(serialPayload.overview.routesRun).toBe(0);
+  });
+
+  it('does not create empty pass report variants for missing pass results', async () => {
+      setupFetchAndDOM();
+      const benchmark = await import('../benchmark/assets/index.js');
+      benchmark.setPassContexts([
+        { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+        { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+      ]);
+
+      const variants = benchmark.createReportVariants([
+        { _passIndex: 0, route: 'route-a' },
+      ]);
+      expect(variants.find((variant) => variant.key === 'sab_off')).toBeUndefined();
+      expect(variants.find((variant) => variant.key === 'sab_on')).toBeDefined();
+    });
+
+    it('does not create empty pass report variants when SAB metadata is used without pass contexts', async () => {
+      setupFetchAndDOM();
+      const benchmark = await import('../benchmark/assets/index.js');
+      benchmark.setPassContexts(null);
+
+      const variants = benchmark.createReportVariants([
+        { _passIndex: 0, _sab: true, route: 'route-a' },
+      ]);
+      expect(variants.find((variant) => variant.key === 'sab_off')).toBeUndefined();
+      expect(variants.find((variant) => variant.key === 'sab_on')).toBeDefined();
+    });
+
+    it('saves per-pass artifacts from DB SAB metadata when no pass context is available', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-sab-db', { clearAll: true });
+    await benchDb.saveResultToDB('run-sab-db', 0, 0, { id: 'db-row-0', _sab: true });
+    await benchDb.saveResultToDB('run-sab-db', 1, 1, { id: 'db-row-1', _sab: false });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setCurrentRunId('run-sab-db');
+
+    const savedPaths = await benchmark.saveRunArtifacts([], { runId: 'run-sab-db' });
+    expect(savedPaths).toHaveLength(2);
+
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+
+    const payload1 = JSON.parse(saveCalls[0][1].body).payload;
+    const payload2 = JSON.parse(saveCalls[1][1].body).payload;
+    expect(payload1.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-0', _sab: true }));
+    expect(payload2.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-1', _sab: false }));
+  });
+
+  it('clears cached render results when switching to a new current runId', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-old', { clearAll: true });
+    await benchDb.saveResultToDB('run-old', 0, 0, { id: 'db-old' });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setCurrentRunId('run-old');
+    let results = await benchmark.getReportResults();
+    expect(results).toContainEqual(expect.objectContaining({ id: 'db-old' }));
+
+    await benchDb.prepareForRun('run-new', { clearAll: false });
+    await benchDb.saveResultToDB('run-new', 0, 0, { id: 'db-new' });
+    await benchDb.waitForPendingWrites();
+
+    benchmark.setCurrentRunId('run-new');
+    results = await benchmark.getReportResults();
+    expect(results).toContainEqual(expect.objectContaining({ id: 'db-new' }));
+    expect(results).not.toContainEqual(expect.objectContaining({ id: 'db-old' }));
+  });
+
   it('saves DB-only artifacts when the stop button is clicked for an active run', async () => {
     const fetchMock = setupFetchAndDOM();
     global.indexedDB = createFakeIndexedDB();
@@ -683,12 +929,96 @@ describe('Benchmark report artifact generation', () => {
     );
     expect(saveCalls).toHaveLength(2);
 
-    const payload1 = JSON.parse(saveCalls[0][1].body).payload;
-    const payload2 = JSON.parse(saveCalls[1][1].body).payload;
-    expect(payload1.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-0' }));
-    expect(payload2.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-1' }));
-    expect(payload1.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
-    expect(payload2.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const parallelPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'parallel');
+    const serialPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'serial');
+
+    expect(parallelPayload).toBeDefined();
+    expect(serialPayload).toBeDefined();
+    expect(parallelPayload.rawResults).toEqual([
+      expect.objectContaining({ id: 'db-row-0' }),
+    ]);
+    expect(serialPayload.rawResults).toEqual([
+      expect.objectContaining({ id: 'db-row-1' }),
+    ]);
+  });
+
+  it('does not duplicate saves when stop is pressed during a running benchmark', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const runBenchmarkMock = vi.fn((options, progressCallback) => {
+      return new Promise((resolve, reject) => {
+        const result = {
+          id: 'partial-row',
+          route: 'route-0',
+          error: false,
+          _passIndex: 0,
+        };
+
+        const onAbort = () => {
+          reject(Object.assign(new Error('AbortError'), { name: 'AbortError' }));
+        };
+
+        if (options.signal) {
+          options.signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        setTimeout(() => {
+          progressCallback({ routeName: 'route-0', result, done: true, phase: 'routing' });
+        }, 0);
+
+        setTimeout(() => {
+          if (!options.signal?.aborted) resolve();
+        }, 50);
+      });
+    });
+
+    vi.doMock('../benchmark/assets/benchmark.js', () => ({
+      runBenchmark: runBenchmarkMock,
+      clearBenchmarkCache: vi.fn(),
+      disposeBenchmarkResources: vi.fn(),
+      getSharedPool: vi.fn(() => ({})),
+      downloadCSV: vi.fn(),
+      drawScatter: vi.fn(),
+      drawDensityScatter: vi.fn(),
+      drawFeatureHistogram: vi.fn(),
+      drawTimingBubble: vi.fn(),
+      installTooltip: vi.fn(),
+      generatePerformanceSummary: vi.fn(() => ({})),
+      generateCostSummary: vi.fn(() => ({ groupKeys: [], rows: [], formatValue: (v) => v })),
+      generateCopilotReport: vi.fn(() => ''),
+      sleep: vi.fn(async () => {}),
+    }));
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    document.getElementById('url-input').value = 'https://fake.tiles/{z}/{x}/{y}.pbf';
+    document.getElementById('mode-select').innerHTML = '<option value="test">test</option>';
+    document.getElementById('mode-select').value = 'test';
+    document.getElementById('runs-input').value = '1';
+    document.getElementById('pause-input').value = '0';
+
+    document.getElementById('run-btn').click();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    document.getElementById('stop-btn').click();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    expect(payloads.filter((payload) => payload.runtime.parallelOrSerial === 'parallel')).toHaveLength(1);
+    expect(payloads.filter((payload) => payload.runtime.parallelOrSerial === 'serial')).toHaveLength(1);
   });
 
   it('loads DB-only results and preserves route metadata when benchmark finishes normally', async () => {
@@ -716,21 +1046,86 @@ describe('Benchmark report artifact generation', () => {
       runId: 'run-finish',
     });
 
-    expect(savedPaths).toHaveLength(1);
+    expect(savedPaths).toHaveLength(2);
     const saveCalls = fetchMock.mock.calls.filter(
       (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
     );
-    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls).toHaveLength(2);
 
-    const payload = JSON.parse(saveCalls[0][1].body).payload;
-    expect(payload.rawResults).toContainEqual(
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const pass0Payload = payloads.find((payload) => payload.rawResults.some((row) => row.passIndex === 0));
+    const pass1Payload = payloads.find((payload) => payload.rawResults.some((row) => row.passIndex === 1));
+
+    expect(pass0Payload).toBeDefined();
+    expect(pass1Payload).toBeDefined();
+    expect(pass0Payload.rawResults).toContainEqual(
       expect.objectContaining({ id: 'db-row-0', passIndex: 0, routeIndex: 3, detail: 'complete' })
     );
-    expect(payload.rawResults).toContainEqual(
+    expect(pass1Payload.rawResults).toContainEqual(
       expect.objectContaining({ id: 'db-row-1', passIndex: 1, routeIndex: 5 })
     );
-    expect(payload.rawResults.every((row) => typeof row._insertedAt === 'number')).toBe(true);
-    expect(payload.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+    expect(pass0Payload.rawResults.every((row) => typeof row._insertedAt === 'number')).toBe(true);
+    expect(pass1Payload.rawResults.every((row) => typeof row._insertedAt === 'number')).toBe(true);
+    expect(pass0Payload.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+    expect(pass1Payload.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+  });
+
+  it('saves DB-only pass artifacts when benchmark finishes normally with pass contexts', async () => {
+    const fetchMock = setupFetchAndDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-finish-pass', { clearAll: true });
+    await benchDb.saveResultToDB('run-finish-pass', 0, 0, {
+      id: 'db-row-0',
+      success: true,
+      route: 'route-0',
+    });
+    await benchDb.saveResultToDB('run-finish-pass', 1, 1, {
+      id: 'db-row-1',
+      success: true,
+      route: 'route-1',
+    });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setPassContexts([
+      { passKey: 'pass-1', description: 'Pass 1' },
+      { passKey: 'pass-2', description: 'Pass 2' },
+    ]);
+    benchmark.setCurrentRunId('run-finish-pass');
+
+    const savedPaths = await benchmark.saveRunArtifacts([{ _passIndex: 0, route: 'bad-row' }], {
+      runId: 'run-finish-pass',
+    });
+
+    expect(savedPaths).toHaveLength(2);
+
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+
+    const payload1 = JSON.parse(saveCalls[0][1].body).payload;
+    const payload2 = JSON.parse(saveCalls[1][1].body).payload;
+    expect(payload1.rawResults).toContainEqual(
+      expect.objectContaining({ id: 'db-row-0', passIndex: 0, routeIndex: 0 })
+    );
+    expect(payload2.rawResults).toContainEqual(
+      expect.objectContaining({ id: 'db-row-1', passIndex: 1, routeIndex: 1 })
+    );
+    expect(payload1.rawResults.every((row) => typeof row._insertedAt === 'number')).toBe(true);
+    expect(payload2.rawResults.every((row) => typeof row._insertedAt === 'number')).toBe(true);
+    expect(payload1.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+    expect(payload2.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
   });
 
   it('loads DB-only results and preserves route metadata when benchmark finishes early from success threshold', async () => {
@@ -782,7 +1177,7 @@ describe('Benchmark report artifact generation', () => {
     expect(payload2.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
   });
 
-  it('uses only DB-loaded results for combined artifact generation when no pass contexts exist', async () => {
+  it('uses only DB-loaded per-pass artifacts when no pass contexts exist', async () => {
     const fetchMock = setupFetchAndDOM();
     global.indexedDB = createFakeIndexedDB();
     global.IDBKeyRange = {
@@ -807,16 +1202,23 @@ describe('Benchmark report artifact generation', () => {
       runId: 'run-3',
     });
 
-    expect(savedPaths).toHaveLength(1);
+    expect(savedPaths).toHaveLength(2);
     const saveCalls = fetchMock.mock.calls.filter(
       (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
     );
-    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls).toHaveLength(2);
 
-    const payload = JSON.parse(saveCalls[0][1].body).payload;
-    expect(payload.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-0' }));
-    expect(payload.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-1' }));
-    expect(payload.rawResults).not.toContainEqual(expect.objectContaining({ route: 'bad-row' }));
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const pass0Payload = payloads.find((payload) => payload.rawResults.some((row) => row.id === 'db-row-0'));
+    const pass1Payload = payloads.find((payload) => payload.rawResults.some((row) => row.id === 'db-row-1'));
+
+    expect(pass0Payload).toBeDefined();
+    expect(pass1Payload).toBeDefined();
+    expect(pass0Payload.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-0' }));
+    expect(pass1Payload.rawResults).toContainEqual(expect.objectContaining({ id: 'db-row-1' }));
+    expect(payloads.flatMap((payload) => payload.rawResults)).not.toContainEqual(
+      expect.objectContaining({ route: 'bad-row' })
+    );
   });
 
   it('saves artifact payloads with report JSON and per-pass artifacts when pass contexts exist', async () => {
@@ -850,16 +1252,16 @@ describe('Benchmark report artifact generation', () => {
     expect(secondPayload.payload.overview.routesRun).toBe(1);
   });
 
-  it('saves empty artifacts for missing passes when stop occurs mid-benchmark', async () => {
+  it('saves pass artifacts when stop occurs mid-benchmark with partial pass results', async () => {
     const fetchMock = setupFetchAndDOM();
     const benchmark = await import('../benchmark/assets/index.js');
 
     benchmark.setPassContexts([
-      { passKey: 'pass-1', description: 'Pass 1' },
-      { passKey: 'pass-2', description: 'Pass 2' },
+      { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+      { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
     ]);
 
-    const results = [{ _passIndex: 0, route: 'route-a', raw: { duration: 10 } }];
+    const results = [{ _passIndex: 0, _sab: true, route: 'route-a', raw: { duration: 10 } }];
 
     const savedPaths = await benchmark.saveRunArtifacts(results, { runId: 'run-123' });
 
@@ -869,13 +1271,57 @@ describe('Benchmark report artifact generation', () => {
     );
     expect(saveCalls).toHaveLength(2);
 
-    const firstPayload = JSON.parse(saveCalls[0][1].body);
-    expect(firstPayload.payload.rawResults).toMatchObject([expect.objectContaining(results[0])]);
-    expect(firstPayload.payload.overview.routesRun).toBe(1);
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const parallelPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'parallel');
+    const serialPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'serial');
 
-    const secondPayload = JSON.parse(saveCalls[1][1].body);
-    expect(secondPayload.payload.rawResults).toEqual([]);
-    expect(secondPayload.payload.overview.routesRun).toBe(0);
+    expect(parallelPayload).toBeDefined();
+    expect(serialPayload).toBeDefined();
+    expect(parallelPayload.rawResults).toEqual([
+      expect.objectContaining({ route: 'route-a' }),
+    ]);
+    expect(serialPayload.rawResults).toEqual([]);
+    expect(parallelPayload.overview.routesRun).toBe(1);
+    expect(serialPayload.overview.routesRun).toBe(0);
+  });
+
+  it('saves pass artifacts when stop occurs mid-benchmark with incomplete multi-pass results', async () => {
+    const fetchMock = setupFetchAndDOM();
+    const benchmark = await import('../benchmark/assets/index.js');
+
+    benchmark.setPassContexts([
+      { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+      { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+    ]);
+
+    const results = [
+      { _passIndex: 0, _sab: true, route: 'route-a', raw: { duration: 10 } },
+      { _passIndex: 1, _sab: false, route: 'route-b', raw: { duration: 20 } },
+    ];
+
+    const savedPaths = await benchmark.saveRunArtifacts(results, {
+      runId: 'run-123',
+      routesSelected: 2,
+    });
+
+    expect(savedPaths).toHaveLength(2);
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
+    );
+    expect(saveCalls).toHaveLength(2);
+
+    const payloads = saveCalls.map((call) => JSON.parse(call[1].body).payload);
+    const parallelPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'parallel');
+    const serialPayload = payloads.find((payload) => payload.runtime.parallelOrSerial === 'serial');
+
+    expect(parallelPayload).toBeDefined();
+    expect(serialPayload).toBeDefined();
+    expect(parallelPayload.rawResults).toEqual([
+      expect.objectContaining({ route: 'route-a' }),
+    ]);
+    expect(serialPayload.rawResults).toEqual([
+      expect.objectContaining({ route: 'route-b' }),
+    ]);
   });
 
   it('builds a complete benchmark JSON payload with rawResults and overview data', async () => {
@@ -891,7 +1337,7 @@ describe('Benchmark report artifact generation', () => {
     expect(payload.overview).toMatchObject({ mode: 'test-mode', routesRun: 2 });
   });
 
-  it('returns no saved paths when combined artifact save fails', async () => {
+  it('returns no saved paths when there are no per-pass artifacts to save', async () => {
     vi.resetModules();
     buildMinimalBenchmarkDOM();
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -917,32 +1363,19 @@ describe('Benchmark report artifact generation', () => {
     ], { runId: 'run-fail' });
 
     expect(savedPaths).toEqual([]);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[benchmark] Failed to save combined artifacts:'),
-      expect.any(Error)
-    );
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });
 
-  it('continues when a per-pass artifact save fails', async () => {
+  it('returns no saved paths when all per-pass artifact saves fail', async () => {
     vi.resetModules();
     buildMinimalBenchmarkDOM();
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    let callCount = 0;
-    global.fetch = vi.fn(async () => {
-      callCount += 1;
-      if (callCount <= 2) {
-        return {
-          ok: false,
-          status: 500,
-          text: async () => 'pass-save-failed',
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({ path: 'combined-artifact.json' }),
-      };
-    });
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      text: async () => 'pass-save-failed',
+    }));
 
     const benchmark = await import('../benchmark/assets/index.js');
     benchmark.setPassContexts([
@@ -953,11 +1386,8 @@ describe('Benchmark report artifact generation', () => {
     const savedPaths = await benchmark.saveRunArtifacts([
       { _passIndex: 0, route: 'route-a' }], { runId: 'run-pass-fail' });
 
-    expect(savedPaths).toEqual(['combined-artifact.json']);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[benchmark] Failed to save pass artifacts:'),
-      expect.any(Error)
-    );
+    expect(savedPaths).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });
 
@@ -1279,6 +1709,72 @@ describe('Benchmark report artifact generation', () => {
       expect(benchmark.getReportFilename(selected, 'benchmark')).toContain('benchmark');
     });
 
+    it('creates pass-specific report variants when passContext indices are 1-based', async () => {
+      setupFetchAndDOM();
+      const benchmark = await import('../benchmark/assets/index.js');
+      benchmark.setPassContexts([
+        { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+        { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+      ]);
+
+      const variants = benchmark.createReportVariants([
+        { _passIndex: 0, route: 'route-a' },
+        { _passIndex: 1, route: 'route-b' },
+      ]);
+
+      expect(variants.find((variant) => variant.key === 'sab_on').results).toEqual([
+        { _passIndex: 0, route: 'route-a' },
+      ]);
+      expect(variants.find((variant) => variant.key === 'sab_off').results).toEqual([
+        { _passIndex: 1, route: 'route-b' },
+      ]);
+    });
+
+    it('creates pass-specific report variants when results use one-based pass indices', async () => {
+      setupFetchAndDOM();
+      const benchmark = await import('../benchmark/assets/index.js');
+      benchmark.setPassContexts([
+        { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+        { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+      ]);
+
+      const variants = benchmark.createReportVariants([
+        { _passIndex: 1, route: 'route-a' },
+        { _passIndex: 2, route: 'route-b' },
+      ]);
+
+      expect(variants.find((variant) => variant.key === 'sab_on').results).toEqual([
+        { _passIndex: 1, route: 'route-a' },
+      ]);
+      expect(variants.find((variant) => variant.key === 'sab_off').results).toEqual([
+        { _passIndex: 2, route: 'route-b' },
+      ]);
+    });
+
+    it('preserves report variants when pass contexts are cleared after a run', async () => {
+      setupFetchAndDOM();
+      const benchmark = await import('../benchmark/assets/index.js');
+
+      benchmark.setPassContexts([
+        { sharedArrayBuffer: true, parallelOrSerial: 'parallel', passIndex: 1, totalPasses: 2 },
+        { sharedArrayBuffer: false, parallelOrSerial: 'serial', passIndex: 2, totalPasses: 2 },
+      ]);
+      benchmark.createReportVariants([
+        { _passIndex: 0, route: 'route-a' },
+        { _passIndex: 1, route: 'route-b' },
+      ]);
+
+      const initialVariants = benchmark.buildReportVariants();
+      expect(initialVariants).toEqual(expect.arrayContaining([
+        expect.objectContaining({ key: 'sab_on' }),
+        expect.objectContaining({ key: 'sab_off' }),
+      ]));
+
+      benchmark.setPassContexts(null);
+      const preservedVariants = benchmark.buildReportVariants();
+      expect(preservedVariants).toEqual(initialVariants);
+    });
+
     it('collects checked route filters and updates route count display', async () => {
       buildMinimalBenchmarkDOM();
       document.getElementById('category-filters').innerHTML =
@@ -1299,9 +1795,8 @@ describe('Benchmark report artifact generation', () => {
 
       expect(benchmark.getReportVariantLabel('sab_on')).toBe('SAB On');
       expect(benchmark.getReportVariantLabel('sab_off')).toBe('SAB Off');
-      expect(benchmark.getReportVariantLabel('combined')).toBe('Combined');
       expect(benchmark.getReportFilename({ key: 'sab_off' }, 'benchmark')).toContain('_sab_off_');
-      expect(benchmark.getReportFilename(undefined, 'benchmark')).toContain('_combined_');
+      expect(benchmark.getReportFilename(undefined, 'benchmark')).not.toContain('_combined_');
     });
 
     it('hides report type controls when there are no report variants', async () => {
@@ -1312,7 +1807,7 @@ describe('Benchmark report artifact generation', () => {
       expect(document.getElementById('report-type-controls').hidden).toBe(true);
     });
 
-    it('falls back to combined report variant when selection is invalid', async () => {
+    it('falls back to the first report variant when selection is invalid', async () => {
       setupFetchAndDOM();
       const benchmark = await import('../benchmark/assets/index.js');
       benchmark.setPassContexts([
@@ -1326,7 +1821,7 @@ describe('Benchmark report artifact generation', () => {
 
       const selected = benchmark.getSelectedReportVariant();
       expect(selected).toBeDefined();
-      expect(selected.key).toBe('combined');
+      expect(selected.key).toBe('sab_on');
     });
 
     it('renders summary and cost summary tables through showResults', async () => {

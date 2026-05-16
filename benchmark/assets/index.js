@@ -19,6 +19,7 @@ import {
   generatePerformanceSummary,
   generateCostSummary,
   generateCopilotReport,
+  sleep,
 } from './benchmark.js';
 import {
   prepareForRun,
@@ -123,7 +124,130 @@ function updateRouteCount() {
 }
 
 function getReportVariantLabel(key) {
-  return key === 'sab_on' ? 'SAB On' : key === 'sab_off' ? 'SAB Off' : 'Combined';
+  return key === 'sab_on' ? 'SAB On' : key === 'sab_off' ? 'SAB Off' : '';
+}
+
+function getPassResultIndex(row) {
+  if (!row || typeof row !== 'object') return null;
+  const maybeIndex = Number.isFinite(Number(row._passIndex))
+    ? Number(row._passIndex)
+    : Number.isFinite(Number(row.passIndex))
+    ? Number(row.passIndex)
+    : null;
+  return Number.isFinite(maybeIndex) ? maybeIndex : null;
+}
+
+function determinePassIndexMode(results, passCount) {
+  const passValues = Array.isArray(results)
+    ? results.map(getPassResultIndex).filter((idx) => Number.isFinite(idx))
+    : [];
+  if (passValues.length === 0 || !Number.isFinite(passCount) || passCount <= 0) {
+    return 'unknown';
+  }
+
+  const allZeroBased = passValues.every((idx) => idx >= 0 && idx < passCount);
+  const allOneBased = passValues.every((idx) => idx >= 1 && idx <= passCount);
+
+  if (allOneBased && !allZeroBased) return 'one-based';
+  if (allZeroBased && !allOneBased) return 'zero-based';
+  if (allOneBased && allZeroBased) {
+    return passValues.some((idx) => idx === passCount) ? 'one-based' : 'zero-based';
+  }
+
+  return 'mixed';
+}
+
+function getPassVariantKey(row) {
+  if (!row || typeof row !== 'object') return null;
+  if (row._sab === true || row.sharedArrayBuffer === true) return 'sab_on';
+  if (row._sab === false || row.sharedArrayBuffer === false) return 'sab_off';
+  return null;
+}
+
+function groupResultsByPassVariant(results) {
+  const groups = { sab_on: [], sab_off: [] };
+  if (!Array.isArray(results)) return groups;
+
+  for (const row of results) {
+    const key = getPassVariantKey(row);
+    if (key) groups[key].push(row);
+  }
+
+  return groups;
+}
+
+function groupResultsByPassIndex(results) {
+  const groups = new Map();
+  if (!Array.isArray(results)) return groups;
+
+  for (const row of results) {
+    const idx = getPassResultIndex(row);
+    if (!Number.isFinite(idx)) continue;
+    if (!groups.has(idx)) groups.set(idx, []);
+    groups.get(idx).push(row);
+  }
+
+  return groups;
+}
+
+function getPassContextFromResults(results, passPosition) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return {};
+  }
+
+  const rowWithSab = results.find(
+    (row) => row._sab === true || row._sab === false || typeof row.sharedArrayBuffer === 'boolean'
+  );
+  if (rowWithSab) {
+    const sharedArrayBuffer = rowWithSab._sab === true || rowWithSab.sharedArrayBuffer === true;
+    return {
+      sharedArrayBuffer,
+      parallelOrSerial: sharedArrayBuffer ? 'parallel' : 'serial',
+    };
+  }
+
+  return {
+    parallelOrSerial: passPosition === 0 ? 'parallel' : 'serial',
+  };
+}
+
+function isOneBasedPassContext(contexts) {
+  return Array.isArray(contexts) &&
+    contexts.every(
+      (context) =>
+        context &&
+        Number.isFinite(Number(context.passIndex)) &&
+        Number(context.passIndex) > 0 &&
+        Number(context.passIndex) <= contexts.length
+    );
+}
+
+function passIndexMatchesContext(row, contextPassIndex, contextsAreOneBased, passIndexMode) {
+  const rowPassIndex = getPassResultIndex(row);
+  if (!Number.isFinite(rowPassIndex)) return false;
+
+  const resolvedContextIndex = Number.isFinite(Number(contextPassIndex))
+    ? Number(contextPassIndex)
+    : 0;
+
+  let targetIndex = resolvedContextIndex;
+  if (contextsAreOneBased) {
+    targetIndex = passIndexMode === 'zero-based' ? resolvedContextIndex - 1 : resolvedContextIndex;
+  } else {
+    targetIndex = passIndexMode === 'one-based' ? resolvedContextIndex + 1 : resolvedContextIndex;
+  }
+
+  if (Number.isFinite(targetIndex) && rowPassIndex === targetIndex) {
+    return true;
+  }
+
+  if (passIndexMode === 'mixed') {
+    const zeroBasedTarget = contextsAreOneBased ? resolvedContextIndex - 1 : resolvedContextIndex;
+    const oneBasedTarget = contextsAreOneBased ? resolvedContextIndex : resolvedContextIndex + 1;
+    return rowPassIndex === zeroBasedTarget || rowPassIndex === oneBasedTarget;
+  }
+
+  return false;
 }
 
 function buildReportVariants() {
@@ -131,31 +255,55 @@ function buildReportVariants() {
 }
 
 function createReportVariants(results) {
-  const combinedResults = Array.isArray(results) ? results : [];
-
-  const variants = [
-    {
-      key: 'combined',
-      label: 'Combined',
-      results: combinedResults,
-      context: {
-        ...buildReportContext(),
-        parallelOrSerial: 'combined',
-      },
-    },
-  ];
+  const variants = [];
 
   if (Array.isArray(_passContexts)) {
+    const passGroups = groupResultsByPassVariant(results);
+    const hasSabGroups = passGroups.sab_on.length > 0 || passGroups.sab_off.length > 0;
+    const contextsAreOneBased = isOneBasedPassContext(_passContexts);
+    const passIndexMode = determinePassIndexMode(results, _passContexts.length);
+
     _passContexts.forEach((context, index) => {
       if (!context) return;
       const key = context.sharedArrayBuffer ? 'sab_on' : 'sab_off';
+      const contextPassIndex = Number.isFinite(Number(context.passIndex))
+        ? Number(context.passIndex)
+        : index;
+      const parallelOrSerial =
+        context.parallelOrSerial ?? (context.sharedArrayBuffer ? 'parallel' : 'serial');
+      const passResults = hasSabGroups && typeof context.sharedArrayBuffer === 'boolean'
+        ? passGroups[key]
+        : Array.isArray(results)
+        ? results.filter((r) =>
+            passIndexMatchesContext(r, contextPassIndex, contextsAreOneBased, passIndexMode)
+          )
+        : [];
+
+      if (!Array.isArray(passResults) || passResults.length === 0) return;
+
       variants.push({
         key,
         label: getReportVariantLabel(key),
-        results: results.filter((r) => r._passIndex === index),
+        results: passResults,
         context: {
           ...context,
-          parallelOrSerial: key,
+          parallelOrSerial,
+        },
+      });
+    });
+  } else {
+    const passGroups = groupResultsByPassVariant(results);
+    ['sab_on', 'sab_off'].forEach((key) => {
+      if (passGroups[key].length === 0) return;
+      const sharedArrayBuffer = key === 'sab_on';
+      variants.push({
+        key,
+        label: getReportVariantLabel(key),
+        results: passGroups[key],
+        context: {
+          ...buildReportContext(),
+          parallelOrSerial: sharedArrayBuffer ? 'parallel' : 'serial',
+          sharedArrayBuffer,
         },
       });
     });
@@ -170,7 +318,7 @@ function updateReportTypeControls() {
   const variants = buildReportVariants();
   if (variants.length <= 1) {
     reportTypeControlsEl.hidden = true;
-    _reportSelection = 'combined';
+    _reportSelection = variants[0]?.key || '';
     return;
   }
 
@@ -184,13 +332,13 @@ function updateReportTypeControls() {
   });
 
   if (!variants.some((variant) => variant.key === _reportSelection)) {
-    _reportSelection = 'combined';
+    _reportSelection = variants[0]?.key || '';
   }
   reportViewSelectEl.value = _reportSelection;
 }
 
 function getSelectedReportVariant() {
-  const selection = reportViewSelectEl?.value || _reportSelection || 'combined';
+  const selection = reportViewSelectEl?.value || _reportSelection || '';
   _reportSelection = selection;
   const variants = buildReportVariants();
   return variants.find((variant) => variant.key === selection) ?? variants[0];
@@ -198,7 +346,7 @@ function getSelectedReportVariant() {
 
 function getReportFilename(variant, mode) {
   const timestamp = new Date().toISOString().slice(0, 10);
-  const suffix = variant?.key && variant.key !== 'combined' ? `_${variant.key}` : '_combined';
+  const suffix = variant?.key ? `_${variant.key}` : '';
   return `benchmark_${mode}${suffix}_${timestamp}.csv`;
 }
 
@@ -219,6 +367,7 @@ let _currentPage = 1;
 let _stopped = false;
 let _paused = false;
 let _pauseResolvers = [];
+let _savedArtifactsOnStop = false;
 let benchmarkStartTime = null;
 let _stopwatchRaf = null;
 let _cleanupTooltip = null;
@@ -230,7 +379,7 @@ let _chartBubble = null;
 let _runContext = null;
 let _passContexts = null;
 let _reportVariants = [];
-let _reportSelection = 'combined';
+let _reportSelection = '';
 let _currentRunId = null;
 let _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
 let _abortController = null;
@@ -240,11 +389,9 @@ let _pendingSummaryUpdate = false;
 
 function resetBenchmarkRunState() {
   _runContext = null;
-  _passContexts = null;
   _routeCompletionTimes = [];
   _currentResultCount = 0;
   _pendingResultBuffer = [];
-  _currentRenderResults = [];
   _pendingSummaryUpdate = false;
   _pendingChartRedraw = false;
   _updateScheduled = false;
@@ -296,6 +443,12 @@ async function getCurrentRenderResults() {
 }
 
 async function getReportResults() {
+  if (_currentRunId) {
+    const results = await loadRunResultsFromDB(_currentRunId);
+    _currentRenderResults = Array.isArray(results) ? results.slice() : [];
+    return _currentRenderResults.slice();
+  }
+
   return _currentRenderResults.length > 0
     ? _currentRenderResults.slice()
     : await getCurrentRenderResults();
@@ -357,6 +510,22 @@ function waitForBenchmarkResume(signal) {
       signal.addEventListener('abort', onAbort, { once: true });
     }
   });
+}
+
+function createCompositeAbortSignal(...signals) {
+  const controller = new AbortController();
+  const onAbort = () => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+  signals.forEach((signal) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  return controller.signal;
 }
 
 function engineLabel(engineId) {
@@ -451,6 +620,7 @@ runBtn.addEventListener('click', async () => {
   }
 
   _stopped = false;
+  _savedArtifactsOnStop = false;
   benchmarkStartTime = performance.now();
   startBenchmarkStopwatch();
   const sharedArrayBufferSupported = typeof SharedArrayBuffer !== 'undefined';
@@ -492,7 +662,7 @@ runBtn.addEventListener('click', async () => {
   if (reportPanelEl) reportPanelEl.hidden = true;
   if (reportTypeControlsEl) reportTypeControlsEl.hidden = true;
   if (reportViewSelectEl) reportViewSelectEl.innerHTML = '';
-  _reportSelection = 'combined';
+  _reportSelection = '';
   if (reportOutputEl) reportOutputEl.value = '';
   if (copyReportBtn) copyReportBtn.disabled = true;
   if (reportStatusEl) reportStatusEl.textContent = 'Report not generated';
@@ -529,8 +699,13 @@ runBtn.addEventListener('click', async () => {
     _cleanupTooltip = null;
   }
 
+  const runId = `${benchmarkTimestamp}-${Math.random().toString(36).slice(2, 10)}`;
+  setCurrentRunId(runId);
+  await prepareForRun(runId, { clearAll: false });
+
   _passContexts = runPasses.map((pass, passIndex) => ({
     ...baseRunContext,
+    runId,
     passIndex: passIndex + 1,
     totalPasses: runPasses.length,
     parallelOrSerial: pass.parallelOrSerial,
@@ -538,17 +713,13 @@ runBtn.addEventListener('click', async () => {
     forceSerialRouting: pass.forceSerialRouting,
   }));
 
-  const runId = `${benchmarkTimestamp}-${Math.random().toString(36).slice(2, 10)}`;
-  _currentRunId = runId;
-  await prepareForRun(runId, { clearAll: false });
-
   try {
     const totalRoutes = routes.length;
     const totalTasks = totalRoutes * runPasses.length;
     let completedTasks = 0;
     let startedTasks = 0;
-    let successfulRouteCount = 0;
     let finishedEarly = false;
+    let successfulRouteCount = 0;
     const successThreshold = maxSuccessRoutes > 0 ? maxSuccessRoutes : Infinity;
 
     // Benchmark nesting order:
@@ -556,15 +727,24 @@ runBtn.addEventListener('click', async () => {
     //   2) shared-array-buffer / pass status (parallel vs serial)
     //   3) engine selection for that pass
     //   4) repeated run iterations per engine
-    outerRouteLoop: for (let routeIndex = 0; routeIndex < totalRoutes; routeIndex++) {
-      if (_stopped) throw new Error('Benchmark stopped by user');
+    for (let routeIndex = 0; routeIndex < routes.length; routeIndex++) {
+      if (_stopped || successfulRouteCount >= successThreshold) {
+        finishedEarly = true;
+        break;
+      }
+
       const routeDef = routes[routeIndex];
 
       for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
-        if (_stopped) throw new Error('Benchmark stopped by user');
+        if (_stopped || successfulRouteCount >= successThreshold) {
+          finishedEarly = true;
+          break;
+        }
+
         const pass = runPasses[passIndex];
         _runContext = {
           ...baseRunContext,
+          runId,
           passIndex: passIndex + 1,
           totalPasses: runPasses.length,
           parallelOrSerial: pass.parallelOrSerial,
@@ -574,103 +754,135 @@ runBtn.addEventListener('click', async () => {
 
         startedTasks += 1;
 
-        await runBenchmark(
-          {
-            routes: [routeDef],
-            urlTemplate,
-            mode,
-            zoom,
-            nRuns,
-            routePauseMs,
-            forceSerialRouting: pass.forceSerialRouting,
-            clearCacheOnCategoryBoundary: false,
-            clearCachesAfterEachRoute: true,
-            pool: sharedPool,
-            signal: _abortController.signal,
-            pauseController: {
-              isPaused: () => _paused,
-              waitForResume: (signal) => waitForBenchmarkResume(signal),
-            },
-            onEngineStatus: (status) => {
-              _engineWorkerStatus = status ?? {
-                state: 'idle',
-                engineId: null,
-                running: false,
-                lastError: null,
-              };
-              scheduleUIUpdate();
-            },
-            engineRunTimeoutMs: 20_000,
-          },
-          (progress) => {
-            if (_stopped && !finishedEarly) throw new Error('Benchmark stopped by user');
-
-            const { routeName, result, pauseMs, phase } = progress;
-            const displayCompleted = completedTasks + (progress.done ? 1 : 0);
-            const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
-            const statusSuffix = formatStatusSuffix(progress);
-            const passPrefix =
-              runPasses.length > 1
-                ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
-                : '';
-            const activeTasks = Math.max(0, startedTasks - displayCompleted);
-            const pausedSuffix = _paused ? ' — paused' : '';
-
-            progressBarEl.style.width = `${pct}%`;
-            if (pauseStateEl) pauseStateEl.hidden = !_paused;
-            progressTextEl.textContent = progress.done
-              ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
-              : phase === 'pausing'
-                ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
-                : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
-
-            if (result) {
-              result._routeOrdinal = routeIndex + 1;
-              result._sab = Boolean(_runContext?.sharedArrayBuffer);
-              result._passIndex = passIndex;
-              result._insertedAt = performance.now();
-              _pendingResultBuffer.push({
-                passIndex: result._passIndex,
-                routeIndex,
-                _insertedAt: result._insertedAt,
-              });
-              _currentResultCount += 1;
-              const savePromise = saveResultToDB(runId, passIndex, routeIndex, result);
-              if (_currentRunId) {
-                savePromise.finally(() => {
-                  _pendingResultBuffer = _pendingResultBuffer.filter(
-                    (pending) =>
-                      pending.passIndex !== passIndex ||
-                      pending.routeIndex !== routeIndex ||
-                      pending._insertedAt !== result._insertedAt
-                  );
-                });
-              }
-              savePromise.catch((saveErr) => {
-                console.warn('[benchmark] Failed to persist benchmark row:', saveErr);
-              });
-              _routeCompletionTimes.push(performance.now());
-              if (!result.error) successfulRouteCount += 1;
-              void appendRow(createUIResultRow(result));
-              _pendingSummaryUpdate = true;
-              _pendingChartRedraw = true;
-              scheduleUIUpdate();
-              if (successfulRouteCount >= successThreshold) {
-                _stopped = true;
-                finishedEarly = true;
-              }
-            }
-
-            if (progress.done) {
-              completedTasks += 1;
-            }
-          }
+        const passAbortController = new AbortController();
+        const passSignal = createCompositeAbortSignal(
+          _abortController.signal,
+          passAbortController.signal
         );
 
-        if (finishedEarly) break outerRouteLoop;
+        try {
+          await runBenchmark(
+            {
+              routes: [routeDef],
+              urlTemplate,
+              mode,
+              zoom,
+              nRuns,
+              routePauseMs: 0,
+              forceSerialRouting: pass.forceSerialRouting,
+              clearCacheOnCategoryBoundary: false,
+              clearCachesAfterEachRoute: true,
+              pool: sharedPool,
+              signal: passSignal,
+              pauseController: {
+                isPaused: () => _paused,
+                waitForResume: (signal) => waitForBenchmarkResume(signal),
+              },
+              onEngineStatus: (status) => {
+                _engineWorkerStatus = status ?? {
+                  state: 'idle',
+                  engineId: null,
+                  running: false,
+                  lastError: null,
+                };
+                scheduleUIUpdate();
+              },
+              engineRunTimeoutMs: 20_000,
+            },
+            (progress) => {
+              if (_stopped && !finishedEarly) return;
+
+              const { routeName, result, pauseMs, phase } = progress;
+              const displayCompleted = completedTasks + (progress.done ? 1 : 0);
+              const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
+              const statusSuffix = formatStatusSuffix(progress);
+              const passPrefix =
+                runPasses.length > 1
+                  ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
+                  : '';
+              const activeTasks = Math.max(0, startedTasks - displayCompleted);
+              const pausedSuffix = _paused ? ' — paused' : '';
+
+              progressBarEl.style.width = `${pct}%`;
+              if (pauseStateEl) pauseStateEl.hidden = !_paused;
+              progressTextEl.textContent = progress.done
+                ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
+                : phase === 'pausing'
+                  ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
+                  : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
+
+              if (result) {
+                const globalRouteIndex = routeIndex;
+                result._routeIndex = globalRouteIndex;
+                result._routeOrdinal = globalRouteIndex + 1;
+                result._sab = Boolean(_runContext?.sharedArrayBuffer);
+                result._passIndex = passIndex;
+                result._insertedAt = performance.now();
+                _pendingResultBuffer.push({
+                  passIndex: result._passIndex,
+                  routeIndex: globalRouteIndex,
+                  _insertedAt: result._insertedAt,
+                });
+                _currentResultCount += 1;
+                const savePromise = saveResultToDB(runId, passIndex, globalRouteIndex, result);
+                if (_currentRunId) {
+                  savePromise.finally(() => {
+                    _pendingResultBuffer = _pendingResultBuffer.filter(
+                      (pending) =>
+                        pending.passIndex !== passIndex ||
+                        pending.routeIndex !== globalRouteIndex ||
+                        pending._insertedAt !== result._insertedAt
+                    );
+                  });
+                }
+                savePromise.catch((saveErr) => {
+                  console.warn('[benchmark] Failed to persist benchmark row:', saveErr);
+                });
+                _routeCompletionTimes.push(performance.now());
+                if (!result.error) {
+                  successfulRouteCount += 1;
+                  if (successfulRouteCount >= successThreshold) {
+                    finishedEarly = true;
+                    passAbortController.abort();
+                  }
+                }
+                void appendRow(createUIResultRow(result));
+                _pendingSummaryUpdate = true;
+                _pendingChartRedraw = true;
+                scheduleUIUpdate();
+              }
+
+              if (progress.done) {
+                completedTasks += 1;
+              }
+            }
+          );
+        } catch (err) {
+          if (!(err?.name === 'AbortError' && finishedEarly)) {
+            throw err;
+          }
+        }
+
+        if (_stopped || finishedEarly) {
+          finishedEarly = true;
+          break;
+        }
+      }
+
+      if (_stopped || finishedEarly) {
+        finishedEarly = true;
+        break;
+      }
+
+      if (routePauseMs > 0 && routeIndex + 1 < routes.length) {
+        await waitForBenchmarkResume(_abortController.signal);
+        if (_stopped) break;
+        progressTextEl.textContent = `Pausing ${routePauseMs}ms before next route…`;
+        await sleep(routePauseMs, _abortController.signal);
       }
     }
 
+    await waitForPendingWrites();
     const runResults = await getReportResults();
     if (runResults.length > 0) {
       _reportVariants = createReportVariants(runResults);
@@ -678,11 +890,20 @@ runBtn.addEventListener('click', async () => {
       showResults(runResults);
     }
 
-    await waitForPendingWrites();
-    await saveRunArtifacts(runResults, _runContext ?? buildReportContext());
+    if (!_savedArtifactsOnStop) {
+      await saveRunArtifacts(runResults, { ...(_runContext ?? buildReportContext()), runId });
+    }
 
-    clearBenchmarkCache();
-    _passContexts = null;
+    runBtn.disabled = false;
+    stopBtn.disabled = true;
+    if (pauseBtn) pauseBtn.disabled = true;
+    _paused = false;
+    resumePausedBenchmark();
+    await disposeBenchDb();
+    _abortController = null;
+    _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
+    resetBenchmarkRunState();
+    disposeBenchmarkResources();
   } catch (err) {
     if (!_stopped && err?.name !== 'AbortError') console.error('Benchmark error:', err);
   } finally {
@@ -703,6 +924,7 @@ runBtn.addEventListener('click', async () => {
 
 stopBtn.addEventListener('click', async () => {
   _stopped = true;
+  _savedArtifactsOnStop = true;
   if (stopBtn) stopBtn.disabled = true;
   resumePausedBenchmark();
   _abortController?.abort();
@@ -710,15 +932,24 @@ stopBtn.addEventListener('click', async () => {
 
   const runResults = await getReportResults();
   if (runResults.length > 0) {
-    const combinedContext = { ...buildReportContext(), ..._runContext };
-    showReport(runResults, combinedContext);
+    const reportContext = {
+      ...buildReportContext(),
+      ..._runContext,
+      runId: _currentRunId,
+      benchmarkTimestamp: _runContext?.benchmarkTimestamp,
+    };
+    showReport(runResults, reportContext);
 
-    const savedPaths = await saveRunArtifacts(runResults, combinedContext);
-
-    if (savedPaths.length > 0) {
-      if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
-    } else {
-      if (reportStatusEl) reportStatusEl.textContent = 'Report ready';
+    try {
+      const savedPaths = await saveRunArtifacts(runResults, reportContext);
+      if (savedPaths.length > 0) {
+        if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
+      } else {
+        if (reportStatusEl) reportStatusEl.textContent = 'Report ready';
+      }
+    } catch (err) {
+      _savedArtifactsOnStop = false;
+      console.error('Failed to save report on stop:', err);
     }
   }
 });
@@ -752,7 +983,11 @@ if (pauseBtn) {
 async function refreshReportVariantsFromCurrentRun() {
   if (!_currentRunId) return;
   const runResults = await getReportResults();
-  _reportVariants = createReportVariants(runResults);
+  if (Array.isArray(_passContexts) && _passContexts.length > 0) {
+    _reportVariants = createReportVariants(runResults);
+  } else if (!Array.isArray(_reportVariants) || _reportVariants.length === 0) {
+    _reportVariants = createReportVariants(runResults);
+  }
 }
 
 if (reportBtn) {
@@ -1034,7 +1269,7 @@ function updateBenchmarkStopwatch(endTime = performance.now()) {
       const meanRate = rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
       const variance = rates.reduce((sum, rate) => sum + (rate - meanRate) ** 2, 0) / rates.length;
       const stddev = Math.sqrt(variance);
-      latestWindowWarn = latestWindowRoutesPerSec > fullAverageRoutesPerSec + 1.5 * stddev;
+      latestWindowWarn = latestWindowRoutesPerSec < fullAverageRoutesPerSec - 1.5 * stddev;
     }
   }
 
@@ -1240,6 +1475,8 @@ function buildReportContext() {
     crossOriginIsolated: window.crossOriginIsolated ?? false,
     sharedArrayBuffer: Boolean(_runContext?.sharedArrayBuffer),
     parallelOrSerial: _runContext?.parallelOrSerial ?? 'serial',
+    benchmarkTimestamp: _runContext?.benchmarkTimestamp,
+    runId: _currentRunId,
   };
 }
 
@@ -1804,7 +2041,9 @@ async function saveBenchmarkArtifact(results, context, { allowEmpty = false } = 
     if (!allowEmpty) return null;
   }
 
-  const mode = (context?.mode || 'unknown').toLowerCase();
+  const mode = (
+    context?.mode || _runContext?.mode || modeSelectEl?.value || 'unknown'
+  ).toLowerCase();
   const parallelOrSerial =
     context?.parallelOrSerial ?? (context?.sharedArrayBuffer ? 'parallel' : 'serial');
   const timestamp =
@@ -1834,19 +2073,131 @@ async function saveRunArtifacts(results, context) {
   let effectiveResults = results;
   const runId = context?.runId ?? _currentRunId;
 
-  // Artifact generation should use persisted benchmark rows whenever a runId is available.
-  if (runId && typeof indexedDB !== 'undefined' && typeof IDBKeyRange !== 'undefined') {
-    effectiveResults = await loadRunResultsFromDB(runId);
+  if (runId) {
+    await waitForPendingWrites();
   }
 
-  for (let passIndex = 0; passIndex < passContexts.length; passIndex++) {
-    const passResults = Array.isArray(effectiveResults)
-      ? effectiveResults.filter((r) => r._passIndex === passIndex || r.passIndex === passIndex)
-      : [];
-    const passContext = passContexts[passIndex];
-    if (passContext) {
+  const contextsAreOneBased = isOneBasedPassContext(passContexts);
+  const expectedResultCount =
+    Array.isArray(passContexts) && passContexts.length > 0 && Number.isFinite(context?.routesSelected)
+      ? Number(context.routesSelected) * passContexts.length
+      : null;
+  let presentPassCount = 0;
+  let savedPassArtifactsFromDb = false;
+  let loadedRunResultsFromDb = false;
+
+  if (runId && typeof indexedDB !== 'undefined' && typeof IDBKeyRange !== 'undefined') {
+    const persistedResults = await loadRunResultsFromDB(runId);
+    if (Array.isArray(persistedResults)) {
+      effectiveResults = persistedResults;
+      loadedRunResultsFromDb = true;
+    }
+  }
+
+  const passIndexMode = determinePassIndexMode(effectiveResults, passContexts.length);
+  const passGroups = groupResultsByPassVariant(effectiveResults);
+  const passIndexGroups = groupResultsByPassIndex(effectiveResults);
+  const hasSabGroups = passGroups.sab_on.length > 0 || passGroups.sab_off.length > 0;
+
+  if (loadedRunResultsFromDb && Array.isArray(effectiveResults) && effectiveResults.length > 0) {
+    if (Array.isArray(passContexts) && passContexts.length > 0) {
+      for (let passIndex = 0; passIndex < passContexts.length; passIndex++) {
+        const passContext = passContexts[passIndex];
+        if (!passContext) continue;
+
+        const contextPassIndex = Number.isFinite(Number(passContext.passIndex))
+          ? passContext.passIndex
+          : passIndex;
+        const passKey = passContext.sharedArrayBuffer ? 'sab_on' : 'sab_off';
+        const passResults = Array.isArray(effectiveResults)
+          ? hasSabGroups && typeof passContext.sharedArrayBuffer === 'boolean'
+            ? passGroups[passKey]
+            : effectiveResults.filter((r) =>
+                passIndexMatchesContext(r, contextPassIndex, contextsAreOneBased, passIndexMode)
+              )
+          : [];
+
+        presentPassCount += 1;
+        savedPassArtifactsFromDb = true;
+        const reportContext = {
+          ...passContext,
+          ...getPassContextFromResults(passResults, passIndex),
+        };
+        try {
+          const saveResult = await saveBenchmarkArtifact(passResults, reportContext, {
+            allowEmpty: true,
+          });
+          if (saveResult?.path) savedPaths.push(saveResult.path);
+          console.log('[benchmark] Saved pass artifacts:', saveResult?.path ?? saveResult);
+        } catch (err) {
+          console.error('[benchmark] Failed to save pass artifacts:', err);
+        }
+      }
+    } else if (passIndexGroups.size > 0) {
+      const passIndices = Array.from(passIndexGroups.keys()).sort((a, b) => a - b);
+      for (let passPosition = 0; passPosition < passIndices.length; passPosition++) {
+        const passIndex = passIndices[passPosition];
+        const passResults = passIndexGroups.get(passIndex) || [];
+        if (!Array.isArray(passResults) || passResults.length === 0) continue;
+
+        presentPassCount += 1;
+        savedPassArtifactsFromDb = true;
+        const reportContext = getPassContextFromResults(passResults, passPosition);
+        try {
+          const saveResult = await saveBenchmarkArtifact(passResults, reportContext, {
+            allowEmpty: true,
+          });
+          if (saveResult?.path) savedPaths.push(saveResult.path);
+          console.log('[benchmark] Saved pass artifacts:', saveResult?.path ?? saveResult);
+        } catch (err) {
+          console.error('[benchmark] Failed to save pass artifacts:', err);
+        }
+      }
+    } else if (hasSabGroups) {
+      for (const key of ['sab_on', 'sab_off']) {
+        const sharedArrayBuffer = key === 'sab_on';
+        const passResults = passGroups[key];
+        if (!Array.isArray(passResults) || passResults.length === 0) continue;
+        const reportContext = {
+          ...context,
+          parallelOrSerial: sharedArrayBuffer ? 'parallel' : 'serial',
+          sharedArrayBuffer,
+        };
+        presentPassCount += 1;
+        savedPassArtifactsFromDb = true;
+        try {
+          const saveResult = await saveBenchmarkArtifact(passResults, reportContext, {
+            allowEmpty: true,
+          });
+          if (saveResult?.path) savedPaths.push(saveResult.path);
+          console.log('[benchmark] Saved pass artifacts:', saveResult?.path ?? saveResult);
+        } catch (err) {
+          console.error('[benchmark] Failed to save pass artifacts:', err);
+        }
+      }
+    }
+  }
+
+  if (!savedPassArtifactsFromDb && !loadedRunResultsFromDb) {
+    for (let passIndex = 0; passIndex < passContexts.length; passIndex++) {
+      const passContext = passContexts[passIndex];
+      const contextPassIndex = passContext?.passIndex ?? passIndex;
+      const passKey = passContext?.sharedArrayBuffer ? 'sab_on' : 'sab_off';
+      const passResults = Array.isArray(effectiveResults)
+        ? hasSabGroups && typeof passContext?.sharedArrayBuffer === 'boolean'
+          ? passGroups[passKey]
+          : effectiveResults.filter((r) => passIndexMatchesContext(r, contextPassIndex, contextsAreOneBased, passIndexMode))
+        : [];
+      if (!passContext || !Array.isArray(passResults)) {
+        continue;
+      }
+      presentPassCount += 1;
+      const reportContext = {
+        ...passContext,
+        ...getPassContextFromResults(passResults, passIndex),
+      };
       try {
-        const saveResult = await saveBenchmarkArtifact(passResults, passContext, {
+        const saveResult = await saveBenchmarkArtifact(passResults, reportContext, {
           allowEmpty: true,
         });
         if (saveResult?.path) savedPaths.push(saveResult.path);
@@ -1857,21 +2208,25 @@ async function saveRunArtifacts(results, context) {
     }
   }
 
-  if (savedPaths.length === 0 && Array.isArray(effectiveResults) && effectiveResults.length > 0) {
-    try {
-      const saveResult = await saveBenchmarkArtifact(effectiveResults, context);
-      if (saveResult?.path) savedPaths.push(saveResult.path);
-      console.log('[benchmark] Saved combined artifacts:', saveResult?.path ?? saveResult);
-    } catch (err) {
-      console.error('[benchmark] Failed to save combined artifacts:', err);
-    }
-  }
+  const hasPartialPassCoverage =
+    Array.isArray(passContexts) &&
+    passContexts.length > 0 &&
+    presentPassCount > 0 &&
+    presentPassCount < passContexts.length;
+  const isIncompleteRun =
+    Array.isArray(effectiveResults) &&
+    effectiveResults.length > 0 &&
+    expectedResultCount !== null &&
+    effectiveResults.length < expectedResultCount &&
+    passContexts.length > 1;
 
   return savedPaths;
 }
 
 export function setCurrentRunId(runId) {
   _currentRunId = runId;
+  _currentRenderResults = [];
+  _reportVariants = [];
 }
 
 export function setPassContexts(contexts) {
@@ -1892,6 +2247,7 @@ export {
   getReportResults,
   saveRunArtifacts,
   buildBenchmarkJsonPayload,
+  refreshReportVariantsFromCurrentRun,
   showResults,
   round4,
 };

@@ -365,25 +365,50 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
     throw new Error('routeBatch requires a valid urlTemplate string');
   }
 
-  return await Promise.all(
-    requests.map((request, index) => {
-      if (!request || typeof request !== 'object') {
-        throw new Error(
-          `routeBatch request at index ${index} must be an object with start, end, and mode`
-        );
-      }
-      const { start, end, mode, costField } = request;
-      validateRouteCoordinates(start, `requests[${index}].start`);
-      validateRouteCoordinates(end, `requests[${index}].end`);
-      if (typeof mode !== 'string' || mode.length === 0) {
-        throw new Error(`routeBatch request at index ${index} must include a valid mode`);
-      }
-      if (costField !== undefined) {
-        validateCostField(costField);
-      }
-      return route(start, end, mode, urlTemplate, { ...options, costField });
-    })
-  );
+  const tilePool = getSharedTilePool();
+  const maxConcurrentRoutes = Number.isFinite(options.maxConcurrentRoutes)
+    ? Math.max(1, Math.floor(options.maxConcurrentRoutes))
+    : Math.max(1, Math.min(requests.length, tilePool?.maxSize ?? requests.length));
+
+  const results = new Array(requests.length);
+  let nextIndex = 0;
+  const active = new Set();
+
+  const scheduleNext = async () => {
+    const index = nextIndex;
+    nextIndex += 1;
+    const request = requests[index];
+
+    if (!request || typeof request !== 'object') {
+      throw new Error(
+        `routeBatch request at index ${index} must be an object with start, end, and mode`
+      );
+    }
+
+    const { start, end, mode, costField } = request;
+    validateRouteCoordinates(start, `requests[${index}].start`);
+    validateRouteCoordinates(end, `requests[${index}].end`);
+    if (typeof mode !== 'string' || mode.length === 0) {
+      throw new Error(`routeBatch request at index ${index} must include a valid mode`);
+    }
+    if (costField !== undefined) {
+      validateCostField(costField);
+    }
+
+    results[index] = await route(start, end, mode, urlTemplate, { ...options, costField });
+  };
+
+  while (nextIndex < requests.length || active.size > 0) {
+    while (active.size < maxConcurrentRoutes && nextIndex < requests.length) {
+      const task = scheduleNext();
+      active.add(task);
+      task.finally(() => active.delete(task));
+    }
+    if (active.size === 0) break;
+    await Promise.race(active);
+  }
+
+  return results;
 }
 
 /**
