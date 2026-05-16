@@ -344,20 +344,26 @@ export async function adaptiveBarrierSSPRouter(startId, endId, prepared, {
       return { path: [], cost: Infinity, found: false, engine: 'adaptiveBarrier', parallelUsed: false };
     }
 
-    // Reconstruct path backward from endId to startId
+    // Reconstruct path backward from endId to startId.
+    // Reverse adjacency may contain zero-cost cycles, so guard against revisiting
+    // the same predecessor while still ensuring the loop is bounded by N.
     const path = [endId];
     let cur = endId;
     let safety = N;
+    const visited = new Uint8Array(N);
+    visited[cur] = 1;
 
     while (cur !== startId && safety-- > 0) {
       let moved = false;
       // Check all incoming edges from reverse adjacency
       for (let k = revAdjPtr[cur]; k < revAdjPtr[cur + 1]; k++) {
         const from = revAdjFrom[k];
+        if (visited[from]) continue;
         const costInt = revAdjCost[k];
         if (distances[from] + costInt === distances[cur]) {
           path.push(from);
           cur = from;
+          visited[cur] = 1;
           moved = true;
           break;
         }

@@ -40,4 +40,21 @@ describe('AdaptiveBarrierSSSP wrapper', () => {
     expect(res.path).toEqual([]);
     expect(res.cost).toBe(Infinity);
   });
+
+  it('reconstructs a valid path even when reverse adjacency contains a zero-cost cycle', async () => {
+    const prepared = {
+      adjPtr: [0, 1, 2, 4, 4],
+      adjTo: [1, 2, 1, 3],
+      adjCost: [10, 0, 0, 10],
+      revAdjPtr: [0, 0, 2, 3, 4],
+      revAdjFrom: [0, 2, 1, 2],
+      revAdjCost: [10, 0, 0, 10],
+      N: 4,
+    };
+
+    const res = await adaptiveBarrierSSPRouter(0, 3, prepared, { forceSerialRouting: true });
+    expect(res.found).toBe(true);
+    expect(res.path).toEqual([0, 1, 2, 3]);
+    expect(res.cost).toBeCloseTo(2);
+  });
 });

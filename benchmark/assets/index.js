@@ -756,7 +756,7 @@ function updateBenchmarkStopwatch(endTime = performance.now()) {
   benchmarkStopwatchEl.hidden = false;
   benchmarkStopwatchEl.innerHTML = `
     <strong>${formatDuration(elapsedMs)}</strong>
-    <span>${runCount.toLocaleString()} runs${runCount > 0 ? ` · avg ${averageMs.toFixed(1)} ms / run` : ''}</span>
+    <span>${runCount.toLocaleString()} routes${runCount > 0 ? ` · avg ${averageMs.toFixed(1)} ms / route` : ''}</span>
   `;
 }
 
