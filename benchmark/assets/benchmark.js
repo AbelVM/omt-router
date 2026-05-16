@@ -1689,6 +1689,13 @@ const _SELECTOR_FEATURE_SCALES = [
   },
 ];
 
+const _TIMING_BUBBLE_FEATURE = {
+  xKey: 'coverageDensity',
+  xLabel: 'Coverage density',
+  yKey: 'logAvgBranchFactor',
+  yLabel: 'Log avg branch factor',
+};
+
 function _getSelectorFeatureRow(row) {
   if (row._selectorFeatures) return row._selectorFeatures;
   const selectorMetrics = {
@@ -1726,9 +1733,9 @@ function _buildScatterDatasets(validResults, xKey, yKey) {
       .filter((pt) => pt.x != null && pt.y != null && pt.route.winner === e.id),
     backgroundColor: e.bg,
     borderColor: e.border,
-    borderWidth: 1.5,
-    pointRadius: 3,
-    pointHoverRadius: 5,
+    borderWidth: 1,
+    pointRadius: 2,
+    pointHoverRadius: 4,
   }));
   const errDs = {
     label: 'Error / N.A.',
@@ -1739,11 +1746,11 @@ function _buildScatterDatasets(validResults, xKey, yKey) {
         route: r,
       }))
       .filter((pt) => pt.x != null && pt.y != null && !pt.route.winner),
-    backgroundColor: 'rgba(148,163,184,0.7)',
+    backgroundColor: 'rgba(148,163,184,0.5)',
     borderColor: '#64748b',
-    borderWidth: 1.5,
-    pointRadius: 3,
-    pointHoverRadius: 5,
+    borderWidth: 1,
+    pointRadius: 2,
+    pointHoverRadius: 4,
   };
   if (errDs.data.length > 0) sets.push(errDs);
   return sets.filter(ds => ds.data.length > 0);
@@ -1929,6 +1936,11 @@ function _bubbleRadiusForFastestMs(fastestMs) {
   return Math.min(12, Math.max(4, Math.sqrt(fastestMs) * 0.9));
 }
 
+function _bubbleRadiusForWinnerMarginPct(winnerMarginPct) {
+  if (!Number.isFinite(winnerMarginPct)) return 4;
+  return Math.min(14, Math.max(4, 4 + winnerMarginPct * 18));
+}
+
 function _buildBubbleDatasets(validResults, xKey, yKey) {
   const sets = _ENGINE_CHART_META.map((engine) => ({
     label: engine.label,
@@ -1938,13 +1950,13 @@ function _buildBubbleDatasets(validResults, xKey, yKey) {
         const x = _featureForRow(r, xKey);
         const y = _featureForRow(r, yKey);
         return timing && x != null && y != null
-          ? { x, y, r: _bubbleRadiusForFastestMs(timing.fastestMs), route: r, timing }
+          ? { x, y, r: _bubbleRadiusForWinnerMarginPct(timing.winnerMarginPct), route: r, timing }
           : null;
       })
       .filter((pt) => pt && pt.route.winner === engine.id),
-    backgroundColor: engine.bg,
+    backgroundColor: engine.bg.replace(/0\.75\)$/, '0.2)'),
     borderColor: engine.border,
-    borderWidth: 1.5,
+    borderWidth: 1,
   }));
   const errData = validResults
     .map((r) => {
@@ -1952,7 +1964,7 @@ function _buildBubbleDatasets(validResults, xKey, yKey) {
       const x = _featureForRow(r, xKey);
       const y = _featureForRow(r, yKey);
       return timing && x != null && y != null
-        ? { x, y, r: _bubbleRadiusForFastestMs(timing.fastestMs), route: r, timing }
+        ? { x, y, r: _bubbleRadiusForWinnerMarginPct(timing.winnerMarginPct), route: r, timing }
         : null;
     })
     .filter((pt) => pt && !pt.route.winner);
@@ -1960,9 +1972,9 @@ function _buildBubbleDatasets(validResults, xKey, yKey) {
     sets.push({
       label: 'No winner / error',
       data: errData,
-      backgroundColor: 'rgba(148,163,184,0.7)',
+      backgroundColor: 'rgba(148,163,184,0.2)',
       borderColor: '#64748b',
-      borderWidth: 1.5,
+      borderWidth: 1,
     });
   }
   return sets.filter((ds) => ds.data.length > 0);
@@ -1999,7 +2011,8 @@ function _upsertBubble(canvas, datasets, xScale, yScale, existingChart) {
                 `${route.category} · ${route.lengthCategory}`,
                 `x: ${Number.isFinite(valueX) ? Number(valueX.toPrecision(3)) : 'n/a'}`,
                 `y: ${Number.isFinite(valueY) ? Number(valueY.toPrecision(3)) : 'n/a'}`,
-                `fastest: ${_fmtMsChart(timing.fastestMs)}${timing.winnerMarginPct != null ? ` · margin ${Math.round(timing.winnerMarginPct * 100)}%` : ''}`,
+                `fastest: ${_fmtMsChart(timing.fastestMs)}`,
+                `margin: ${timing.winnerMarginPct != null ? `${Math.round(timing.winnerMarginPct * 100)}%` : 'n/a'}`,
               ];
             },
           },
@@ -2052,7 +2065,7 @@ export function drawFeatureHistogram(canvas, results, _opts = {}, existingChart 
 }
 
 export function drawTimingBubble(canvas, results, _opts = {}, existingChart = null) {
-  const feature = _SELECTOR_FEATURE_SCALES[0];
+  const feature = _TIMING_BUBBLE_FEATURE;
   const valid = results.filter((r) => _featureForRow(r, feature.xKey) != null && _featureForRow(r, feature.yKey) != null && _routeTimingMetrics(r));
   const datasets = _buildBubbleDatasets(valid, feature.xKey, feature.yKey);
   const xScale = _linearAxis(feature.xLabel, (v) => (Number.isFinite(v) ? Number(v.toPrecision(3)) : ''));

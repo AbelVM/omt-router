@@ -208,7 +208,6 @@ categoryFiltersEl.addEventListener('change', updateRouteCount);
 lengthFiltersEl.addEventListener('change', updateRouteCount);
 successRoutesInput.addEventListener('input', updateRouteCount);
 successRoutesInput.addEventListener('change', updateRouteCount);
-successRoutesInput.addEventListener('keyup', updateRouteCount);
 updateRouteCount();
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -516,6 +515,7 @@ runBtn.addEventListener('click', async () => {
             },
             onEngineStatus: (status) => {
               _engineWorkerStatus = status ?? { state: 'idle', engineId: null, running: false, lastError: null };
+              scheduleUIUpdate();
             },
             engineRunTimeoutMs: 20_000,
           },
@@ -622,11 +622,11 @@ stopBtn.addEventListener('click', async () => {
     const combinedContext = { ...buildReportContext(), ..._runContext };
     showReport(_results, combinedContext);
     const savedPaths = [];
+    const passContexts = Array.isArray(_passContexts) ? _passContexts.slice() : [];
 
-    const passContextCount = Array.isArray(_passContexts) ? _passContexts.length : 0;
-    for (let passIndex = 0; passIndex < passContextCount; passIndex++) {
+    for (let passIndex = 0; passIndex < passContexts.length; passIndex++) {
       const passResults = _results.filter((r) => r._passIndex === passIndex);
-      const passContext = _passContexts[passIndex];
+      const passContext = passContexts[passIndex];
       if (passResults.length > 0 && passContext) {
         try {
           const saveResult = await saveBenchmarkArtifact(passResults, passContext);
@@ -893,11 +893,20 @@ function formatHitIndicator(r) {
   return `<span style="color:${color}">${hit}</span>`;
 }
 
+const GOOD_ENOUGH_REGRET_THRESHOLD_PCT = 10;
+const WARNING_REGRET_THRESHOLD_PCT = 30;
+
 function formatRegret(value) {
   if (value == null) return '<span style="color:var(--muted)">—</span>';
   const delta = Number(value);
   const sign = delta > 0 ? '+' : '';
-  const color = delta <= 0 ? 'var(--green)' : delta < 30 ? 'var(--orange)' : 'var(--red)';
+  const color = delta <= 0
+    ? 'var(--green)'
+    : delta <= GOOD_ENOUGH_REGRET_THRESHOLD_PCT
+      ? 'var(--blue)'
+      : delta < WARNING_REGRET_THRESHOLD_PCT
+        ? 'var(--orange)'
+        : 'var(--red)';
   return `<span style="color:${color};font-weight:600">${sign}${delta.toFixed(1)}%</span>`;
 }
 
