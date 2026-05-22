@@ -38,7 +38,8 @@ function getZXY(lng, lat, zoom) {
  */
 function getTile(lng, lat, zoom, schema = 'zxy') {
   const tile = getZXY(lng, lat, zoom);
-  if (schema.toLowerCase() === 'tms') {
+  const canonicalSchema = String(schema).toLowerCase();
+  if (canonicalSchema === 'tms') {
     const n = 2 ** zoom;
     tile.y = n - 1 - tile.y;
   }
@@ -65,12 +66,13 @@ export function getTilesAlongLine(point0, point1, zoom, radius = 0, schema = 'zx
   // Tile selection should always use a fixed zoom for consistent
   // neighborhood coverage (avoid depending on caller-provided zoom).
   zoom = 14;
-  const tile0 = getTile(point0[0], point0[1], zoom, schema);
-  const tile1 = getTile(point1[0], point1[1], zoom, schema);
+  const canonicalSchema = String(schema).toLowerCase();
+  const tile0 = getTile(point0[0], point0[1], zoom, canonicalSchema);
+  const tile1 = getTile(point1[0], point1[1], zoom, canonicalSchema);
   const tiles = new Map();
 
   // Precompute once — not per Bresenham step or per neighbor.
-  const isTMS = schema.toLowerCase() === 'tms';
+  const isTMS = canonicalSchema === 'tms';
   const n = 2 ** zoom;
 
   const dx = Math.abs(tile1.x - tile0.x);
@@ -131,15 +133,16 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
   // Force a fixed zoom (14) for tiles used by isolines and other
   // neighborhood-based operations so tile coverage is stable.
   zoom = 14;
+  const canonicalSchema = String(schema).toLowerCase();
   const n = 2 ** zoom;
-  const isTMS = schema.toLowerCase() === 'tms';
-  const center = getTile(lng, lat, zoom, schema);
+  const isTMS = canonicalSchema === 'tms';
+  const center = getTile(lng, lat, zoom, canonicalSchema);
 
   // Estimate tile width at this latitude (meters)
   const DEG_TO_RAD = Math.PI / 180;
   const latRad = lat * DEG_TO_RAD;
-  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(latRad)) / 2 ** zoom;
-  const tileHalfDiag = (Math.sqrt(2) * tileWidthM) / 2;
+  const tileWidthM = (2 * Math.PI * 6_371_000 * Math.cos(latRad)) / n;
+  const tileHalfDiag = (Math.SQRT2 * tileWidthM) / 2;
 
   // Compute how many tiles to include on each side (square budget), then
   // filter tiles by circular distance using tile centre coordinates.
@@ -147,9 +150,10 @@ export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy
   const radiusTiles = Math.min(20, approxRadiusTiles); // clamp to reasonable max
 
   const tiles = new Map();
-  const toLon = (x) => (x / n) * 360 - 180;
+  const invN = 1 / n;
+  const toLon = (x) => x * invN * 360 - 180;
   const toLat = (y) => {
-    const ym = 1 - (2 * y) / n;
+    const ym = 1 - 2 * y * invN;
     return (Math.atan(Math.sinh(Math.PI * ym)) * 180) / Math.PI;
   };
 

@@ -7,8 +7,25 @@ import { PowerPool } from 'performance-helpers/powerPool';
 import ssspWorker from './sssp-worker?worker&inline';
 
 const MAX_PARALLEL_WORKERS = 8;
+const MAX_RESIZABLE_BUFFER_BYTES = 1 << 30; // 1 GiB
+const MAX_ENGINE_BUFFER_BYTES = 256 << 20; // 256 MiB
+const RESIZABLE_ARRAY_BUFFER_SUPPORTED =
+  typeof ArrayBuffer !== 'undefined' && typeof ArrayBuffer.prototype.resize === 'function';
+
+const allocateBuffer = (BufferType, byteLength) => {
+  if (BufferType === ArrayBuffer && RESIZABLE_ARRAY_BUFFER_SUPPORTED) {
+    try {
+      return new ArrayBuffer(byteLength, { maxByteLength: MAX_RESIZABLE_BUFFER_BYTES });
+    } catch {
+      return new ArrayBuffer(byteLength);
+    }
+  }
+  return new BufferType(byteLength);
+};
+
 let sharedPool = null;
 let sharedPoolWorkers = 0;
+let sharedPoolRefCount = 0;
 
 function getSharedPool(workerCount) {
   if (!sharedPool || sharedPoolWorkers !== workerCount) {
@@ -33,7 +50,9 @@ function getSharedPool(workerCount) {
       },
     });
     sharedPoolWorkers = workerCount;
+    sharedPoolRefCount = 0;
   }
+  sharedPoolRefCount++;
   return sharedPool;
 }
 
@@ -57,9 +76,6 @@ export class AdaptiveBarrierSSSP {
     // Detect environment capability
     this.hasParallelSupport = !forceSerialRouting && typeof SharedArrayBuffer !== 'undefined';
     this.hasWorkerSupport = typeof Worker !== 'undefined';
-
-    // Choose Buffer Type: Fallback to ArrayBuffer if SAB is blocked
-    const BufferType = this.hasParallelSupport ? SharedArrayBuffer : ArrayBuffer;
 
     const align4 = (offset) => (offset + 3) & ~3;
 
@@ -86,7 +102,12 @@ export class AdaptiveBarrierSSSP {
     off += maxN;
     this.stateOff = align4(off);
     const size = this.stateOff + 64;
-    this.buffer = new BufferType(size);
+    const shouldUseSharedBuffer = this.hasParallelSupport && size <= MAX_ENGINE_BUFFER_BYTES;
+    if (!shouldUseSharedBuffer) {
+      this.hasParallelSupport = false;
+    }
+    const BufferType = this.hasParallelSupport ? SharedArrayBuffer : ArrayBuffer;
+    this.buffer = allocateBuffer(BufferType, size);
 
     // Data Views
     this.dist = new Int32Array(this.buffer, this.distOff, maxN);
@@ -115,13 +136,12 @@ export class AdaptiveBarrierSSSP {
       ? Math.max(1, Math.floor(minFrontierForParallel))
       : defaultMinFrontierForParallel;
     // Engines
-    this.pool =
+    const enableParallelWorkers =
       this.hasParallelSupport &&
       this.hasWorkerSupport &&
       workerCount > 1 &&
-      maxN >= this.MIN_NODES_FOR_INDUSTRIAL
-        ? getSharedPool(workerCount)
-        : null;
+      maxN >= this.MIN_NODES_FOR_INDUSTRIAL;
+    this.pool = enableParallelWorkers ? getSharedPool(workerCount) : null;
 
     this.head.fill(-1);
     this.edgeIdx = 0;
@@ -196,7 +216,7 @@ export class AdaptiveBarrierSSSP {
 
     while (currSize > 0) {
       // Allow nodes in the current frontier to be re-enqueued on new improvements.
-      const currQ = new Int32Array(this.buffer, currQOff, currSize);
+      const currQ = currQOff === this.q1Off ? this.q1 : this.q2;
       for (let i = 0; i < currSize; i++) {
         this.inQueue[currQ[i]] = 0;
       }
@@ -225,7 +245,25 @@ export class AdaptiveBarrierSSSP {
   }
 
   terminate() {
+    if (this.pool) {
+      sharedPoolRefCount = Math.max(0, sharedPoolRefCount - 1);
+      if (sharedPoolRefCount === 0) {
+        sharedPool?.terminate();
+        sharedPool = null;
+        sharedPoolWorkers = 0;
+      }
+    }
     this.pool = null;
+    this.buffer = null;
+    this.dist = null;
+    this.head = null;
+    this.next = null;
+    this.targets = null;
+    this.weights = null;
+    this.q1 = null;
+    this.q2 = null;
+    this.inQueue = null;
+    this.state = null;
   }
 
   /**
@@ -241,8 +279,8 @@ export class AdaptiveBarrierSSSP {
    * @returns void
    */
   dispatchSerial(size, currQOff, nextQOff) {
-    const currQ = new Int32Array(this.buffer, currQOff, size);
-    const nextQ = new Int32Array(this.buffer, nextQOff, this.n);
+    const currQ = currQOff === this.q1Off ? this.q1 : this.q2;
+    const nextQ = nextQOff === this.q1Off ? this.q1 : this.q2;
 
     for (let i = 0; i < size; i++) {
       const u = currQ[i];

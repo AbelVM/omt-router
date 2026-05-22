@@ -6,16 +6,8 @@ import {
   LENGTH_CATEGORY_LABELS,
 } from './routes.js';
 import {
-  runBenchmark,
-  clearBenchmarkCache,
   disposeBenchmarkResources,
   getSharedPool,
-  downloadCSV,
-  drawScatter,
-  drawDensityScatter,
-  drawFeatureHistogram,
-  drawTimingBubble,
-  installTooltip,
   generatePerformanceSummary,
   generateCostSummary,
   generateCopilotReport,
@@ -23,11 +15,543 @@ import {
 } from './benchmark.js';
 import {
   prepareForRun,
-  saveResultToDB,
   getRecordsForRun,
+  getRunRecordCount,
+  getRecordsForRunPage,
+  streamRunRecords,
   waitForPendingWrites,
   disposeBenchDb,
+  saveRunMetadata,
+  getRunMetadata,
+  findIncompleteRunMetadata,
 } from './bench-db.js';
+import { PowerPool } from 'performance-helpers/powerPool';
+import BenchmarkRouteWorker from './benchmark-route-worker.js?worker&inline';
+// Lightweight logging + focused instrumentation (quiet by default).
+// Toggle verbose logging by setting `globalThis.__benchmarkDebug = true`.
+const __benchmarkLog = (() => {
+  const WARN_LIMIT = 3;
+  const warnCounts = new Map();
+  function info(...args) {
+    if (typeof globalThis !== 'undefined' && globalThis.__benchmarkDebug) {
+      console.info('[benchmark]', ...args);
+    }
+  }
+  function warn(...args) {
+    const key = args.map((a) => (typeof a === 'string' ? a : String(a))).join(' ');
+    const cnt = warnCounts.get(key) || 0;
+    if (typeof globalThis !== 'undefined' && globalThis.__benchmarkDebug) {
+      if (cnt < WARN_LIMIT) {
+        console.warn('[benchmark]', ...args);
+        warnCounts.set(key, cnt + 1);
+      }
+    }
+  }
+  function error(...args) {
+    if (typeof globalThis !== 'undefined' && globalThis.__benchmarkDebug) {
+      console.error('[benchmark]', ...args);
+    }
+  }
+  return { info, warn, error };
+})();
+
+let _pendingRunMetadata = null;
+let _pendingRunChoice = null;
+let _pendingRunRunId = null;
+let _progressSaveTimer = null;
+
+function updatePendingRunChooser() {
+  if (!pendingRunPromptEl || !pendingRunMessageEl || !runBtn) return;
+  if (!_pendingRunMetadata) {
+    pendingRunPromptEl.hidden = true;
+    if (runBtn) runBtn.disabled = false;
+    return;
+  }
+
+  const createdAt = typeof _pendingRunMetadata.createdAt === 'number'
+    ? new Date(_pendingRunMetadata.createdAt).toLocaleString()
+    : _pendingRunMetadata.createdAt
+      ? String(_pendingRunMetadata.createdAt)
+      : 'an earlier session';
+
+  pendingRunMessageEl.textContent =
+    `A previous benchmark run from ${createdAt} is still incomplete in the database. ` +
+    'Resume that run or restart fresh?';
+  pendingRunPromptEl.hidden = false;
+  if (runBtn) runBtn.disabled = true;
+}
+
+async function detectPendingRunMetadata() {
+  if (!pendingRunPromptEl || !runBtn) return;
+  try {
+    const pending = await findIncompleteRunMetadata();
+    _pendingRunMetadata = pending || null;
+  } catch (err) {
+    __benchmarkLog.warn('[benchmark] detectPendingRunMetadata failed:', err);
+    _pendingRunMetadata = null;
+  }
+  updatePendingRunChooser();
+}
+
+function choosePendingRunAction(choice) {
+  _pendingRunChoice = choice;
+  if (choice === 'resume') {
+    _pendingRunRunId = _pendingRunMetadata?.runId ?? null;
+  }
+  if (choice === 'restart') {
+    clearSavedRunId();
+  }
+  _pendingRunMetadata = null;
+  updatePendingRunChooser();
+}
+
+// Persist / clear a saved run id in localStorage (best-effort, no-throw)
+function saveRunId(runId) {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage) {
+      // Persist the last run id using the stable key used by tests and older code
+      if (runId == null) localStorage.removeItem('omp_benchmark_last_run_v1');
+      else localStorage.setItem('omp_benchmark_last_run_v1', String(runId));
+    }
+  } catch (e) {}
+}
+
+function clearSavedRunId() {
+  try {
+    saveRunId(null);
+  } catch (e) {}
+}
+
+async function selectRunIdForBenchmarkStart(benchmarkTimestamp, { explicitRunId, forceNewRun } = {}) {
+  if (explicitRunId) return explicitRunId;
+  if (!forceNewRun) {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage) {
+        const saved = localStorage.getItem('omp_benchmark_last_run_v1');
+        if (saved) return saved;
+      }
+    } catch (e) {}
+  }
+  const ts = benchmarkTimestamp ?? makeBenchmarkTimestamp(new Date());
+  return `${ts}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function markRunComplete(runId, metadata = {}) {
+  if (!runId) return;
+  try {
+    await flushBenchmarkSummaryStatePersist();
+    await flushBenchmarkProgressPersist();
+    await saveRunMetadata(runId, {
+      completed: true,
+      completedAt: Date.now(),
+      ...metadata,
+    });
+  } catch (err) {
+    console.warn('[benchmark] markRunComplete failed:', err);
+  }
+  clearSavedRunId();
+}
+
+async function loadExistingRunProgress(runId, totalPasses) {
+  if (!runId) return null;
+
+  // Prefer stored progress in run metadata to avoid scanning the results store.
+  try {
+    const meta = await getRunMetadata(runId);
+    const p = meta?.progress;
+    if (p) {
+      const routePassCompletion = new Map();
+      try {
+        const rpc = p.routePassCompletion ?? {};
+        if (rpc && typeof rpc === 'object') {
+          if (typeof rpc.forEach === 'function') {
+            rpc.forEach((arr, key) => {
+              routePassCompletion.set(Number(key), new Set(Array.isArray(arr) ? arr.map(Number) : []));
+            });
+          } else {
+            Object.entries(rpc).forEach(([k, v]) => {
+              routePassCompletion.set(Number(k), new Set(Array.isArray(v) ? v.map(Number) : []));
+            });
+          }
+        }
+      } catch (_e) {
+        /* best-effort */
+      }
+
+      const completedRouteIndices = new Set((p.completedRouteIndices ?? []).map(Number));
+      if (completedRouteIndices.size === 0 && routePassCompletion.size > 0) {
+        for (const [routeIndex, passes] of routePassCompletion.entries()) {
+          if ((passes?.size ?? 0) === totalPasses) completedRouteIndices.add(routeIndex);
+        }
+      }
+
+      const successfulRouteIndices = new Set((p.successfulRouteIndices ?? []).map(Number));
+      const failedRouteIndices = new Set((p.failedRouteIndices ?? []).map(Number));
+      const completedTasks = Number(p.completedTasks ?? Array.from(routePassCompletion.values()).reduce((s, set) => s + (set?.size ?? 0), 0));
+
+      return {
+        completedRoutes: completedRouteIndices.size,
+        completedTasks,
+        completedRouteIndices,
+        successfulRouteIndices,
+        failedRouteIndices,
+        routePassCompletion,
+      };
+    }
+  } catch (_err) {
+    __benchmarkLog.warn('[benchmark] loadExistingRunProgress metadata read failed:', _err);
+  }
+
+  // Fallback: scan results store (index-first inside getRecordsForRun)
+  const rows = await getRecordsForRun(runId);
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const routePassCompletion = new Map();
+  const successfulRouteIndices = new Set();
+  const failedRouteIndices = new Set();
+
+  for (const row of rows) {
+    const routeIndex = Number(row.routeIndex);
+    const passIndex = Number(row.passIndex);
+    if (!routePassCompletion.has(routeIndex)) {
+      routePassCompletion.set(routeIndex, new Set());
+    }
+    routePassCompletion.get(routeIndex).add(passIndex);
+
+    const result = row.result;
+    const routeFailed = Boolean(result?.error || result?.routeError);
+    if (routeFailed) {
+      failedRouteIndices.add(routeIndex);
+      successfulRouteIndices.delete(routeIndex);
+    } else if (!failedRouteIndices.has(routeIndex)) {
+      successfulRouteIndices.add(routeIndex);
+    }
+  }
+
+  const completedRouteIndices = new Set(
+    Array.from(routePassCompletion.entries())
+      .filter(([, passes]) => passes.size === totalPasses)
+      .map(([routeIndex]) => routeIndex),
+  );
+
+  return {
+    completedRoutes: completedRouteIndices.size,
+    completedTasks: rows.length,
+    completedRouteIndices,
+    successfulRouteIndices,
+    failedRouteIndices,
+    routePassCompletion,
+  };
+}
+
+// Simple runtime metrics exposed for quick inspection during profiling.
+const benchmarkMetrics = (() => {
+  const m = {
+    attachedPorts: 0,
+    attachEvents: 0,
+    detachEvents: 0,
+    lastAttachTs: null,
+    lastDetachTs: null,
+    attachHistory: [],
+  };
+  try {
+    if (typeof globalThis !== 'undefined') {
+      Object.defineProperty(globalThis, '__benchmarkMetrics', {
+        configurable: true,
+        enumerable: false,
+        get() {
+          return m;
+        },
+      });
+    }
+  } catch (_err) {
+    /* ignore */
+  }
+  return m;
+})();
+
+function incAttachedPorts(n = 1) {
+  benchmarkMetrics.attachedPorts = (benchmarkMetrics.attachedPorts || 0) + n;
+  benchmarkMetrics.attachEvents = (benchmarkMetrics.attachEvents || 0) + n;
+  benchmarkMetrics.lastAttachTs = Date.now();
+  benchmarkMetrics.attachHistory.push({ ts: benchmarkMetrics.lastAttachTs, delta: n });
+  try {
+    if (typeof globalThis !== 'undefined') globalThis.__benchmarkAttachedPorts = (globalThis.__benchmarkAttachedPorts || 0) + n;
+  } catch (_err) {
+    /* ignore */
+  }
+}
+
+function decAttachedPorts(n = 1) {
+  benchmarkMetrics.attachedPorts = Math.max(0, (benchmarkMetrics.attachedPorts || 0) - n);
+  benchmarkMetrics.detachEvents = (benchmarkMetrics.detachEvents || 0) + n;
+  benchmarkMetrics.lastDetachTs = Date.now();
+  benchmarkMetrics.attachHistory.push({ ts: benchmarkMetrics.lastDetachTs, delta: -n });
+  try {
+    if (typeof globalThis !== 'undefined') globalThis.__benchmarkAttachedPorts = Math.max(0, (globalThis.__benchmarkAttachedPorts || 0) - n);
+  } catch (_err) {
+    /* ignore */
+  }
+}
+
+const benchmarkRouteWorkerSharedPortMap = new WeakMap();
+const benchmarkRouteWorkerSharedPortFinalizerTokenMap = new WeakMap();
+const benchmarkRouteWorkerErrorLoggedWorkers = new WeakSet();
+const benchmarkRouteWorkerErrorHandlers = new WeakMap();
+const benchmarkRouteWorkerSharedPortFinalizer = typeof FinalizationRegistry === 'function'
+  ? new FinalizationRegistry((port) => {
+      if (!port) return;
+      try {
+        port.onmessage = null;
+      } catch (_err) {
+        /* ignore */
+      }
+      try {
+        port.close();
+      } catch (_err) {
+        /* ignore */
+      }
+      try {
+        decAttachedPorts();
+      } catch (_err) {
+        /* ignore */
+      }
+      __benchmarkLog.info("finalized shared tile pool port for GC'd route worker");
+    })
+  : null;
+
+// Consolidated tile pool: use the canonical `getSharedPool()` from benchmark.js
+// (removes the previous local singleton `benchmarkSharedTilePool`).
+
+function cleanupBenchmarkRouteWorkerSharedPort(workerObj) {
+  if (!workerObj) return;
+  const port = benchmarkRouteWorkerSharedPortMap.get(workerObj);
+  const finalizerToken = benchmarkRouteWorkerSharedPortFinalizer
+    ? benchmarkRouteWorkerSharedPortFinalizerTokenMap.get(workerObj)
+    : null;
+
+  if (port) {
+    try {
+      // Remove the onmessage handler to break closures capturing the
+      // sharedPool so they can be GC'd, then close the port.
+      try {
+        port.onmessage = null;
+      } catch (_err) {
+        /* ignore */
+      }
+      try {
+        port.close();
+      } catch (_err) {
+        /* ignore */
+      }
+      try {
+        decAttachedPorts();
+      } catch (_err) {
+        /* ignore */
+      }
+    } catch (_err) {
+      __benchmarkLog.warn('failed to close shared tile pool port for route worker cleanup', _err);
+    } finally {
+      try {
+        benchmarkRouteWorkerSharedPortMap.delete(workerObj);
+      } catch (_err) {
+        /* ignore */
+      }
+    }
+  }
+
+  if (benchmarkRouteWorkerSharedPortFinalizer && finalizerToken) {
+    try {
+      benchmarkRouteWorkerSharedPortFinalizer.unregister(finalizerToken);
+      benchmarkRouteWorkerSharedPortFinalizerTokenMap.delete(workerObj);
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  // If we previously monkey-patched the underlying worker's terminate method,
+  // try to restore the original so we don't retain unnecessary closures.
+  try {
+    const worker = workerObj.worker;
+    const underlyingWorker = worker?._underlying ?? worker;
+    if (underlyingWorker && underlyingWorker.__benchmark_original_terminate) {
+      try {
+        underlyingWorker.terminate = underlyingWorker.__benchmark_original_terminate;
+      } catch (_err) {
+        // ignore restore failures
+      }
+      try {
+        delete underlyingWorker.__benchmark_original_terminate;
+      } catch (_err) {
+        // ignore delete failures
+      }
+    }
+  } catch (_err) {
+    // ignore any issues while restoring terminate
+  }
+
+  try {
+    const wrapper = workerObj?.worker;
+    const underlyingWorker = wrapper?._underlying ?? wrapper;
+    const handlers = benchmarkRouteWorkerErrorHandlers.get(wrapper);
+    if (handlers) {
+      for (const [key, listener] of Object.entries(handlers)) {
+        const target = key.startsWith('wrapper') ? wrapper : underlyingWorker;
+        if (target && typeof target.removeEventListener === 'function' && typeof listener === 'function') {
+          try {
+            const eventName = key.replace(/^wrapper/, '').toLowerCase();
+            target.removeEventListener(eventName, listener);
+          } catch (_err) {
+            /* ignore */
+          }
+        }
+      }
+      if (typeof wrapper.onmessage === 'function' && wrapper.onmessage.__benchmarkOriginalOnMessage) {
+        try {
+          wrapper.onmessage = wrapper.onmessage.__benchmarkOriginalOnMessage;
+        } catch (_err) {
+          /* ignore */
+        }
+      }
+      benchmarkRouteWorkerErrorHandlers.delete(wrapper);
+      try {
+        benchmarkRouteWorkerErrorLoggedWorkers.delete(wrapper);
+      } catch (_err) {
+        /* ignore */
+      }
+    }
+  } catch (_err) {
+    /* ignore */
+  }
+}
+
+function attachSharedTilePoolPort(workerObj) {
+  if (!workerObj || !workerObj.worker || benchmarkRouteWorkerSharedPortMap.has(workerObj)) return;
+  const sharedPool = getSharedPool();
+  const { port1, port2 } = new MessageChannel();
+
+  port2.onmessage = async (event) => {
+    const data = event?.data;
+    if (!data || data.type !== 'sharedTilePoolRequest' || typeof data.correlationId !== 'string') return;
+
+    try {
+      const response = await sharedPool.postMessage(data.message, undefined, {
+        awaitResponse: true,
+        timeout: Number.isFinite(data.timeout) ? data.timeout : 10_000,
+      });
+      port2.postMessage({ type: 'sharedTilePoolResponse', correlationId: data.correlationId, response });
+    } catch (err) {
+      port2.postMessage({
+        type: 'sharedTilePoolResponse',
+        correlationId: data.correlationId,
+        error: { message: err?.message ?? String(err), code: err?.code ?? null },
+      });
+    }
+  };
+  port2.start?.();
+
+  try {
+    const worker = workerObj.worker;
+    const underlyingWorker = worker?._underlying ?? worker;
+    if (!underlyingWorker || typeof underlyingWorker.postMessage !== 'function') {
+      throw new Error('Route worker underlying object does not support postMessage');
+    }
+
+    // Send the shared tile pool MessagePort directly to the underlying worker,
+    // bypassing the PowerPool wrapper's object-encoding postMessage path.
+    // This preserves the transferable port and avoids serializing the message
+    // body to a Uint8Array, which would drop the port reference.
+    underlyingWorker.postMessage({ type: 'initSharedTilePoolPort', port: port1 }, [port1]);
+    benchmarkRouteWorkerSharedPortMap.set(workerObj, port2);
+    if (benchmarkRouteWorkerSharedPortFinalizer) {
+      try {
+        const token = {};
+        benchmarkRouteWorkerSharedPortFinalizerTokenMap.set(workerObj, token);
+        benchmarkRouteWorkerSharedPortFinalizer.register(workerObj, port2, token);
+      } catch (_err) {
+        benchmarkRouteWorkerSharedPortFinalizerTokenMap.delete(workerObj);
+      }
+    }
+    try {
+      incAttachedPorts();
+    } catch (_err) {
+      /* ignore */
+    }
+    try {
+      __benchmarkLog.info('attached shared tile pool port — total ports:', benchmarkMetrics.attachedPorts);
+    } catch (_err) {
+      /* ignore logging failures */
+    }
+    try {
+      const mem = getMainThreadMemoryUsage();
+      if (mem) console.debug('[benchmark] main-memory attachSharedTilePoolPort', mem);
+    } catch (_err) {
+      /* ignore */
+    }
+    // Monkey-patch underlying worker termination so we can reliably cleanup
+    // the associated shared port before the worker is torn down. Store the
+    // original terminate function so it can be restored during cleanup.
+    try {
+      if (underlyingWorker && typeof underlyingWorker.terminate === 'function' && !underlyingWorker.__benchmark_original_terminate) {
+        const workerWeakRef = typeof WeakRef === 'function' ? new WeakRef(workerObj) : null;
+        const originalTerminate = underlyingWorker.terminate.bind(underlyingWorker);
+        underlyingWorker.__benchmark_original_terminate = originalTerminate;
+        underlyingWorker.terminate = function (...args) {
+          try {
+            const targetWorker = workerWeakRef?.deref() ?? workerObj;
+            cleanupBenchmarkRouteWorkerSharedPort(targetWorker);
+          } catch (err) {
+            __benchmarkLog.warn('error cleaning up shared port during terminate', err);
+          }
+          return originalTerminate(...args);
+        };
+      }
+    } catch (err) {
+      // Non-fatal if we can't patch terminate on this worker.
+      __benchmarkLog.warn('failed to patch worker.terminate for cleanup:', err);
+    }
+  } catch (err) {
+    __benchmarkLog.warn('failed to attach shared tile pool port to route worker', err);
+    try {
+      if (port2) {
+        try {
+          port2.onmessage = null;
+        } catch (_err) {
+          /* ignore */
+        }
+        try {
+          port2.close();
+        } catch (_err) {
+          /* ignore */
+        }
+      }
+    } catch (_err) {
+      /* ignore */
+    }
+    try {
+      if (port1) {
+        try {
+          port1.close();
+        } catch (_err) {
+          /* ignore */
+        }
+      }
+    } catch (_err) {
+      /* ignore */
+    }
+    try {
+      __benchmarkLog.info('cleaned up shared tile pool port — total ports:', (typeof globalThis !== 'undefined' && globalThis.__benchmarkAttachedPorts) || 0);
+    } catch (_err) {
+      /* ignore logging failures */
+    }
+    try {
+      const mem = getMainThreadMemoryUsage();
+      if (mem) console.debug('[benchmark] main-memory attachSharedTilePoolPort.cleanup', mem);
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+}
 
 const root = document;
 const categoryFiltersEl = root.getElementById('category-filters');
@@ -38,59 +562,90 @@ const runBtn = root.getElementById('run-btn');
 const stopBtn = root.getElementById('stop-btn');
 const progressSectionEl = root.getElementById('progress-section');
 const resultsSectionEl = root.getElementById('results-section');
-const resultsTbodyEl = root.getElementById('results-tbody');
+const resultsSectionHeaderEl = resultsSectionEl?.querySelector('h2');
+const actionRowEl = resultsSectionEl?.querySelector('.actions');
 const summaryCardsEl = root.getElementById('summary-cards');
-const summaryTbodyEl = root.getElementById('summary-tbody');
-const summaryTheadEl = root.getElementById('summary-thead');
-const costSummaryTbodyEl = root.getElementById('cost-summary-tbody');
-const costSummaryTheadEl = root.getElementById('cost-summary-thead');
 const autoSelectorSummaryEl = root.getElementById('auto-selector-summary');
 const autoSelectorCardsEl = root.getElementById('auto-selector-cards');
 const progressBarEl = root.getElementById('progress-bar');
 const progressTextEl = root.getElementById('progress-text');
+function getProgressBarEl() {
+  return progressBarEl || document.getElementById('progress-bar');
+}
+function getProgressTextEl() {
+  return progressTextEl || document.getElementById('progress-text');
+}
 const resultsRunContextEl = root.getElementById('results-run-context');
+const pendingRunPromptEl = root.getElementById('pending-run-prompt');
+const pendingRunMessageEl = root.getElementById('pending-run-message');
+const resumeRunBtn = root.getElementById('resume-run-btn');
+const restartRunBtn = root.getElementById('restart-run-btn');
 const benchmarkStopwatchEl = root.getElementById('benchmark-stopwatch');
-const scatterEl = root.getElementById('scatter');
-const densityEl = root.getElementById('density');
-const histogramEl = root.getElementById('histogram');
-const bubbleEl = root.getElementById('bubble');
+ 
 const urlInputEl = root.getElementById('url-input');
 const paginationControlsEl = root.getElementById('pagination-controls');
-const paginationInfoEl = root.getElementById('pagination-info');
-const paginationPrevBtn = root.getElementById('pagination-prev');
-const paginationNextBtn = root.getElementById('pagination-next');
-const resultsTableEl = root.getElementById('results-table');
 const modeSelectEl = root.getElementById('mode-select');
 const runsInputEl = root.getElementById('runs-input');
 const pauseInputEl = root.getElementById('pause-input');
-const downloadBtn = root.getElementById('download-btn');
 const pauseBtn = root.getElementById('pause-btn');
-const reportBtn = root.getElementById('report-btn');
-const copyReportBtn = root.getElementById('copy-report-btn');
-const reportPanelEl = root.getElementById('report-panel');
-const reportTypeControlsEl = root.getElementById('report-type-controls');
-const reportViewSelectEl = root.getElementById('report-view-select');
-const reportStatusEl = root.getElementById('report-status');
-const reportNoteEl = root.getElementById('report-note');
-const reportOutputEl = root.getElementById('report-output');
 const pauseStateEl = root.getElementById('pause-state');
 if (pauseStateEl) pauseStateEl.hidden = true;
 const suggestionWrapEl = root.getElementById('suggestion-wrap');
-const resultsTableSortHeaders = root.querySelectorAll('#results-table thead th[data-col]');
 
-fetch('https://tiles.openfreemap.org/planet')
-  .then((r) => r.json())
-  .then((meta) => {
-    if (urlInputEl && !urlInputEl.value) urlInputEl.value = meta.tiles[0];
-  })
-  .catch((err) => console.error('[benchmark] Failed to fetch tile URL:', err));
+// Autofill tile URL template if the input is empty (best-effort).
+// Attempt to fetch the OpenFreeMap tile manifest and use `tiles[0]` when available.
+try {
+  if (urlInputEl && String(urlInputEl.value || '').trim() === '') {
+    const fallbackTemplate = 'https://tiles.openfreemap.org/planet/{z}/{x}/{y}.png';
+
+    // If fetch isn't available (tests/server), use the fallback immediately.
+    if (typeof fetch !== 'function') {
+      urlInputEl.value = fallbackTemplate;
+      if (!urlInputEl.getAttribute('placeholder')) urlInputEl.setAttribute('placeholder', fallbackTemplate);
+    } else {
+      (async () => {
+        try {
+          const resp = await fetch('https://tiles.openfreemap.org/planet', { cache: 'no-store' });
+          if (!resp || !resp.ok) {
+            urlInputEl.value = fallbackTemplate;
+            if (!urlInputEl.getAttribute('placeholder')) urlInputEl.setAttribute('placeholder', fallbackTemplate);
+            return;
+          }
+          const data = await resp.json();
+          let template = fallbackTemplate;
+          if (data) {
+            if (Array.isArray(data) && data.length && typeof data[0] === 'string') {
+              template = data[0];
+            } else if (data.tiles && Array.isArray(data.tiles) && data.tiles.length && typeof data.tiles[0] === 'string') {
+              template = data.tiles[0];
+            }
+          }
+          urlInputEl.value = template;
+          if (!urlInputEl.getAttribute('placeholder')) urlInputEl.setAttribute('placeholder', template);
+        } catch (err) {
+          urlInputEl.value = fallbackTemplate;
+          if (!urlInputEl.getAttribute('placeholder')) urlInputEl.setAttribute('placeholder', fallbackTemplate);
+        }
+      })();
+    }
+  }
+} catch (e) {
+  // best-effort, ignore failures
+}
+
 
 // ── Populate filter checkboxes from routes.js ────────────────────────────
 (function buildFilters() {
+  if (!categoryFiltersEl || !lengthFiltersEl) return;
   const catFragment = document.createDocumentFragment();
   CATEGORIES.forEach((val) => {
     const lbl = document.createElement('label');
-    lbl.innerHTML = `<input type="checkbox" value="${val}" checked> ${CATEGORY_LABELS[val] ?? val}`;
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = val;
+    chk.checked = true;
+    lbl.appendChild(chk);
+    lbl.appendChild(document.createTextNode(' ' + (CATEGORY_LABELS[val] ?? val)));
     catFragment.appendChild(lbl);
   });
   categoryFiltersEl.appendChild(catFragment);
@@ -98,7 +653,12 @@ fetch('https://tiles.openfreemap.org/planet')
   const lenFragment = document.createDocumentFragment();
   LENGTH_CATEGORIES.forEach((val) => {
     const lbl = document.createElement('label');
-    lbl.innerHTML = `<input type="checkbox" value="${val}" checked> ${LENGTH_CATEGORY_LABELS[val] ?? val}`;
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.value = val;
+    chk.checked = true;
+    lbl.appendChild(chk);
+    lbl.appendChild(document.createTextNode(' ' + (LENGTH_CATEGORY_LABELS[val] ?? val)));
     lenFragment.appendChild(lbl);
   });
   lengthFiltersEl.appendChild(lenFragment);
@@ -106,6 +666,7 @@ fetch('https://tiles.openfreemap.org/planet')
 
 // ── Route count indicator ─────────────────────────────────────────────────
 function getCheckedValues(containerEl) {
+  if (!containerEl) return [];
   return Array.from(containerEl.querySelectorAll('input:checked'), (el) => el.value);
 }
 
@@ -117,14 +678,20 @@ function getSelectedRoutes() {
 
 function updateRouteCount() {
   const n = getSelectedRoutes().length;
-  const successThreshold = Math.max(0, parseInt(successRoutesInput.value, 10) || 0);
+  const successThreshold = Math.max(0, parseInt(successRoutesInput?.value || '0', 10) || 0);
   const thresholdText =
     successThreshold > 0 ? `, ${successThreshold.toLocaleString()} selected` : '';
-  routeCountEl.textContent = `${n.toLocaleString()} routes available${thresholdText}`;
+  if (routeCountEl) routeCountEl.textContent = `${n.toLocaleString()} routes available${thresholdText}`;
 }
 
 function getReportVariantLabel(key) {
   return key === 'sab_on' ? 'SAB On' : key === 'sab_off' ? 'SAB Off' : '';
+}
+
+function getReportFilename(variant, reportType = 'benchmark') {
+  const key = variant?.key;
+  const suffix = key && key !== 'combined' ? `_${key}_` : '';
+  return `${reportType}${suffix}.json`;
 }
 
 function getPassResultIndex(row) {
@@ -230,83 +797,85 @@ function passIndexMatchesContext(row, contextPassIndex, contextsAreOneBased, pas
     ? Number(contextPassIndex)
     : 0;
 
-  let targetIndex = resolvedContextIndex;
-  if (contextsAreOneBased) {
-    targetIndex = passIndexMode === 'zero-based' ? resolvedContextIndex - 1 : resolvedContextIndex;
-  } else {
-    targetIndex = passIndexMode === 'one-based' ? resolvedContextIndex + 1 : resolvedContextIndex;
+  const zeroBasedTarget = contextsAreOneBased
+    ? resolvedContextIndex - 1
+    : resolvedContextIndex;
+  const oneBasedTarget = contextsAreOneBased
+    ? resolvedContextIndex
+    : resolvedContextIndex + 1;
+
+  if (passIndexMode === 'zero-based') {
+    return rowPassIndex === zeroBasedTarget;
   }
 
-  if (Number.isFinite(targetIndex) && rowPassIndex === targetIndex) {
-    return true;
+  if (passIndexMode === 'one-based') {
+    return rowPassIndex === oneBasedTarget;
   }
 
-  if (passIndexMode === 'mixed') {
-    const zeroBasedTarget = contextsAreOneBased ? resolvedContextIndex - 1 : resolvedContextIndex;
-    const oneBasedTarget = contextsAreOneBased ? resolvedContextIndex : resolvedContextIndex + 1;
-    return rowPassIndex === zeroBasedTarget || rowPassIndex === oneBasedTarget;
-  }
-
-  return false;
+  return rowPassIndex === zeroBasedTarget || rowPassIndex === oneBasedTarget;
 }
 
 function buildReportVariants() {
+  if (!Array.isArray(_reportVariants) || _reportVariants.length === 0) {
+    createReportVariants([]);
+  }
   return Array.isArray(_reportVariants) ? _reportVariants.slice() : [];
 }
 
 function createReportVariants(results) {
-  const variants = [];
+  const combinedResults = Array.isArray(results) ? results : [];
 
-  if (Array.isArray(_passContexts)) {
-    const passGroups = groupResultsByPassVariant(results);
-    const hasSabGroups = passGroups.sab_on.length > 0 || passGroups.sab_off.length > 0;
-    const contextsAreOneBased = isOneBasedPassContext(_passContexts);
+  const variants = [
+    {
+      key: 'combined',
+      label: 'Combined',
+      results: combinedResults,
+      context: {
+        ...buildReportContext(),
+        parallelOrSerial: 'combined',
+      },
+    },
+  ];
+
+  if (Array.isArray(_passContexts) && _passContexts.length > 0) {
+    const contextsAreOneBased = _passContexts.some((context) => Number(context?.passIndex) === 1);
     const passIndexMode = determinePassIndexMode(results, _passContexts.length);
 
     _passContexts.forEach((context, index) => {
       if (!context) return;
       const key = context.sharedArrayBuffer ? 'sab_on' : 'sab_off';
-      const contextPassIndex = Number.isFinite(Number(context.passIndex))
-        ? Number(context.passIndex)
-        : index;
-      const parallelOrSerial =
-        context.parallelOrSerial ?? (context.sharedArrayBuffer ? 'parallel' : 'serial');
-      const passResults = hasSabGroups && typeof context.sharedArrayBuffer === 'boolean'
-        ? passGroups[key]
-        : Array.isArray(results)
-        ? results.filter((r) =>
-            passIndexMatchesContext(r, contextPassIndex, contextsAreOneBased, passIndexMode)
+      const passResults = Array.isArray(results)
+        ? results.filter((row) =>
+            passIndexMatchesContext(row, context.passIndex ?? index, contextsAreOneBased, passIndexMode)
           )
         : [];
 
-      if (!Array.isArray(passResults) || passResults.length === 0) return;
-
+      if (passResults.length === 0 || !key) return;
       variants.push({
         key,
         label: getReportVariantLabel(key),
         results: passResults,
         context: {
           ...context,
-          parallelOrSerial,
+          parallelOrSerial: key,
         },
       });
     });
-  } else {
-    const passGroups = groupResultsByPassVariant(results);
-    ['sab_on', 'sab_off'].forEach((key) => {
-      if (passGroups[key].length === 0) return;
-      const sharedArrayBuffer = key === 'sab_on';
+  } else if (Array.isArray(results)) {
+    const grouped = groupResultsByPassVariant(results);
+    for (const key of ['sab_on', 'sab_off']) {
+      const passResults = grouped[key] || [];
+      if (passResults.length === 0) continue;
       variants.push({
         key,
         label: getReportVariantLabel(key),
-        results: passGroups[key],
+        results: passResults,
         context: {
-          ...buildReportContext(),
-          parallelOrSerial: sharedArrayBuffer ? 'parallel' : 'serial',
-          sharedArrayBuffer,
+          sharedArrayBuffer: key === 'sab_on',
+          parallelOrSerial: key,
         },
       });
-    });
+    }
   }
 
   _reportVariants = variants;
@@ -314,169 +883,1234 @@ function createReportVariants(results) {
 }
 
 function updateReportTypeControls() {
-  if (!reportViewSelectEl || !reportTypeControlsEl) return;
   const variants = buildReportVariants();
   if (variants.length <= 1) {
-    reportTypeControlsEl.hidden = true;
     _reportSelection = variants[0]?.key || '';
     return;
   }
 
-  reportTypeControlsEl.hidden = false;
-  reportViewSelectEl.innerHTML = '';
-  variants.forEach(({ key, label }) => {
-    const option = document.createElement('option');
-    option.value = key;
-    option.textContent = label;
-    reportViewSelectEl.appendChild(option);
-  });
-
-  if (!variants.some((variant) => variant.key === _reportSelection)) {
+  if (!_reportSelection || !variants.some((variant) => variant.key === _reportSelection)) {
     _reportSelection = variants[0]?.key || '';
   }
-  reportViewSelectEl.value = _reportSelection;
 }
 
 function getSelectedReportVariant() {
-  const selection = reportViewSelectEl?.value || _reportSelection || '';
-  _reportSelection = selection;
+  const selection = _reportSelection || '';
   const variants = buildReportVariants();
   return variants.find((variant) => variant.key === selection) ?? variants[0];
 }
 
-function getReportFilename(variant, mode) {
-  const timestamp = new Date().toISOString().slice(0, 10);
-  const suffix = variant?.key ? `_${variant.key}` : '';
-  return `benchmark_${mode}${suffix}_${timestamp}.csv`;
-}
+//
 
-categoryFiltersEl.addEventListener('change', updateRouteCount);
-lengthFiltersEl.addEventListener('change', updateRouteCount);
-successRoutesInput.addEventListener('input', updateRouteCount);
-successRoutesInput.addEventListener('change', updateRouteCount);
+if (categoryFiltersEl) categoryFiltersEl.addEventListener('change', updateRouteCount);
+if (lengthFiltersEl) lengthFiltersEl.addEventListener('change', updateRouteCount);
+if (successRoutesInput) successRoutesInput.addEventListener('input', updateRouteCount);
+if (successRoutesInput) successRoutesInput.addEventListener('change', updateRouteCount);
 updateRouteCount();
 
 // ── State ─────────────────────────────────────────────────────────────────
 const RESULTS_PAGE_SIZE = 250;
-let _currentResultCount = 0;
-let _pendingResultBuffer = [];
-let _currentRenderResults = [];
-let _sortCol = '_insertedAt';
-let _sortAsc = false;
+const MAX_ROUTE_COMPLETION_TIME_SAMPLES = 10;
 let _currentPage = 1;
 let _stopped = false;
 let _paused = false;
 let _pauseResolvers = [];
 let _savedArtifactsOnStop = false;
+let _stopSaveInProgress = false;
 let benchmarkStartTime = null;
+ 
 let _stopwatchRaf = null;
-let _cleanupTooltip = null;
 let _routeCompletionTimes = [];
-let _chartScatter = null;
-let _chartDensity = null;
-let _chartHistogram = null;
-let _chartBubble = null;
+//
 let _runContext = null;
 let _passContexts = null;
 let _reportVariants = [];
 let _reportSelection = '';
 let _currentRunId = null;
+let _currentPageResults = [];
+ 
 let _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
+let benchmarkRouteWorker = null;
+let _benchmarkRouteScheduler = null;
+let _pendingRoutePromises = new Map();
+let _benchmarkRouteWorkerState = null;
+let _benchmarkRouteDispatchStats = {
+  batchCount: 0,
+  totalDispatched: 0,
+  totalAccepted: 0,
+  totalRejected: 0,
+  lastBatchSize: 0,
+  lastDispatchResults: null,
+  lastQueueLength: 0,
+};
 let _abortController = null;
-let _updateScheduled = false;
-let _pendingChartRedraw = false;
-let _pendingSummaryUpdate = false;
+let _benchmarkSummaryState = null;
+let _summaryStateSaveTimer = null;
+let _benchmarkRunComplete = false;
+
+// Expose debug accessors for runtime inspection via DevTools MCP.
+// These are non-enumerable helpers that return current internal state
+// without creating strong references that would prevent GC.
+try {
+  if (typeof window !== 'undefined') {
+    window.__debug_benchmark = window.__debug_benchmark || {};
+    Object.defineProperty(window.__debug_benchmark, 'benchmarkRouteWorker', {
+      configurable: true,
+      enumerable: false,
+      get: () => benchmarkRouteWorker,
+    });
+    Object.defineProperty(window.__debug_benchmark, 'benchmarkSharedTilePool', {
+      configurable: true,
+      enumerable: false,
+      get: () => {
+        try {
+          return getSharedPool();
+        } catch (_err) {
+          return null;
+        }
+      },
+    });
+    Object.defineProperty(window.__debug_benchmark, 'benchmarkRouteWorkerSharedPortMap', {
+      configurable: true,
+      enumerable: false,
+      get: () => benchmarkRouteWorkerSharedPortMap,
+    });
+    window.__debug_benchmark.attachSharedTilePoolPort = (workerObj) => {
+      try {
+        return attachSharedTilePoolPort(workerObj);
+      } catch (err) {
+        console.warn('[benchmark][debug] attachSharedTilePoolPort failed', err);
+      }
+    };
+    window.__debug_benchmark.cleanupSharedTilePoolPort = (workerObj) => {
+      try {
+        return cleanupBenchmarkRouteWorkerSharedPort(workerObj);
+      } catch (err) {
+        console.warn('[benchmark][debug] cleanupBenchmarkRouteWorkerSharedPort failed', err);
+      }
+    };
+    window.__debug_benchmark.patchRouteWorkerMessageHandling = (workerObj) => {
+      try {
+        return patchRouteWorkerMessageHandling(workerObj);
+      } catch (err) {
+        console.warn('[benchmark][debug] patchRouteWorkerMessageHandling failed', err);
+      }
+    };
+  }
+} catch (_err) {
+  /* ignore debug exposure failures */
+}
 
 function resetBenchmarkRunState() {
   _runContext = null;
   _routeCompletionTimes = [];
-  _currentResultCount = 0;
-  _pendingResultBuffer = [];
-  _pendingSummaryUpdate = false;
-  _pendingChartRedraw = false;
-  _updateScheduled = false;
+  _benchmarkSummaryState = null;
+  if (_summaryStateSaveTimer) {
+    clearTimeout(_summaryStateSaveTimer);
+    _summaryStateSaveTimer = null;
+  }
+  _benchmarkRouteWorkerState = null;
+  _benchmarkRouteScheduler = null;
 }
 
-function createUIResultRow(result) {
-  if (!result || typeof result !== 'object') return result;
-  const row = { ...result };
-  delete row.rawDiagnostics;
-  delete row.samplesMs;
-  delete row.sampleStats;
-  delete row.timingRounds;
-  return row;
+const decodeWorkerMessageData = (data) => {
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+    try {
+      const decoded = new TextDecoder().decode(data);
+      return JSON.parse(decoded);
+    } catch (decodeError) {
+      console.warn('[benchmark] failed to decode worker binary payload', decodeError, data);
+      return data;
+    }
+  }
+  return data;
+};
+
+const normalizeWorkerMessageEvent = (event) => {
+  const decodedData = decodeWorkerMessageData(event?.data);
+  if (decodedData === event?.data) return event;
+  try {
+    return new MessageEvent(event.type, {
+      data: decodedData,
+      origin: event.origin,
+      lastEventId: event.lastEventId,
+      source: event.source,
+      ports: event.ports,
+    });
+  } catch (normalizeError) {
+    console.warn('[benchmark] failed to normalize worker message event', normalizeError, event);
+    return event;
+  }
+};
+
+function patchRouteWorkerMessageHandling(workerObj) {
+  const wrapper = workerObj?.worker;
+  if (!wrapper) return;
+
+  const pool = benchmarkRouteWorker;
+  const originalOnMessage = typeof wrapper.onmessage === 'function'
+    ? wrapper.onmessage.__benchmarkOriginalOnMessage ?? wrapper.onmessage
+    : null;
+  const patchedOnMessage = function (event) {
+    const normalizedEvent = normalizeWorkerMessageEvent(event);
+    const msg = normalizedEvent?.data;
+    const isProgressEvent =
+      msg &&
+      typeof msg === 'object' &&
+      (msg.type === 'status' || msg.type === 'result');
+    if (isProgressEvent) {
+      if (pool && typeof pool._onmessage === 'function') {
+        pool._onmessage(normalizedEvent);
+      }
+      return;
+    }
+    if (originalOnMessage) {
+      return originalOnMessage.call(this, normalizedEvent);
+    }
+    if (pool && typeof pool._onmessage === 'function') {
+      return pool._onmessage(normalizedEvent);
+    }
+  };
+  patchedOnMessage.__benchmarkOriginalOnMessage = originalOnMessage;
+  wrapper.onmessage = patchedOnMessage;
+
+  // Robust error/exit cleanup: handle all error/exit/messageerror events and worker GC
+  if (!benchmarkRouteWorkerErrorLoggedWorkers.has(wrapper)) {
+    const workerWeakRef = typeof WeakRef === 'function' ? new WeakRef(workerObj) : null;
+    const registerWorkerErrorHandler = (target, eventName) => {
+      if (!target || typeof target.addEventListener !== 'function') return null;
+      const listener = (event) => {
+        const targetWorker = workerWeakRef?.deref() ?? workerObj;
+        try {
+          cleanupBenchmarkRouteWorkerSharedPort(targetWorker);
+          if (typeof disposeBenchmarkResources === 'function') {
+            disposeBenchmarkResources();
+          }
+        } catch (_err) {
+          __benchmarkLog.warn('cleanup failed while handling route worker ' + eventName, _err);
+        }
+        console.error('[benchmark] route worker ' + eventName, {
+          workerId: targetWorker?.id,
+          event,
+        });
+      };
+      target.addEventListener(eventName, listener);
+      return listener;
+    };
+
+    const underlying = wrapper._underlying ?? wrapper;
+    const handlers = {
+      error: registerWorkerErrorHandler(underlying, 'error'),
+      messageerror: registerWorkerErrorHandler(underlying, 'messageerror'),
+      exit: registerWorkerErrorHandler(underlying, 'exit'),
+    };
+    if (typeof wrapper.addEventListener === 'function') {
+      handlers.wrapperError = registerWorkerErrorHandler(wrapper, 'error');
+      handlers.wrapperMessageError = registerWorkerErrorHandler(wrapper, 'messageerror');
+      handlers.wrapperExit = registerWorkerErrorHandler(wrapper, 'exit');
+    }
+    benchmarkRouteWorkerErrorHandlers.set(wrapper, handlers);
+    benchmarkRouteWorkerErrorLoggedWorkers.add(wrapper);
+  }
+}
+
+function scheduleBenchmarkSummaryStatePersist() {
+  if (!_currentRunId || !_benchmarkSummaryState || _summaryStateSaveTimer) return;
+  _summaryStateSaveTimer = setTimeout(async () => {
+    _summaryStateSaveTimer = null;
+    try {
+      await saveRunMetadata(_currentRunId, { summaryState: _benchmarkSummaryState });
+    } catch (err) {
+      console.warn('[benchmark] persistBenchmarkSummaryState failed:', err);
+    }
+  }, 100);
+}
+
+function scheduleBenchmarkProgressPersist() {
+  if (!_currentRunId || !_benchmarkRouteWorkerState || _progressSaveTimer) return;
+  _progressSaveTimer = setTimeout(async () => {
+    _progressSaveTimer = null;
+    try {
+      // serialize routePassCompletion (Map -> object) and Sets -> arrays for storage
+      const routePassObj = {};
+      const rpc = _benchmarkRouteWorkerState.routePassCompletion;
+      if (rpc && typeof rpc === 'object') {
+        try {
+          if (typeof rpc.forEach === 'function') {
+            // Map-like
+            rpc.forEach((set, key) => {
+              try {
+                routePassObj[String(key)] = Array.from(set || []);
+              } catch (_e) {
+                routePassObj[String(key)] = [];
+              }
+            });
+          } else if (Object.prototype.toString.call(rpc) === '[object Object]') {
+            Object.entries(rpc).forEach(([k, v]) => {
+              routePassObj[String(k)] = Array.isArray(v) ? v.slice() : [];
+            });
+          }
+        } catch (_e) {
+          /* best-effort */
+        }
+      }
+
+      const payload = {
+        progress: {
+          completedTasks: Number(_benchmarkRouteWorkerState.completedTasks ?? 0),
+          completedRouteIndices: Array.from(_benchmarkRouteWorkerState.completedRouteIndices ?? new Set()),
+          successfulRouteIndices: Array.from(_benchmarkRouteWorkerState.successfulRouteIndices ?? new Set()),
+          failedRouteIndices: Array.from(_benchmarkRouteWorkerState.failedRouteIndices ?? new Set()),
+          routePassCompletion: routePassObj,
+        },
+      };
+      await saveRunMetadata(_currentRunId, payload);
+    } catch (err) {
+      console.warn('[benchmark] persistBenchmarkProgress failed:', err);
+    }
+  }, 100);
+}
+
+async function flushBenchmarkProgressPersist() {
+  if (_progressSaveTimer) {
+    clearTimeout(_progressSaveTimer);
+    _progressSaveTimer = null;
+  }
+  if (!_currentRunId || !_benchmarkRouteWorkerState) return;
+  try {
+    const routePassObj = {};
+    const rpc = _benchmarkRouteWorkerState.routePassCompletion;
+    if (rpc && typeof rpc === 'object') {
+      try {
+        if (typeof rpc.forEach === 'function') {
+          rpc.forEach((set, key) => {
+            try {
+              routePassObj[String(key)] = Array.from(set || []);
+            } catch (_e) {
+              routePassObj[String(key)] = [];
+            }
+          });
+        } else if (Object.prototype.toString.call(rpc) === '[object Object]') {
+          Object.entries(rpc).forEach(([k, v]) => {
+            routePassObj[String(k)] = Array.isArray(v) ? v.slice() : [];
+          });
+        }
+      } catch (_e) {
+        /* best-effort */
+      }
+    }
+    const payload = {
+      progress: {
+        completedTasks: Number(_benchmarkRouteWorkerState.completedTasks ?? 0),
+        completedRouteIndices: Array.from(_benchmarkRouteWorkerState.completedRouteIndices ?? new Set()),
+        successfulRouteIndices: Array.from(_benchmarkRouteWorkerState.successfulRouteIndices ?? new Set()),
+        failedRouteIndices: Array.from(_benchmarkRouteWorkerState.failedRouteIndices ?? new Set()),
+        routePassCompletion: routePassObj,
+      },
+    };
+    await saveRunMetadata(_currentRunId, payload);
+  } catch (err) {
+    console.warn('[benchmark] flushBenchmarkProgressPersist failed:', err);
+  }
+}
+
+async function flushBenchmarkSummaryStatePersist() {
+  if (_summaryStateSaveTimer) {
+    clearTimeout(_summaryStateSaveTimer);
+    _summaryStateSaveTimer = null;
+  }
+  if (!_currentRunId || !_benchmarkSummaryState) return;
+  try {
+    await saveRunMetadata(_currentRunId, { summaryState: _benchmarkSummaryState });
+  } catch (err) {
+    console.warn('[benchmark] flushBenchmarkSummaryStatePersist failed:', err);
+  }
+}
+
+function createBenchmarkRouteWorker() {
+  if (benchmarkRouteWorker) return benchmarkRouteWorker;
+
+  const routeWorkerConstructor = globalThis.__benchmarkRouteWorkerCtor ?? BenchmarkRouteWorker;
+  console.info('[benchmark] routeWorkerConstructor type', typeof routeWorkerConstructor, routeWorkerConstructor?.name, routeWorkerConstructor?.prototype?.constructor?.name);
+
+  try {
+    const hardwareConcurrency = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency ?? 4 : 4;
+    const maxPoolSize = Math.max(1, Math.floor(hardwareConcurrency / 3));
+    const poolOptions = {
+      size: 2,
+      maxSize: maxPoolSize,
+      maxTasksPerWorker: 1,
+      lazy: false,
+      autoScale: {
+        intervalMs: 250,
+        targetMs: 100,
+        stepUp: 2,
+        stepDown: 1,
+        cooldownMs: 1000,
+      },
+      idleTimeout: 600_000,
+      taskQueue: true,
+      queuePolicy: 'reject', // reject saturated tasks instead of allowing PowerPool fallback queueing
+    };
+
+    console.info('[benchmark] createBenchmarkRouteWorker', { hardwareConcurrency, maxPoolSize, poolOptions });
+    const routeWorkerSource = () => {
+      console.info('[benchmark] routeWorkerSource invoke', typeof routeWorkerConstructor, routeWorkerConstructor?.name);
+      try {
+        return new routeWorkerConstructor();
+      } catch (err) {
+        console.error('[benchmark] routeWorkerSource failed', err);
+        throw err;
+      }
+    };
+    benchmarkRouteWorker = new PowerPool(routeWorkerSource, poolOptions);
+
+    benchmarkRouteWorker.workers?.forEach((workerObj) => {
+      patchRouteWorkerMessageHandling(workerObj);
+      attachSharedTilePoolPort(workerObj);
+    });
+    const originalAddWorkerInstance = benchmarkRouteWorker._addWorkerInstance.bind(benchmarkRouteWorker);
+    benchmarkRouteWorker._addWorkerInstance = (...args) => {
+      const workerObj = originalAddWorkerInstance(...args);
+      patchRouteWorkerMessageHandling(workerObj);
+      attachSharedTilePoolPort(workerObj);
+      return workerObj;
+    };
+
+    const originalReapIdleWorkers = benchmarkRouteWorker._reapIdleWorkers?.bind(benchmarkRouteWorker);
+    if (typeof originalReapIdleWorkers === 'function') {
+      benchmarkRouteWorker._reapIdleWorkers = (...args) => {
+        const beforeWorkers = new Set(benchmarkRouteWorker.workers || []);
+        const result = originalReapIdleWorkers(...args);
+        for (const workerObj of beforeWorkers) {
+          if (!benchmarkRouteWorker.workers?.includes(workerObj)) {
+            cleanupBenchmarkRouteWorkerSharedPort(workerObj);
+          }
+        }
+        return result;
+      };
+    }
+
+    const originalRemoveWorker = benchmarkRouteWorker.removeWorker?.bind(benchmarkRouteWorker);
+    if (typeof originalRemoveWorker === 'function') {
+      benchmarkRouteWorker.removeWorker = () => {
+        const workerObj = benchmarkRouteWorker.workers?.[benchmarkRouteWorker.workers.length - 1];
+        cleanupBenchmarkRouteWorkerSharedPort(workerObj);
+        return originalRemoveWorker();
+      };
+    }
+  } catch (err) {
+    console.error('[benchmark] Route worker pool creation failed', err);
+    throw err;
+  }
+
+  if ('onmessage' in benchmarkRouteWorker) {
+    benchmarkRouteWorker.onmessage = handleBenchmarkRouteWorkerMessage;
+  }
+
+  return benchmarkRouteWorker;
+}
+
+function disposeBenchmarkRouteWorker() {
+  if (!benchmarkRouteWorker) return;
+
+  const attachedWorkers = Array.isArray(benchmarkRouteWorker.workers)
+    ? [...benchmarkRouteWorker.workers]
+    : [];
+
+  try {
+    if (typeof benchmarkRouteWorker.shutdown === 'function') {
+      benchmarkRouteWorker.shutdown();
+    } else if (typeof benchmarkRouteWorker.terminate === 'function') {
+      benchmarkRouteWorker.terminate();
+    }
+  } catch (err) {
+    console.warn('[benchmark] Failed to dispose route worker pool:', err);
+  }
+
+  // Cleanup ports by iterating worker instances we captured before
+  // shutdown. Some pool implementations clear `workers` during shutdown,
+  // so we need a copy to avoid losing shared port cleanup.
+  for (const workerObj of attachedWorkers) {
+    try {
+      cleanupBenchmarkRouteWorkerSharedPort(workerObj);
+    } catch (err) {
+      console.warn('[benchmark] Failed to cleanup shared tile pool port for worker during dispose:', err);
+    }
+  }
+  try {
+    if (typeof globalThis !== 'undefined') {
+      globalThis.__benchmarkAttachedPorts = 0;
+    }
+  } catch (_err) {
+    /* ignore */
+  }
+
+  try {
+    if (typeof disposeBenchmarkResources === 'function') {
+      disposeBenchmarkResources();
+    }
+  } catch (err) {
+    console.warn('[benchmark] Failed to dispose shared tile pool:', err);
+  }
+  try {
+    const mem = getMainThreadMemoryUsage();
+    if (mem) console.debug('[benchmark] main-memory disposeBenchmarkRouteWorker', mem);
+  } catch (_err) {
+    /* ignore */
+  }
+
+  stopBenchmarkUiTicker();
+  benchmarkRouteWorker = null;
+  clearPendingRoutePromises(new Error('Benchmark route worker disposed'));
+}
+
+function clearPendingRoutePromises(reason) {
+  const shouldResolve = reason instanceof Error && reason.message === 'Benchmark route worker disposed';
+  for (const { resolve, reject } of _pendingRoutePromises.values()) {
+    try {
+      if (shouldResolve) {
+        resolve();
+      } else {
+        reject(reason);
+      }
+    } catch (err) {
+      console.warn('[benchmark] Failed to settle pending worker promise:', err);
+    }
+  }
+  _pendingRoutePromises.clear();
+}
+
+function formatWorkerStatusMessage(message) {
+  if (!message || typeof message !== 'object') return '';
+  switch (message.status) {
+    case 'started':
+      return 'Starting route';
+    case 'fetching-tiles':
+      return `Fetching tiles (${message.tileCount ?? 'unknown'})`;
+    case 'building-graph':
+      return 'Building graph';
+    case 'prepare-route':
+      return 'Preparing route';
+    case 'route-cached':
+      return 'Route cached';
+    case 'warming-engine':
+      return `Warming ${message.engineId}`;
+    case 'timing-round':
+      return `Timing round ${message.round}/${message.totalRounds}`;
+    case 'result-saved':
+      return 'Result saved';
+    case 'memory': {
+      const phaseLabel = message.phase ? `Memory ${message.phase}` : 'Memory snapshot';
+      if (message.memory && typeof message.memory === 'object') {
+        const { usedJSHeapSize, totalJSHeapSize, jsHeapSizeLimit } = message.memory;
+        const used = Number.isFinite(usedJSHeapSize) ? `${Math.round(usedJSHeapSize / 1024 / 1024)} MB` : 'unknown';
+        const total = Number.isFinite(totalJSHeapSize) ? `${Math.round(totalJSHeapSize / 1024 / 1024)} MB` : 'unknown';
+        const limit = Number.isFinite(jsHeapSizeLimit) ? `${Math.round(jsHeapSizeLimit / 1024 / 1024)} MB` : 'unknown';
+        return `${phaseLabel} (${used} / ${total}, limit ${limit})`;
+      }
+      return `${phaseLabel} (memory unavailable)`;
+    }
+    default:
+      return String(message.status || 'Running');
+  }
+}
+
+function getThresholdProgress(state) {
+  if (!state || typeof state !== 'object') {
+    return {
+      active: false,
+      target: 0,
+      current: 0,
+      pct: 0,
+    };
+  }
+
+  const active = Number.isFinite(state.successThreshold) && state.successThreshold > 0;
+  const target = active ? state.successThreshold : state.totalTasks;
+  const current = active
+    ? state.successfulRoutes
+    : Number.isFinite(state.completedRoutes)
+    ? state.completedRoutes
+    : state.completedTasks;
+  const pct = target > 0 ? Math.round((current / target) * 100) : 0;
+  return {
+    active,
+    target,
+    current,
+    pct: Math.min(100, Math.max(0, pct)),
+  };
+}
+
+let _benchmarkUiTicker = null;
+
+function renderProgressFromState(routeState, summaryState) {
+  try {
+    const { active, target, current, pct } = getThresholdProgress(routeState);
+    const passIndex = routeState?.lastStatus?.passIndex;
+    const passPrefix =
+      typeof passIndex === 'number' && routeState?.totalPasses > 1 ? `[${passIndex}/${routeState.totalPasses}] ` : '';
+    const progressBar = getProgressBarEl();
+    if (progressBar) progressBar.style.width = `${pct}%`;
+    const progressText = getProgressTextEl();
+    if (progressText) {
+      if (active) {
+        progressText.textContent = `${current}/${target}`;
+      } else {
+        const completed = Number.isFinite(routeState?.completedRoutes) ? routeState.completedRoutes : routeState?.completedTasks ?? 0;
+        progressText.textContent = `${passPrefix}${completed}/${routeState?.totalTasks ?? 0}`;
+      }
+    }
+    if (summaryState) updateSummaryCardsFromState(summaryState);
+  } catch (e) {
+    /* best-effort */
+  }
+}
+
+function startBenchmarkUiTicker(intervalMs = 200) {
+  if (_benchmarkUiTicker) return;
+  _benchmarkUiTicker = setInterval(() => renderProgressFromState(_benchmarkRouteWorkerState, _benchmarkSummaryState), intervalMs);
+}
+
+function stopBenchmarkUiTicker() {
+  if (!_benchmarkUiTicker) return;
+  clearInterval(_benchmarkUiTicker);
+  _benchmarkUiTicker = null;
+}
+
+function handleBenchmarkRouteWorkerMessage(event) {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+
+  const { type, runId, routeIndex, result, status, routeLabel, passIndex } = msg;
+  if (type === 'status') {
+    if (status === 'memory' && (!msg.memory || typeof msg.memory !== 'object')) {
+      // Suppress unsupported memory snapshots so the progress label is not repeatedly set to "memory unavailable".
+      return;
+    }
+
+    if (status === 'memory') {
+      // Memory snapshots are handled through the progress UI; avoid noisy console logs.
+    }
+
+    if (!_benchmarkRouteWorkerState) return;
+    _benchmarkRouteWorkerState.lastStatus = msg;
+    // UI updates are throttled by the benchmark UI ticker; state is updated here only.
+
+    // When a worker indicates the full result was persisted to the bench DB,
+    // fetch the saved row and update the in-memory summary state so the UI
+    // remains in sync without requiring the worker to post the full payload.
+    if (status === 'result-saved') {
+      (async () => {
+        try {
+          const rows = await getRecordsForRun(runId);
+          if (!Array.isArray(rows) || rows.length === 0) return;
+          const match = rows.find((r) => Number(r.passIndex) === Number(passIndex ?? r.passIndex) && Number(r.routeIndex) === Number(routeIndex ?? r.routeIndex));
+          if (!match) return;
+          const normalized = normalizeDbRow(match);
+
+          if (_benchmarkRouteWorkerState) {
+            _benchmarkRouteWorkerState.completedTasks = (_benchmarkRouteWorkerState.completedTasks ?? 0) + 1;
+
+            const thresholdActive = Number.isFinite(_benchmarkRouteWorkerState.successThreshold) && _benchmarkRouteWorkerState.successThreshold > 0;
+            if (thresholdActive) {
+              const routeKey = Number.isFinite(routeIndex) ? routeIndex : routeIndex;
+              if (!_benchmarkRouteWorkerState.failedRouteIndices) {
+                _benchmarkRouteWorkerState.failedRouteIndices = new Set();
+              }
+              if (!_benchmarkRouteWorkerState.successfulRouteIndices) {
+                _benchmarkRouteWorkerState.successfulRouteIndices = new Set();
+              }
+
+              const hasRouteError = Boolean(normalized.error || normalized.routeError);
+              const failedRouteIndices = _benchmarkRouteWorkerState.failedRouteIndices;
+              const successfulRouteIndices = _benchmarkRouteWorkerState.successfulRouteIndices;
+
+              if (hasRouteError) {
+                failedRouteIndices.add(routeKey);
+                if (successfulRouteIndices.has(routeKey)) {
+                  successfulRouteIndices.delete(routeKey);
+                  _benchmarkRouteWorkerState.successfulRoutes = successfulRouteIndices.size;
+                }
+              } else if (!failedRouteIndices.has(routeKey) && !successfulRouteIndices.has(routeKey)) {
+                successfulRouteIndices.add(routeKey);
+                _benchmarkRouteWorkerState.successfulRoutes = successfulRouteIndices.size;
+              }
+            }
+
+            // Track persisted pass completion per route (Map(routeIndex -> Set(passIndex)))
+            try {
+              if (!_benchmarkRouteWorkerState.routePassCompletion) _benchmarkRouteWorkerState.routePassCompletion = new Map();
+              const rIdx = Number(routeIndex);
+              let passSet = _benchmarkRouteWorkerState.routePassCompletion.get(rIdx);
+              if (!passSet) {
+                passSet = new Set();
+                _benchmarkRouteWorkerState.routePassCompletion.set(rIdx, passSet);
+              }
+              const pIdx = Number(passIndex ?? normalized.passIndex ?? normalized._passIndex ?? -1);
+              if (Number.isFinite(pIdx) && pIdx >= 0) passSet.add(pIdx);
+            } catch (_e) {
+              /* best-effort */
+            }
+          }
+
+          if (!_benchmarkSummaryState) _benchmarkSummaryState = createBenchmarkSummaryState();
+          updateSummaryStateWithResult(_benchmarkSummaryState, normalized);
+          // UI updates are throttled by the benchmark UI ticker.
+          scheduleBenchmarkSummaryStatePersist();
+          scheduleBenchmarkProgressPersist();
+          try {
+            // Debug: force immediate render to check DOM visibility (temporary)
+            renderProgressFromState(_benchmarkRouteWorkerState, _benchmarkSummaryState);
+          } catch (e) {
+            /* best-effort */
+          }
+        } catch (err) {
+          __benchmarkLog.warn('[benchmark] failed fetching saved result for summary update', err);
+        }
+      })();
+    }
+
+    return;
+  }
+
+  if (type === 'routeCompleted') {
+    const key = `${runId}|${routeIndex}`;
+    const pending = _pendingRoutePromises.get(key);
+    if (pending) {
+      pending.resolve(msg);
+      _pendingRoutePromises.delete(key);
+    } else if (benchmarkRouteWorker) {
+      console.warn('[benchmark] route worker completion received with no pending promise', { key, msg });
+    }
+
+    if (_benchmarkRouteWorkerState) {
+      if (!_benchmarkRouteWorkerState.completedRouteIndices) {
+        _benchmarkRouteWorkerState.completedRouteIndices = new Set();
+      }
+      const thresholdActive = Number.isFinite(_benchmarkRouteWorkerState.successThreshold) && _benchmarkRouteWorkerState.successThreshold > 0;
+      if (!_benchmarkRouteWorkerState.completedRouteIndices.has(routeIndex)) {
+        _benchmarkRouteWorkerState.completedRouteIndices.add(routeIndex);
+        _benchmarkRouteWorkerState.completedRoutes = (_benchmarkRouteWorkerState.completedRoutes ?? 0) + 1;
+
+        if (thresholdActive) {
+          if (!_benchmarkRouteWorkerState.successfulRouteIndices) {
+            _benchmarkRouteWorkerState.successfulRouteIndices = new Set();
+          }
+          if (!_benchmarkRouteWorkerState.failedRouteIndices) {
+            _benchmarkRouteWorkerState.failedRouteIndices = new Set();
+          }
+
+          const routeKey = Number.isFinite(routeIndex) ? routeIndex : routeIndex;
+          const successfulRouteIndices = _benchmarkRouteWorkerState.successfulRouteIndices;
+          const failedRouteIndices = _benchmarkRouteWorkerState.failedRouteIndices;
+          if (!failedRouteIndices.has(routeKey) && !successfulRouteIndices.has(routeKey)) {
+            successfulRouteIndices.add(routeKey);
+            _benchmarkRouteWorkerState.successfulRoutes = successfulRouteIndices.size;
+          }
+
+          if (_benchmarkRouteWorkerState.successfulRoutes >= _benchmarkRouteWorkerState.successThreshold) {
+            _stopped = true;
+            _abortController?.abort();
+            disposeBenchmarkRouteWorker();
+          }
+        }
+
+        // UI updates are throttled by the benchmark UI ticker.
+        // Persist progress after marking route completed
+        scheduleBenchmarkProgressPersist();
+        try {
+          // Debug: force immediate render to check DOM visibility (temporary)
+          renderProgressFromState(_benchmarkRouteWorkerState, _benchmarkSummaryState);
+        } catch (e) {
+          /* best-effort */
+        }
+      }
+    }
+
+    _routeCompletionTimes.push(performance.now());
+    if (_routeCompletionTimes.length > MAX_ROUTE_COMPLETION_TIME_SAMPLES) {
+      _routeCompletionTimes.splice(0, _routeCompletionTimes.length - MAX_ROUTE_COMPLETION_TIME_SAMPLES);
+    }
+    return;
+  }
+
+  if (type !== 'result' || !_benchmarkRouteWorkerState) {
+    return;
+  }
+
+  _benchmarkRouteWorkerState.completedTasks = (_benchmarkRouteWorkerState.completedTasks ?? 0) + 1;
+
+  if (result && typeof result === 'object') {
+      const thresholdActive = Number.isFinite(_benchmarkRouteWorkerState.successThreshold) && _benchmarkRouteWorkerState.successThreshold > 0;
+      if (thresholdActive) {
+        const routeKey = Number.isFinite(routeIndex) ? routeIndex : routeIndex;
+        const hasRouteError = Boolean(result.error || result.routeError);
+        if (!_benchmarkRouteWorkerState.failedRouteIndices) {
+          _benchmarkRouteWorkerState.failedRouteIndices = new Set();
+        }
+        if (!_benchmarkRouteWorkerState.successfulRouteIndices) {
+          _benchmarkRouteWorkerState.successfulRouteIndices = new Set();
+        }
+        if (hasRouteError) {
+          _benchmarkRouteWorkerState.failedRouteIndices.add(routeKey);
+          if (_benchmarkRouteWorkerState.successfulRouteIndices.has(routeKey)) {
+            _benchmarkRouteWorkerState.successfulRouteIndices.delete(routeKey);
+            _benchmarkRouteWorkerState.successfulRoutes = _benchmarkRouteWorkerState.successfulRouteIndices.size;
+          }
+        } else if (
+          !_benchmarkRouteWorkerState.failedRouteIndices.has(routeKey) &&
+          !_benchmarkRouteWorkerState.successfulRouteIndices.has(routeKey)
+        ) {
+          _benchmarkRouteWorkerState.successfulRouteIndices.add(routeKey);
+          _benchmarkRouteWorkerState.successfulRoutes = _benchmarkRouteWorkerState.successfulRouteIndices.size;
+        }
+      }
+    }
+
+    const { active, target, current, pct } = getThresholdProgress(_benchmarkRouteWorkerState);
+    // UI updates are throttled by the benchmark UI ticker.
+
+    if (result && typeof result === 'object') {
+      if (!_benchmarkSummaryState) {
+        _benchmarkSummaryState = createBenchmarkSummaryState();
+      }
+      updateSummaryStateWithResult(_benchmarkSummaryState, result);
+      // UI updates are throttled by the benchmark UI ticker.
+      scheduleBenchmarkSummaryStatePersist();
+    }
+  }
+
+function createAbortPromise(signal) {
+  return new Promise((_, reject) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      reject(new DOMException('aborted', 'AbortError'));
+      return;
+    }
+    signal.addEventListener(
+      'abort',
+      () => reject(new DOMException('aborted', 'AbortError')), 
+      { once: true }
+    );
+  });
+}
+
+function normalizeDbRow(row) {
+  const result = row && row.result && typeof row.result === 'object' ? { ...row.result } : {};
+  const normalized = {
+    ...result,
+    runId: row?.runId,
+    passIndex: row?.passIndex,
+    routeIndex: row?.routeIndex,
+    _passIndex: result._passIndex ?? row?.passIndex,
+    _insertedAt: result._insertedAt ?? row?.ts,
+  };
+  if (!Number.isFinite(Number(normalized._routeOrdinal)) && Number.isFinite(Number(normalized.routeIndex))) {
+    normalized._routeOrdinal = Number(normalized.routeIndex) + 1;
+  }
+  // Remove heavy diagnostic / sampling payloads to avoid retaining large in-memory objects
+  delete normalized.rawDiagnostics;
+  delete normalized.samplesMs;
+  delete normalized.sampleStats;
+  delete normalized.timingRounds;
+  return normalized;
+}
+
+function createBenchmarkSummaryState() {
+  return {
+    totalRoutes: 0,
+    engineWins: {
+      'bidirectional-astar': 0,
+      'adaptive-barrier': 0,
+      'delta-stepping': 0,
+      'ultra-dijkstra': 0,
+    },
+    tieCount: 0,
+    routeErrorCount: 0,
+    unrecoveredEngineErrorRouteCount: 0,
+    autoSelector: {
+      exactHits: 0,
+      nearTieHits: 0,
+      misses: 0,
+      coverage: 0,
+    },
+  };
+}
+
+function updateSummaryStateWithResult(state, result) {
+  if (!state || !result || typeof result !== 'object') return;
+  state.totalRoutes += 1;
+
+  const hasRouteError = Boolean(result.error || result.routeError || result.any_engine_error);
+  if (hasRouteError) {
+    state.routeErrorCount += 1;
+  }
+
+  const hasUnrecoveredEngineError = Boolean(result.any_engine_error) && !(result.error || result.routeError);
+  if (hasUnrecoveredEngineError) {
+    state.unrecoveredEngineErrorRouteCount += 1;
+  }
+
+  if (Number(result.winner_tied) === 1) {
+    state.tieCount += 1;
+  }
+
+  if (result.winner && Object.prototype.hasOwnProperty.call(state.engineWins, result.winner)) {
+    state.engineWins[result.winner] += 1;
+  }
+
+  const autoMatch = Number(result.auto_matches_winner) === 1;
+  const autoEngine = result.auto_engine;
+  const winner = result.winner;
+
+  if (!hasRouteError && winner) {
+    if (autoMatch) {
+      if (autoEngine === winner) {
+        state.autoSelector.exactHits += 1;
+      } else {
+        state.autoSelector.nearTieHits += 1;
+      }
+    } else {
+      state.autoSelector.misses += 1;
+    }
+    state.autoSelector.coverage += 1;
+  }
+}
+
+function deriveBenchmarkSummaryState(results) {
+  const state = {
+    totalRoutes: 0,
+    tieCount: 0,
+    routeErrorCount: 0,
+    unrecoveredEngineErrorRouteCount: 0,
+    engineWins: {
+      'bidirectional-astar': 0,
+      'adaptive-barrier': 0,
+      'delta-stepping': 0,
+      'ultra-dijkstra': 0,
+    },
+    autoSelector: {
+      exactHits: 0,
+      nearTieHits: 0,
+      misses: 0,
+      coverage: 0,
+    },
+  };
+  if (Array.isArray(results)) {
+    results.forEach((result) => updateSummaryStateWithResult(state, result));
+  }
+  return state;
+}
+
+function updateSummaryCardsFromState(state) {
+  if (!state) return;
+
+  const cards = [];
+  cards.push(
+    `<div class="card"><div class="card-val">${state.totalRoutes}</div><div class="card-lbl">Routes run</div></div>`
+  );
+  Object.entries(state.engineWins).forEach(([engine, count]) => {
+    const className =
+      engine === 'bidirectional-astar'
+        ? 'engine-astar'
+        : engine === 'adaptive-barrier'
+          ? 'engine-barrier'
+          : engine === 'delta-stepping'
+            ? 'engine-delta'
+            : engine === 'ultra-dijkstra'
+              ? 'engine-dijkstra'
+              : '';
+    const engineNames = {
+      'bidirectional-astar': 'A★',
+      'adaptive-barrier': 'Barrier',
+      'delta-stepping': 'Delta',
+      'ultra-dijkstra': 'Dijkstra',
+    };
+    cards.push(`
+      <div class="card ${className}">
+        <div class="card-val">${count}</div>
+        <div class="card-lbl">${engineNames[engine]} wins</div>
+      </div>
+    `);
+  });
+  if (state.tieCount > 0) {
+    cards.push(
+      `<div class="card gray"><div class="card-val">${state.tieCount}</div><div class="card-lbl">Near-ties</div></div>`
+    );
+  }
+  if (state.routeErrorCount > 0) {
+    cards.push(
+      `<div class="card red"><div class="card-val">${state.routeErrorCount}</div><div class="card-lbl">Route errors</div></div>`
+    );
+  }
+  if (state.unrecoveredEngineErrorRouteCount > 0) {
+    cards.push(
+      `<div class="card coral"><div class="card-val">${state.unrecoveredEngineErrorRouteCount}</div><div class="card-lbl">Routes with unrecovered engine errors</div></div>`
+    );
+  }
+
+  if (summaryCardsEl) {
+    try {
+      // Clear safely and append built card nodes
+      while (summaryCardsEl.firstChild) summaryCardsEl.removeChild(summaryCardsEl.firstChild);
+      const frag = document.createDocumentFragment();
+      const wrapper = document.createElement('div');
+      cards.forEach((html) => {
+        wrapper.innerHTML = html;
+        while (wrapper.firstChild) frag.appendChild(wrapper.firstChild);
+      });
+      summaryCardsEl.appendChild(frag);
+    } catch (e) {}
+  }
+  renderAutoSelectorSummaryFromState(state.autoSelector);
+}
+
+function renderAutoSelectorSummaryFromState(autoSelector) {
+  if (!autoSelector || typeof autoSelector !== 'object') return;
+  const summary = {
+    exactHits: autoSelector.exactHits || 0,
+    nearTieHits: autoSelector.nearTieHits || 0,
+    misses: autoSelector.misses || 0,
+    coverage: autoSelector.coverage || 0,
+    exactPct: autoSelector.coverage ? (autoSelector.exactHits / autoSelector.coverage) * 100 : 0,
+    nearPct: autoSelector.coverage ? (autoSelector.nearTieHits / autoSelector.coverage) * 100 : 0,
+    missPct: autoSelector.coverage ? (autoSelector.misses / autoSelector.coverage) * 100 : 0,
+  };
+
+  if (summary.coverage === 0) {
+    if (autoSelectorSummaryEl) autoSelectorSummaryEl.hidden = true;
+    if (autoSelectorCardsEl) {
+      try {
+        autoSelectorCardsEl.textContent = '';
+      } catch (e) {}
+    }
+    return;
+  }
+
+  if (autoSelectorSummaryEl) autoSelectorSummaryEl.hidden = false;
+  if (autoSelectorCardsEl) {
+    try {
+      autoSelectorCardsEl.textContent = '';
+      const frag = document.createDocumentFragment();
+      const makeCard = (cls, value, title, text) => {
+        const article = document.createElement('article');
+        article.className = `mini-summary-card ${cls}`;
+        const strong = document.createElement('strong');
+        strong.textContent = value;
+        const span = document.createElement('span');
+        span.textContent = title;
+        const p = document.createElement('p');
+        p.textContent = text;
+        article.appendChild(strong);
+        article.appendChild(span);
+        article.appendChild(p);
+        return article;
+      };
+      frag.appendChild(
+        makeCard(
+          'exact',
+          summary.exactHits,
+          'Exact hits',
+          `${summary.exactPct.toFixed(1)}% of routes where auto picked the unique fastest engine.`
+        )
+      );
+      frag.appendChild(
+        makeCard(
+          'near',
+          summary.nearTieHits,
+          'Near-tie hits',
+          `${summary.nearPct.toFixed(1)}% of routes where auto landed inside the timing tolerance band.`
+        )
+      );
+      frag.appendChild(
+        makeCard(
+          'miss',
+          summary.misses,
+          'Real misses',
+          `${summary.missPct.toFixed(1)}% of routes where auto was outside the winner tolerance band.`
+        )
+      );
+      autoSelectorCardsEl.appendChild(frag);
+    } catch (e) {}
+  }
 }
 
 async function loadRunResultsFromDB(runId) {
   if (!runId) return [];
   try {
     const rows = await getRecordsForRun(runId);
-    return rows.map((row) => {
-      const result = row.result && typeof row.result === 'object' ? row.result : {};
-      return {
-        ...result,
-        runId: row.runId,
-        passIndex: row.passIndex,
-        routeIndex: row.routeIndex,
-        _passIndex: result._passIndex ?? row.passIndex,
-        _insertedAt: result._insertedAt ?? row.ts,
-      };
-    });
+    return rows.map((row) => normalizeDbRow(row));
   } catch (err) {
     console.error('[benchmark] Failed to load benchmark results from IndexedDB:', err);
     return [];
   }
 }
 
-async function getCurrentRenderResults() {
-  if (!_currentRunId) {
-    return [];
-  }
+ 
 
-  if (_currentRenderResults.length > 0) {
-    return _currentRenderResults.slice();
-  }
-
-  const results = await loadRunResultsFromDB(_currentRunId);
-  _currentRenderResults = results.slice();
-  return _currentRenderResults.slice();
+function getSummaryGroupKey(result) {
+  if (!result || !result.lengthCategory || !Number.isFinite(result.safeE)) return null;
+  const safeE = Number(result.safeE);
+  const sizeKey =
+    safeE < 20_000 ? 'small' : safeE < 100_000 ? 'medium' : safeE < 500_000 ? 'large' : 'xlarge';
+  return `${result.lengthCategory}-${sizeKey}`;
 }
+
+function buildSummaryGroupKeys(groupMap) {
+  const lengthOrder = ['short', 'medium', 'long', 'xlong'];
+  const sizeOrder = ['small', 'medium', 'large', 'xlarge'];
+  const lengths = Array.from(groupMap.keys()).sort((a, b) => {
+    const ai = lengthOrder.indexOf(a);
+    const bi = lengthOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+  const keys = [];
+  lengths.forEach((lengthKey) => {
+    const sizeKeys = Array.from(groupMap.get(lengthKey) || []).sort(
+      (a, b) => sizeOrder.indexOf(a) - sizeOrder.indexOf(b)
+    );
+    sizeKeys.forEach((sizeKey) => keys.push(`${lengthKey}-${sizeKey}`));
+  });
+  return keys;
+}
+
+async function deriveBenchmarkSummaryStateFromDb(runId) {
+  const state = createBenchmarkSummaryState();
+  if (!runId) return state;
+  await streamRunRecords(runId, (row) => {
+    const uiResult = normalizeDbRow(row);
+    updateSummaryStateWithResult(state, uiResult);
+  });
+  return state;
+}
+
+async function loadRunSummaryStateFromDb(runId) {
+  if (!runId) return createBenchmarkSummaryState();
+  try {
+    const metadata = await getRunMetadata(runId);
+    if (metadata && metadata.summaryState && typeof metadata.summaryState === 'object') {
+      return metadata.summaryState;
+    }
+  } catch (err) {
+    console.warn('[benchmark] loadRunSummaryStateFromDb failed:', err);
+  }
+  return deriveBenchmarkSummaryStateFromDb(runId);
+}
+
+ 
+
+async function loadPerformanceSummaryFromDb(runId) {
+  const engineKeys = {
+    'A★ (Bidirectional)': 'bidirectional_astar_ms',
+    'Barrier (Adaptive SSP)': 'adaptive_barrier_ms',
+    'Delta-Stepping': 'delta_stepping_ms',
+    'Dijkstra (Ultra)': 'ultra_dijkstra_ms',
+  };
+  const groupMap = new Map();
+  const groupStats = new Map();
+  const winCountsByLabel = Object.fromEntries(Object.keys(engineKeys).map((label) => [label, 0]));
+
+  await streamRunRecords(runId, (row) => {
+    const result = normalizeDbRow(row);
+    const groupKey = getSummaryGroupKey(result);
+    if (!groupKey) return;
+
+    if (!groupStats.has(groupKey)) {
+      groupStats.set(groupKey, {
+        sums: Object.fromEntries(Object.keys(engineKeys).map((label) => [label, 0])),
+        counts: Object.fromEntries(Object.keys(engineKeys).map((label) => [label, 0])),
+      });
+    }
+
+    const [lengthCategory] = groupKey.split('-');
+    const lengthSet = groupMap.get(lengthCategory) || new Set();
+    lengthSet.add(groupKey.split('-')[1]);
+    groupMap.set(lengthCategory, lengthSet);
+
+    Object.entries(engineKeys).forEach(([label, field]) => {
+      const metricValue = Number(result[field]);
+      if (Number.isFinite(metricValue) && metricValue >= 0) {
+        const stats = groupStats.get(groupKey);
+        stats.sums[label] += metricValue;
+        stats.counts[label] += 1;
+      }
+    });
+
+    const winnerLabel =
+      result.winner === 'bidirectional-astar'
+        ? 'A★ (Bidirectional)'
+        : result.winner === 'adaptive-barrier'
+          ? 'Barrier (Adaptive SSP)'
+          : result.winner === 'delta-stepping'
+            ? 'Delta-Stepping'
+            : result.winner === 'ultra-dijkstra'
+              ? 'Dijkstra (Ultra)'
+              : null;
+    if (winnerLabel && Object.hasOwn(winCountsByLabel, winnerLabel)) {
+      winCountsByLabel[winnerLabel] += 1;
+    }
+  });
+
+  const groupKeys = buildSummaryGroupKeys(groupMap);
+  const rows = Object.keys(engineKeys).map((engineLabel) => ({
+    engine: engineLabel,
+  }));
+
+  groupKeys.forEach((groupKey) => {
+    const stats = groupStats.get(groupKey);
+    const values = rows.map((row) => {
+      const count = stats?.counts[row.engine] || 0;
+      return count > 0 ? stats.sums[row.engine] / count : null;
+    });
+    const minValue = values.filter((value) => Number.isFinite(value) && value > 0);
+    const minAvg = minValue.length > 0 ? Math.min(...minValue) : null;
+
+    rows.forEach((row) => {
+      const avg = stats?.counts[row.engine] ? stats.sums[row.engine] / stats.counts[row.engine] : null;
+      if (!Number.isFinite(avg) || avg <= 0 || minAvg === null) {
+        row[groupKey] = null;
+      } else {
+        row[groupKey] = Math.max(1, Math.min(100, Math.round((minAvg / avg) * 100)));
+      }
+    });
+  });
+
+  return {
+    groupKeys,
+    rows,
+    formatValue: (value) => (value === null ? '—' : `${value}%`),
+    winCountsByLabel,
+  };
+}
+
+async function loadCostSummaryFromDb(runId) {
+  // Return empty cost summary
+  return {
+    groupKeys: [],
+    rows: [],
+    formatValue: (value) => (value === null ? '—' : String(value)),
+    winCountsByLabel: {},
+  };
+}
+
+ 
 
 async function getReportResults() {
   if (_currentRunId) {
-    const results = await loadRunResultsFromDB(_currentRunId);
-    _currentRenderResults = Array.isArray(results) ? results.slice() : [];
-    return _currentRenderResults.slice();
+    return await loadRunResultsFromDB(_currentRunId);
   }
-
-  return _currentRenderResults.length > 0
-    ? _currentRenderResults.slice()
-    : await getCurrentRenderResults();
-}
-
-function scheduleUIUpdate() {
-  if (_updateScheduled) return;
-  _updateScheduled = true;
-  requestAnimationFrame(async () => {
-    _updateScheduled = false;
-    if (_pendingSummaryUpdate || _pendingChartRedraw) {
-      const results = await getCurrentRenderResults();
-      if (_pendingSummaryUpdate) {
-        updateSummary(results);
-        _pendingSummaryUpdate = false;
-      }
-      if (_pendingChartRedraw) {
-        redrawCharts(results);
-        _pendingChartRedraw = false;
-      }
-    }
-  });
+  return [];
 }
 
 function resumePausedBenchmark() {
   const resolvers = _pauseResolvers.splice(0, _pauseResolvers.length);
   _paused = false;
   resolvers.forEach((resolve) => resolve());
+  if (_benchmarkRouteScheduler) _benchmarkRouteScheduler();
   if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
   if (pauseStateEl) pauseStateEl.hidden = true;
 }
@@ -512,90 +2146,8 @@ function waitForBenchmarkResume(signal) {
   });
 }
 
-function createCompositeAbortSignal(...signals) {
-  const controller = new AbortController();
-  const onAbort = () => {
-    if (!controller.signal.aborted) controller.abort();
-  };
-  signals.forEach((signal) => {
-    if (!signal) return;
-    if (signal.aborted) {
-      onAbort();
-      return;
-    }
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-  return controller.signal;
-}
-
-function engineLabel(engineId) {
-  switch (engineId) {
-    case 'bidirectional-astar':
-      return 'A*';
-    case 'adaptive-barrier':
-      return 'Barrier';
-    case 'delta-stepping':
-      return 'Delta';
-    case 'ultra-dijkstra':
-      return 'Dijkstra';
-    default:
-      return engineId || 'engine';
-  }
-}
-
-function formatStatusSuffix(progress) {
-  const phase = progress?.phase;
-  const phaseInfo = progress?.phaseInfo ?? {};
-  const state = _engineWorkerStatus?.state ?? 'idle';
-
-  if (phase === 'pausing') {
-    return ' [stage: route pause]';
-  }
-
-  if (phase === 'fetching-tiles') return ' [stage: fetching tile list]';
-  if (phase === 'building-graph') {
-    const tileNote = Number.isFinite(phaseInfo?.tileCount) ? `, ${phaseInfo.tileCount} tiles` : '';
-    return ` [stage: building graph${tileNote}]`;
-  }
-  if (phase === 'preparing-graph') return ' [stage: preparing graph indices]';
-  if (phase === 'warming-engines') return ' [stage: warming routing engines]';
-  if (phase === 'warming-engine') {
-    return ` [stage: warmup (${engineLabel(phaseInfo?.engineId)})]`;
-  }
-  if (phase === 'timing-engines') return ' [stage: timing engines]';
-  if (phase === 'timing-round') {
-    const round = Number.isFinite(phaseInfo?.round) ? phaseInfo.round : '?';
-    const totalRounds = Number.isFinite(phaseInfo?.totalRounds) ? phaseInfo.totalRounds : '?';
-    return ` [stage: timing round ${round}/${totalRounds}]`;
-  }
-  if (phase === 'timing-engine') {
-    const round = Number.isFinite(phaseInfo?.round) ? phaseInfo.round : '?';
-    const totalRounds = Number.isFinite(phaseInfo?.totalRounds) ? phaseInfo.totalRounds : '?';
-    return ` [stage: timing ${engineLabel(phaseInfo?.engineId)} (${round}/${totalRounds})]`;
-  }
-
-  if (progress?.done) {
-    return ' [stage: complete]';
-  }
-
-  if (state === 'running') {
-    return ` [stage: routing (${engineLabel(_engineWorkerStatus?.engineId)})]`;
-  }
-
-  if (state === 'cancelling') {
-    return ' [stage: cancelling route]';
-  }
-
-  if (state === 'error') {
-    const reason = _engineWorkerStatus?.lastError ? `: ${_engineWorkerStatus.lastError}` : '';
-    return ` [stage: engine error${reason}]`;
-  }
-
-  return ' [stage: preparing tiles/graph]';
-}
-
 // ── Run button ────────────────────────────────────────────────────────────
-runBtn.addEventListener('click', async () => {
+if (runBtn) runBtn.addEventListener('click', async () => {
   const urlTemplate = urlInputEl.value.trim();
   if (!urlTemplate) {
     alert('Please enter a valid tile URL template.');
@@ -621,6 +2173,7 @@ runBtn.addEventListener('click', async () => {
 
   _stopped = false;
   _savedArtifactsOnStop = false;
+  _benchmarkRunComplete = false;
   benchmarkStartTime = performance.now();
   startBenchmarkStopwatch();
   const sharedArrayBufferSupported = typeof SharedArrayBuffer !== 'undefined';
@@ -639,7 +2192,6 @@ runBtn.addEventListener('click', async () => {
     sharedArrayBufferSupported,
     benchmarkTimestamp,
   };
-  const sharedPool = getSharedPool();
   const runPasses = sharedArrayBufferSupported
     ? [
         { parallelOrSerial: 'parallel', sharedArrayBuffer: true, forceSerialRouting: false },
@@ -649,59 +2201,50 @@ runBtn.addEventListener('click', async () => {
   _abortController = new AbortController();
   _paused = false;
   _pauseResolvers = [];
-  _pendingSummaryUpdate = false;
-  _pendingChartRedraw = false;
-  _updateScheduled = false;
-  _currentResultCount = 0;
   _routeCompletionTimes = [];
-  runBtn.disabled = true;
-  stopBtn.disabled = false;
+  _benchmarkSummaryState = createBenchmarkSummaryState();
+  if (runBtn) runBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = false;
   if (pauseBtn) pauseBtn.disabled = false;
   if (pauseBtn) pauseBtn.textContent = '⏸ Pause';
   if (pauseStateEl) pauseStateEl.hidden = true;
-  if (reportPanelEl) reportPanelEl.hidden = true;
-  if (reportTypeControlsEl) reportTypeControlsEl.hidden = true;
-  if (reportViewSelectEl) reportViewSelectEl.innerHTML = '';
   _reportSelection = '';
-  if (reportOutputEl) reportOutputEl.value = '';
-  if (copyReportBtn) copyReportBtn.disabled = true;
-  if (reportStatusEl) reportStatusEl.textContent = 'Report not generated';
-  if (reportNoteEl)
-    reportNoteEl.textContent = 'Generate a benchmark report for the current results.';
-  progressSectionEl.hidden = false;
-  resultsSectionEl.hidden = true;
-  resultsTbodyEl.innerHTML = '';
-  summaryCardsEl.innerHTML = '';
-  summaryTbodyEl.innerHTML = '';
-  summaryTheadEl.innerHTML = '';
-  costSummaryTbodyEl.innerHTML = '';
-  costSummaryTheadEl.innerHTML = '';
-  autoSelectorSummaryEl.hidden = true;
-  autoSelectorCardsEl.innerHTML = '';
-  if (_chartScatter) {
-    _chartScatter.destroy();
-    _chartScatter = null;
+  if (progressSectionEl) progressSectionEl.hidden = false;
+  if (resultsSectionEl) resultsSectionEl.hidden = false;
+  if (resultsSectionHeaderEl) resultsSectionHeaderEl.hidden = true;
+  if (actionRowEl) actionRowEl.hidden = true;
+  if (summaryCardsEl) {
+    try {
+      summaryCardsEl.textContent = '';
+    } catch (e) {}
   }
-  if (_chartDensity) {
-    _chartDensity.destroy();
-    _chartDensity = null;
+  if (autoSelectorSummaryEl) autoSelectorSummaryEl.hidden = true;
+  if (autoSelectorCardsEl) {
+    try {
+      autoSelectorCardsEl.textContent = '';
+    } catch (e) {}
   }
-  if (_chartHistogram) {
-    _chartHistogram.destroy();
-    _chartHistogram = null;
-  }
-  if (_chartBubble) {
-    _chartBubble.destroy();
-    _chartBubble = null;
-  }
-  if (_cleanupTooltip) {
-    _cleanupTooltip();
-    _cleanupTooltip = null;
-  }
+  
 
-  const runId = `${benchmarkTimestamp}-${Math.random().toString(36).slice(2, 10)}`;
+  const chosenRunMode = _pendingRunChoice;
+  const runId = await selectRunIdForBenchmarkStart(benchmarkTimestamp, {
+    explicitRunId: chosenRunMode === 'resume' ? _pendingRunRunId : undefined,
+    forceNewRun: chosenRunMode === 'restart',
+  });
+  saveRunId(runId);
   setCurrentRunId(runId);
-  await prepareForRun(runId, { clearAll: false });
+  await prepareForRun(runId, { clearAll: false, resume: chosenRunMode === 'resume' });
+  _pendingRunChoice = null;
+  _pendingRunMetadata = null;
+  _pendingRunRunId = null;
+  await saveRunMetadata(runId, {
+    createdAt: Date.now(),
+    benchmarkTimestamp,
+    totalRoutes: routes.length,
+    totalPasses: runPasses.length,
+    completed: false,
+    summaryState: createBenchmarkSummaryState(),
+  });
 
   _passContexts = runPasses.map((pass, passIndex) => ({
     ...baseRunContext,
@@ -715,164 +2258,185 @@ runBtn.addEventListener('click', async () => {
 
   try {
     const totalRoutes = routes.length;
-    const totalTasks = totalRoutes * runPasses.length;
-    let completedTasks = 0;
-    let startedTasks = 0;
-    let finishedEarly = false;
-    let successfulRouteCount = 0;
+    const totalTasks = totalRoutes;
+    const maxRouteWorkerConcurrency = Math.max(1, Math.floor((navigator.hardwareConcurrency ?? 4) / 2));
     const successThreshold = maxSuccessRoutes > 0 ? maxSuccessRoutes : Infinity;
+    const thresholdActive = Number.isFinite(successThreshold) && successThreshold > 0;
 
-    // Benchmark nesting order:
-    //   1) route
-    //   2) shared-array-buffer / pass status (parallel vs serial)
-    //   3) engine selection for that pass
-    //   4) repeated run iterations per engine
-    for (let routeIndex = 0; routeIndex < routes.length; routeIndex++) {
-      if (_stopped || successfulRouteCount >= successThreshold) {
-        finishedEarly = true;
-        break;
+    _benchmarkRouteWorkerState = {
+      totalTasks,
+      totalRoutes,
+      totalPasses: runPasses.length,
+      completedTasks: 0,
+      completedRoutes: 0,
+      completedRouteIndices: new Set(),
+      startedTasks: 0,
+      lastStatus: null,
+      successfulRoutes: 0,
+      successThreshold,
+      activeTasks: 0,
+      ...(thresholdActive ? { successfulRouteIndices: new Set(), failedRouteIndices: new Set() } : {}),
+    };
+
+    const existingRunProgress = await loadExistingRunProgress(runId, runPasses.length);
+    if (existingRunProgress) {
+      _benchmarkRouteWorkerState.completedTasks = existingRunProgress.completedTasks;
+      _benchmarkRouteWorkerState.completedRoutes = existingRunProgress.completedRoutes;
+      _benchmarkRouteWorkerState.completedRouteIndices = existingRunProgress.completedRouteIndices;
+      if (thresholdActive) {
+        _benchmarkRouteWorkerState.successfulRouteIndices = existingRunProgress.successfulRouteIndices;
+        _benchmarkRouteWorkerState.failedRouteIndices = existingRunProgress.failedRouteIndices;
+      }
+      _benchmarkSummaryState = await loadRunSummaryStateFromDb(runId);
+      updateSummaryCardsFromState(_benchmarkSummaryState);
+    }
+
+    const worker = createBenchmarkRouteWorker();
+    startBenchmarkUiTicker();
+    const routeJobQueue = [];
+    const routeResultPromises = [];
+
+    const scheduleBenchmarkRouteJobs = () => {
+      if (!_benchmarkRouteWorkerState || _stopped || _paused || routeJobQueue.length === 0) {
+        return;
       }
 
-      const routeDef = routes[routeIndex];
+      while (
+        !_stopped &&
+        !_paused &&
+        _benchmarkRouteWorkerState.activeTasks < maxRouteWorkerConcurrency &&
+        routeJobQueue.length > 0
+      ) {
+        const batchSize = Math.min(
+          maxRouteWorkerConcurrency - _benchmarkRouteWorkerState.activeTasks,
+          routeJobQueue.length
+        );
+        const queueLengthBefore = routeJobQueue.length;
+        const batch = routeJobQueue.splice(0, batchSize);
 
-      for (let passIndex = 0; passIndex < runPasses.length; passIndex++) {
-        if (_stopped || successfulRouteCount >= successThreshold) {
-          finishedEarly = true;
+        _benchmarkRouteDispatchStats.batchCount += 1;
+        _benchmarkRouteDispatchStats.lastBatchSize = batchSize;
+        _benchmarkRouteDispatchStats.lastQueueLength = queueLengthBefore;
+
+        const dispatchResults = worker.postMessageBatch(
+          batch.map((job) => ({ message: job.message, transfer: [] }))
+        );
+
+        if (!Array.isArray(dispatchResults)) {
+          console.error('[benchmark] route worker dispatch gave unexpected result', dispatchResults);
+          routeJobQueue.unshift(...batch);
           break;
         }
 
-        const pass = runPasses[passIndex];
-        _runContext = {
-          ...baseRunContext,
-          runId,
+        const acceptedJobs = [];
+        const rejectedJobs = [];
+        dispatchResults.forEach((result, index) => {
+          if (result === false) {
+            rejectedJobs.push(batch[index]);
+          } else {
+            acceptedJobs.push(batch[index]);
+          }
+        });
+
+        _benchmarkRouteDispatchStats.totalDispatched += batchSize;
+        _benchmarkRouteDispatchStats.totalAccepted += acceptedJobs.length;
+        _benchmarkRouteDispatchStats.totalRejected += rejectedJobs.length;
+        _benchmarkRouteDispatchStats.lastDispatchResults = dispatchResults;
+
+        if (rejectedJobs.length > 0) {
+          __benchmarkLog.warn('[benchmark] route worker dispatch rejected one or more tasks', {
+            dispatchResults,
+            rejectedCount: rejectedJobs.length,
+            acceptedCount: acceptedJobs.length,
+          });
+          routeJobQueue.unshift(...rejectedJobs);
+        }
+
+        if (acceptedJobs.length === 0) {
+          __benchmarkLog.warn('[benchmark] route dispatch accepted zero tasks, breaking to avoid busy loop');
+          if (
+            _benchmarkRouteWorkerState &&
+            _benchmarkRouteWorkerState.activeTasks === 0 &&
+            routeJobQueue.length > 0 &&
+            !_stopped &&
+            !_paused
+          ) {
+            setTimeout(() => {
+              if (!_stopped && !_paused) {
+                _benchmarkRouteScheduler?.();
+              }
+            }, 100);
+          }
+          break;
+        }
+
+        acceptedJobs.forEach((job) => job.start?.());
+        _benchmarkRouteWorkerState.activeTasks += acceptedJobs.length;
+        _benchmarkRouteWorkerState.startedTasks += acceptedJobs.length;
+      }
+    };
+
+    _benchmarkRouteScheduler = scheduleBenchmarkRouteJobs;
+
+    for (let routeIndex = 0; routeIndex < routes.length; routeIndex++) {
+      const routeDef = routes[routeIndex];
+      const routeKey = `${runId}|${routeIndex}`;
+      const routeLifecycle = {
+        settled: false,
+      };
+      const routeState = _benchmarkRouteWorkerState;
+      let resolveRoutePromise;
+      let rejectRoutePromise;
+      const routeResultPromise = new Promise((resolve, reject) => {
+        resolveRoutePromise = resolve;
+        rejectRoutePromise = reject;
+        _pendingRoutePromises.set(routeKey, { resolve, reject });
+      });
+      routeResultPromise.catch(() => {});
+
+      routeResultPromise.finally(() => {
+        routeLifecycle.settled = true;
+        if (routeState) {
+          routeState.activeTasks = Math.max(0, routeState.activeTasks - 1);
+        }
+        _benchmarkRouteScheduler?.();
+      });
+
+      routeResultPromises.push(routeResultPromise);
+      const existingPasses = existingRunProgress?.routePassCompletion?.get(routeIndex) ?? new Set();
+      const routePasses = runPasses
+        .map((pass, passIndex) => ({
           passIndex: passIndex + 1,
-          totalPasses: runPasses.length,
           parallelOrSerial: pass.parallelOrSerial,
           sharedArrayBuffer: pass.sharedArrayBuffer,
           forceSerialRouting: pass.forceSerialRouting,
-        };
+        }))
+        .filter((pass) => !existingPasses.has(pass.passIndex));
 
-        startedTasks += 1;
-
-        const passAbortController = new AbortController();
-        const passSignal = createCompositeAbortSignal(
-          _abortController.signal,
-          passAbortController.signal
-        );
-
-        try {
-          await runBenchmark(
-            {
-              routes: [routeDef],
-              urlTemplate,
-              mode,
-              zoom,
-              nRuns,
-              routePauseMs: 0,
-              forceSerialRouting: pass.forceSerialRouting,
-              clearCacheOnCategoryBoundary: false,
-              clearCachesAfterEachRoute: true,
-              pool: sharedPool,
-              signal: passSignal,
-              pauseController: {
-                isPaused: () => _paused,
-                waitForResume: (signal) => waitForBenchmarkResume(signal),
-              },
-              onEngineStatus: (status) => {
-                _engineWorkerStatus = status ?? {
-                  state: 'idle',
-                  engineId: null,
-                  running: false,
-                  lastError: null,
-                };
-                scheduleUIUpdate();
-              },
-              engineRunTimeoutMs: 20_000,
-            },
-            (progress) => {
-              if (_stopped && !finishedEarly) return;
-
-              const { routeName, result, pauseMs, phase } = progress;
-              const displayCompleted = completedTasks + (progress.done ? 1 : 0);
-              const pct = totalTasks > 0 ? Math.round((displayCompleted / totalTasks) * 100) : 0;
-              const statusSuffix = formatStatusSuffix(progress);
-              const passPrefix =
-                runPasses.length > 1
-                  ? `[${pass.parallelOrSerial} ${passIndex + 1}/${runPasses.length}] `
-                  : '';
-              const activeTasks = Math.max(0, startedTasks - displayCompleted);
-              const pausedSuffix = _paused ? ' — paused' : '';
-
-              progressBarEl.style.width = `${pct}%`;
-              if (pauseStateEl) pauseStateEl.hidden = !_paused;
-              progressTextEl.textContent = progress.done
-                ? `${passPrefix}${displayCompleted}/${totalTasks} runs finished — ${routeName ?? ''}${statusSuffix}`
-                : phase === 'pausing'
-                  ? `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''} complete. Pausing ${pauseMs}ms…${statusSuffix}${pausedSuffix}`
-                  : `${passPrefix}${completedTasks}/${totalTasks} finished, ${activeTasks} active — ${routeName ?? ''}${statusSuffix}${pausedSuffix}`;
-
-              if (result) {
-                const globalRouteIndex = routeIndex;
-                result._routeIndex = globalRouteIndex;
-                result._routeOrdinal = globalRouteIndex + 1;
-                result._sab = Boolean(_runContext?.sharedArrayBuffer);
-                result._passIndex = passIndex;
-                result._insertedAt = performance.now();
-                _pendingResultBuffer.push({
-                  passIndex: result._passIndex,
-                  routeIndex: globalRouteIndex,
-                  _insertedAt: result._insertedAt,
-                });
-                _currentResultCount += 1;
-                const savePromise = saveResultToDB(runId, passIndex, globalRouteIndex, result);
-                if (_currentRunId) {
-                  savePromise.finally(() => {
-                    _pendingResultBuffer = _pendingResultBuffer.filter(
-                      (pending) =>
-                        pending.passIndex !== passIndex ||
-                        pending.routeIndex !== globalRouteIndex ||
-                        pending._insertedAt !== result._insertedAt
-                    );
-                  });
-                }
-                savePromise.catch((saveErr) => {
-                  console.warn('[benchmark] Failed to persist benchmark row:', saveErr);
-                });
-                _routeCompletionTimes.push(performance.now());
-                if (!result.error) {
-                  successfulRouteCount += 1;
-                  if (successfulRouteCount >= successThreshold) {
-                    finishedEarly = true;
-                    passAbortController.abort();
-                  }
-                }
-                void appendRow(createUIResultRow(result));
-                _pendingSummaryUpdate = true;
-                _pendingChartRedraw = true;
-                scheduleUIUpdate();
-              }
-
-              if (progress.done) {
-                completedTasks += 1;
-              }
-            }
-          );
-        } catch (err) {
-          if (!(err?.name === 'AbortError' && finishedEarly)) {
-            throw err;
-          }
-        }
-
-        if (_stopped || finishedEarly) {
-          finishedEarly = true;
-          break;
-        }
+      if (routePasses.length > 0) {
+        routeJobQueue.push({
+          message: {
+            type: 'routeJob',
+            runId,
+            routeIndex,
+            routeDef,
+            urlTemplate,
+            mode,
+            zoom,
+            nRuns,
+            costField: 'distance',
+            engineRunTimeoutMs: 20_000,
+            routePasses,
+          },
+          routeKey,
+          start: () => {
+            routeLifecycle.started = true;
+          },
+        });
+      } else {
+        resolveRoutePromise?.(null);
       }
-
-      if (_stopped || finishedEarly) {
-        finishedEarly = true;
-        break;
-      }
+      scheduleBenchmarkRouteJobs();
 
       if (routePauseMs > 0 && routeIndex + 1 < routes.length) {
         await waitForBenchmarkResume(_abortController.signal);
@@ -882,20 +2446,40 @@ runBtn.addEventListener('click', async () => {
       }
     }
 
+    scheduleBenchmarkRouteJobs();
+    await Promise.race([
+      Promise.all(routeResultPromises),
+      createAbortPromise(_abortController.signal),
+    ]);
+
+    disposeBenchmarkRouteWorker();
     await waitForPendingWrites();
     const runResults = await getReportResults();
+    _benchmarkRunComplete = true;
     if (runResults.length > 0) {
-      _reportVariants = createReportVariants(runResults);
+      _reportVariants = [];
       updateReportTypeControls();
-      showResults(runResults);
     }
+    await showResults(runResults);
 
     if (!_savedArtifactsOnStop) {
-      await saveRunArtifacts(runResults, { ...(_runContext ?? buildReportContext()), runId });
+      try {
+        const savedPaths = await saveRunArtifacts(runResults, { ...(_runContext ?? buildReportContext()), runId });
+        _savedArtifactsOnStop = true;
+        if (savedPaths.length > 0) {
+          await markRunComplete(runId, { artifactPaths: savedPaths });
+        } else {
+          await markRunComplete(runId);
+        }
+      } catch (saveErr) {
+        _savedArtifactsOnStop = false;
+        console.error('[benchmark] Failed to save artifacts after benchmark completion:', saveErr);
+        await markRunComplete(runId);
+      }
     }
 
-    runBtn.disabled = false;
-    stopBtn.disabled = true;
+    if (runBtn) runBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
     if (pauseBtn) pauseBtn.disabled = true;
     _paused = false;
     resumePausedBenchmark();
@@ -906,66 +2490,114 @@ runBtn.addEventListener('click', async () => {
     disposeBenchmarkResources();
   } catch (err) {
     if (!_stopped && err?.name !== 'AbortError') console.error('Benchmark error:', err);
+    if ((_stopped || err?.name === 'AbortError') && !_benchmarkRunComplete) {
+      try {
+        const runResults = await getReportResults();
+        if (runResults.length > 0) {
+          _benchmarkRunComplete = true;
+          await showResults(runResults);
+        }
+      } catch (showErr) {
+        console.error('[benchmark] Failed to render results after abort:', showErr);
+      }
+    }
   } finally {
     stopBenchmarkStopwatch();
     updateBenchmarkStopwatch();
-    runBtn.disabled = false;
-    stopBtn.disabled = true;
+
+    if (!_savedArtifactsOnStop && !_stopSaveInProgress && _currentRunId) {
+      try {
+        const runResults = await getReportResults();
+        if (runResults.length > 0) {
+          const savedPaths = await saveRunArtifacts(runResults, { ...(_runContext ?? buildReportContext()), runId });
+          if (savedPaths.length > 0) {
+            await markRunComplete(runId, { artifactPaths: savedPaths });
+          } else {
+            await markRunComplete(runId);
+          }
+        } else {
+          await markRunComplete(runId);
+        }
+      } catch (saveErr) {
+        console.error('[benchmark] Failed to save artifacts after benchmark completion:', saveErr);
+        await markRunComplete(runId);
+      }
+    }
+
+    if (runBtn) runBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
     if (pauseBtn) pauseBtn.disabled = true;
     _paused = false;
     resumePausedBenchmark();
     await disposeBenchDb();
+    disposeBenchmarkRouteWorker();
     _abortController = null;
     _engineWorkerStatus = { state: 'idle', engineId: null, running: false, lastError: null };
+    clearSavedRunId();
     resetBenchmarkRunState();
     disposeBenchmarkResources();
   }
 });
 
-stopBtn.addEventListener('click', async () => {
+if (resumeRunBtn) {
+  resumeRunBtn.addEventListener('click', () => choosePendingRunAction('resume'));
+}
+if (restartRunBtn) {
+  restartRunBtn.addEventListener('click', () => choosePendingRunAction('restart'));
+}
+
+detectPendingRunMetadata();
+
+if (stopBtn) {
+  stopBtn.addEventListener('click', async () => {
   _stopped = true;
+  _benchmarkRunComplete = true;
   _savedArtifactsOnStop = true;
+  _stopSaveInProgress = true;
   if (stopBtn) stopBtn.disabled = true;
   resumePausedBenchmark();
   _abortController?.abort();
+
+  if (_currentRunId) {
+    await markRunComplete(_currentRunId);
+  }
+
   await waitForPendingWrites();
 
   const runResults = await getReportResults();
+  await showResults(runResults);
+  const reportContext = {
+    ...buildReportContext(),
+    ..._runContext,
+    runId: _currentRunId,
+    benchmarkTimestamp: _runContext?.benchmarkTimestamp,
+  };
   if (runResults.length > 0) {
-    const reportContext = {
-      ...buildReportContext(),
-      ..._runContext,
-      runId: _currentRunId,
-      benchmarkTimestamp: _runContext?.benchmarkTimestamp,
-    };
     showReport(runResults, reportContext);
+  }
 
-    try {
-      const savedPaths = await saveRunArtifacts(runResults, reportContext);
-      if (savedPaths.length > 0) {
-        if (reportStatusEl) reportStatusEl.textContent = `Report saved: ${savedPaths.join(', ')}`;
-      } else {
-        if (reportStatusEl) reportStatusEl.textContent = 'Report ready';
-      }
-    } catch (err) {
-      _savedArtifactsOnStop = false;
-      console.error('Failed to save report on stop:', err);
+  _savedArtifactsOnStop = true;
+  try {
+    const savedPaths = await saveRunArtifacts(runResults, reportContext);
+    if (savedPaths.length > 0) {
+      await markRunComplete(_currentRunId, { artifactPaths: savedPaths });
+    } else if (_currentRunId) {
+      await markRunComplete(_currentRunId);
     }
+  } catch (err) {
+    _savedArtifactsOnStop = false;
+    _stopSaveInProgress = false;
+    console.error('Failed to save report on stop:', err);
+    if (_currentRunId) {
+      await markRunComplete(_currentRunId);
+    }
+  } finally {
+    _stopSaveInProgress = false;
   }
-});
+  });
+}
 
-// ── Download ──────────────────────────────────────────────────────────────
-downloadBtn.addEventListener('click', async () => {
-  const runResults = await getReportResults();
-  if (runResults.length > 0) {
-    const mode = modeSelectEl.value;
-    const variant = getSelectedReportVariant();
-    const resultsToDownload =
-      Array.isArray(variant.results) && variant.results.length > 0 ? variant.results : runResults;
-    downloadCSV(resultsToDownload, getReportFilename(variant, mode));
-  }
-});
-
+// UI actions simplified
 if (pauseBtn) {
   pauseBtn.addEventListener('click', () => {
     _paused = !_paused;
@@ -980,80 +2612,6 @@ if (pauseBtn) {
   });
 }
 
-async function refreshReportVariantsFromCurrentRun() {
-  if (!_currentRunId) return;
-  const runResults = await getReportResults();
-  if (Array.isArray(_passContexts) && _passContexts.length > 0) {
-    _reportVariants = createReportVariants(runResults);
-  } else if (!Array.isArray(_reportVariants) || _reportVariants.length === 0) {
-    _reportVariants = createReportVariants(runResults);
-  }
-}
-
-if (reportBtn) {
-  reportBtn.addEventListener('click', async () => {
-    await refreshReportVariantsFromCurrentRun();
-    updateReportTypeControls();
-    showReportVariant(getSelectedReportVariant());
-  });
-}
-
-if (reportViewSelectEl) {
-  reportViewSelectEl.addEventListener('change', () => {
-    _reportSelection = reportViewSelectEl.value;
-    if (reportOutputEl?.value) {
-      showReportVariant(getSelectedReportVariant());
-    }
-  });
-}
-
-if (copyReportBtn) {
-  copyReportBtn.addEventListener('click', async () => {
-    if (!reportOutputEl || !reportOutputEl.value) return;
-    try {
-      await navigator.clipboard.writeText(reportOutputEl.value);
-      if (reportStatusEl) reportStatusEl.textContent = 'Report copied';
-    } catch (err) {
-      console.error('Failed to copy report:', err);
-      if (reportStatusEl) reportStatusEl.textContent = 'Copy failed';
-    }
-  });
-}
-
-// ── Table sorting ─────────────────────────────────────────────────────────
-resultsTableSortHeaders.forEach((th) => {
-  th.addEventListener('click', async () => {
-    const col = th.dataset.col;
-    if (_sortCol === col) {
-      _sortAsc = !_sortAsc;
-    } else {
-      _sortCol = col;
-      _sortAsc = true;
-    }
-    resultsTableSortHeaders.forEach((t) => t.classList.remove('sorted'));
-    th.classList.add('sorted');
-    th.textContent = th.textContent.replace(/ [▲▼]$/, '') + (_sortAsc ? ' ▲' : ' ▼');
-    renderTable(await getCurrentRenderResults());
-  });
-});
-if (paginationPrevBtn) {
-  paginationPrevBtn.addEventListener('click', async () => {
-    if (_currentPage > 1) {
-      _currentPage -= 1;
-      renderTable(await getCurrentRenderResults());
-    }
-  });
-}
-if (paginationNextBtn) {
-  paginationNextBtn.addEventListener('click', async () => {
-    const currentResults = await getCurrentRenderResults();
-    const pageCount = getPageCount(currentResults);
-    if (_currentPage < pageCount) {
-      _currentPage += 1;
-      renderTable(currentResults);
-    }
-  });
-}
 
 function escapeHtml(value) {
   return String(value)
@@ -1064,8 +2622,8 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function getPageCount(results) {
-  return Math.max(1, Math.ceil((Array.isArray(results) ? results.length : 0) / RESULTS_PAGE_SIZE));
+function getPageCount(totalRows) {
+  return Math.max(1, Math.ceil((Number.isFinite(totalRows) ? totalRows : 0) / RESULTS_PAGE_SIZE));
 }
 
 function formatErrorDetails(r) {
@@ -1103,151 +2661,24 @@ function formatErrorDetails(r) {
   return lines;
 }
 
-function showTooltip(text, event) {
-  const tooltipEl = root.getElementById('tooltip');
-  if (!tooltipEl) return;
-  tooltipEl.hidden = false;
-  tooltipEl.innerHTML = text.map((line) => `<div>${escapeHtml(line)}</div>`).join('');
-  const margin = 12;
-  const x = event.clientX + margin;
-  const y = event.clientY + margin;
-  tooltipEl.style.left = `${x}px`;
-  tooltipEl.style.top = `${y}px`;
-}
+ 
 
-function hideTooltip() {
-  const tooltipEl = root.getElementById('tooltip');
-  if (!tooltipEl) return;
-  tooltipEl.hidden = true;
-}
-
-if (resultsTableEl) {
-  resultsTableEl.addEventListener('pointerover', (event) => {
-    const target = event.target.closest('[data-error-tooltip]');
-    if (!target) return;
-    const lines = target.dataset.errorTooltip ? JSON.parse(target.dataset.errorTooltip) : null;
-    if (!lines) return;
-    showTooltip(lines, event);
-  });
-  resultsTableEl.addEventListener('pointermove', (event) => {
-    const target = event.target.closest('[data-error-tooltip]');
-    if (!target) return;
-    const tooltipEl = root.getElementById('tooltip');
-    if (!tooltipEl || tooltipEl.hidden) return;
-    const margin = 12;
-    tooltipEl.style.left = `${event.clientX + margin}px`;
-    tooltipEl.style.top = `${event.clientY + margin}px`;
-  });
-  resultsTableEl.addEventListener('pointerout', (event) => {
-    if (event.target.closest('[data-error-tooltip]')) {
-      hideTooltip();
-    }
-  });
-}
-
-function renderPaginationControls(results) {
-  const pageCount = getPageCount(results);
-  const totalRows = Array.isArray(results) ? results.length : 0;
-  if (!paginationControlsEl || !paginationInfoEl) return;
-  if (totalRows <= RESULTS_PAGE_SIZE) {
-    paginationControlsEl.hidden = true;
-    return;
-  }
-  paginationControlsEl.hidden = false;
-  const start = (_currentPage - 1) * RESULTS_PAGE_SIZE + 1;
-  const end = Math.min(totalRows, _currentPage * RESULTS_PAGE_SIZE);
-  paginationInfoEl.textContent = `Showing ${start}–${end} of ${totalRows} routes — page ${_currentPage}/${pageCount}`;
-  if (paginationPrevBtn) paginationPrevBtn.disabled = _currentPage <= 1;
-  if (paginationNextBtn) paginationNextBtn.disabled = _currentPage >= pageCount;
-}
-
-function getVisiblePageRows(sortedRows) {
-  const pageCount = getPageCount(sortedRows);
-  if (_currentPage > pageCount) _currentPage = pageCount;
-  const start = (_currentPage - 1) * RESULTS_PAGE_SIZE;
-  return sortedRows.slice(start, start + RESULTS_PAGE_SIZE);
-}
-
-// ── Rendering helpers ─────────────────────────────────────────────────────
-
-function fmtMs(v) {
-  if (v == null) return '<span style="color:var(--muted)">—</span>';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '<span style="color:var(--muted)">—</span>';
-  return n.toExponential(3);
-}
-
-function engineBadge(engineId, label) {
-  if (!engineId) return '<span style="color:var(--muted)">—</span>';
-  const className =
-    engineId === 'bidirectional-astar'
-      ? 'badge-astar'
-      : engineId === 'adaptive-barrier'
-        ? 'badge-barrier'
-        : engineId === 'delta-stepping'
-          ? 'badge-delta'
-          : engineId === 'ultra-dijkstra'
-            ? 'badge-dijkstra'
-            : 'badge-cpu';
-  return `<span class="badge ${className}">${label}</span>`;
-}
-
-function formatPickBadge(engineId) {
-  return engineId
-    ? engineBadge(engineId, engineShortName(engineId))
-    : '<span style="color:var(--muted)">—</span>';
-}
-
-function formatHitIndicator(r) {
-  if (r.auto_matches_winner == null) return '<span style="color:var(--muted)">—</span>';
-  const hit =
-    Number(r.auto_matches_winner) === 1
-      ? Number(r.winner_tied) === 1 && r.auto_engine && r.auto_engine !== r.winner
-        ? '≈'
-        : '✓'
-      : '✗';
-  const color = hit === '✓' ? 'var(--green)' : hit === '✗' ? 'var(--red)' : 'var(--blue)';
-  return `<span style="color:${color}">${hit}</span>`;
-}
-
-const GOOD_ENOUGH_REGRET_THRESHOLD_PCT = 10;
-const WARNING_REGRET_THRESHOLD_PCT = 30;
-
-function formatRegret(value) {
-  if (value == null) return '<span style="color:var(--muted)">—</span>';
-  const delta = Number(value);
-  const sign = delta > 0 ? '+' : '';
-  const color =
-    delta <= 0
-      ? 'var(--green)'
-      : delta <= GOOD_ENOUGH_REGRET_THRESHOLD_PCT
-        ? 'var(--blue)'
-        : delta < WARNING_REGRET_THRESHOLD_PCT
-          ? 'var(--orange)'
-          : 'var(--red)';
-  return `<span style="color:${color};font-weight:600">${sign}${delta.toFixed(1)}%</span>`;
-}
-
-function formatDuration(ms) {
-  const totalMs = Math.max(0, Math.round(ms));
-  const totalSeconds = Math.floor(totalMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  const tenths = Math.floor((totalMs % 1000) / 100);
-  if (minutes > 0) {
-    return `${minutes}:${String(seconds).padStart(2, '0')}.${tenths}`;
-  }
-  return `${seconds}.${tenths}s`;
+function computeBenchmarkEstimatedTotalMs({ elapsedMs, completedRoutes, effectiveTotalRoutes }) {
+  const elapsedSec = elapsedMs / 1000;
+  const fullAverageRoutesPerSec = completedRoutes > 0 && elapsedSec > 0 ? completedRoutes / elapsedSec : 0;
+  if (!effectiveTotalRoutes || fullAverageRoutesPerSec <= 0) return null;
+  return Math.max(elapsedMs, Math.round((effectiveTotalRoutes / fullAverageRoutesPerSec) * 1000));
 }
 
 function updateBenchmarkStopwatch(endTime = performance.now()) {
   if (!benchmarkStopwatchEl || benchmarkStartTime == null) return;
   const elapsedMs = endTime - benchmarkStartTime;
-  const runCount = Math.max(0, _currentResultCount);
+  const completedRoutes = _benchmarkRouteWorkerState?.completedRoutes ?? 0;
+  const totalRoutes = _benchmarkRouteWorkerState?.totalRoutes ?? _benchmarkRouteWorkerState?.totalTasks ?? null;
   const elapsedSec = elapsedMs / 1000;
-  const fullAverageRoutesPerSec = runCount > 0 && elapsedSec > 0 ? runCount / elapsedSec : 0;
+  const fullAverageRoutesPerSec = completedRoutes > 0 && elapsedSec > 0 ? completedRoutes / elapsedSec : 0;
   let latestWindowRoutesPerSec;
-  let latestWindowText = `latest ${Math.min(10, runCount)} avg — routes/sec`;
+  let latestWindowText = `latest ${Math.min(10, completedRoutes)} avg — routes/sec`;
   let latestWindowWarn = false;
 
   if (_routeCompletionTimes.length > 1) {
@@ -1273,12 +2704,32 @@ function updateBenchmarkStopwatch(endTime = performance.now()) {
     }
   }
 
+  const activeThreshold =
+    _benchmarkRouteWorkerState && Number.isFinite(_benchmarkRouteWorkerState.successThreshold)
+      ? _benchmarkRouteWorkerState.successThreshold
+      : null;
+  const effectiveTotalRoutes = activeThreshold && activeThreshold > 0 ? Math.min(totalRoutes ?? Infinity, activeThreshold) : totalRoutes;
+  const estimatedTotalMs = computeBenchmarkEstimatedTotalMs({
+    elapsedMs,
+    completedRoutes,
+    effectiveTotalRoutes,
+  });
+  const estimatedTotalText = estimatedTotalMs != null ? formatDuration(estimatedTotalMs) : 'estimating';
+
   benchmarkStopwatchEl.hidden = false;
-  benchmarkStopwatchEl.innerHTML = `
-    <strong>${formatDuration(elapsedMs)}</strong>
-    <span>avg ${fullAverageRoutesPerSec.toFixed(2)} routes/sec</span>
-    <span class="${latestWindowWarn ? 'metric--warn' : ''}">${latestWindowText}</span>
-  `;
+  try {
+    benchmarkStopwatchEl.textContent = '';
+    const strong = document.createElement('strong');
+    strong.textContent = `${formatDuration(elapsedMs)} out of ${estimatedTotalText}`;
+    const spanAvg = document.createElement('span');
+    spanAvg.textContent = `avg ${fullAverageRoutesPerSec.toFixed(2)} routes/sec`;
+    const spanWindow = document.createElement('span');
+    if (latestWindowWarn) spanWindow.className = 'metric--warn';
+    spanWindow.textContent = latestWindowText;
+    benchmarkStopwatchEl.appendChild(strong);
+    benchmarkStopwatchEl.appendChild(spanAvg);
+    benchmarkStopwatchEl.appendChild(spanWindow);
+  } catch (e) {}
 }
 
 function startBenchmarkStopwatch() {
@@ -1307,130 +2758,25 @@ function engineShortName(engineId) {
           ? 'Dijkstra'
           : engineId;
 }
+ 
 
-function winnerBadge(r) {
-  if (r.error) return `<span class="badge badge-error" title="${r.error}">error</span>`;
-  if (!r.winner) return `<span class="badge badge-na">—</span>`;
+function formatDuration(ms) {
+  const totalMs = Math.max(0, Math.round(ms));
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const tenths = Math.floor((totalMs % 1000) / 100);
 
-  const title =
-    Number(r.winner_tied) === 1 &&
-    Array.isArray(r.winner_candidates) &&
-    r.winner_candidates.length > 1
-      ? ` title="Within timing tolerance: ${r.winner_candidates.map(engineShortName).join(', ')}"`
-      : '';
-  const label =
-    Number(r.winner_tied) === 1 ? `${engineShortName(r.winner)} ≈` : engineShortName(r.winner);
-  return `<span class="badge ${r.winner === 'bidirectional-astar' ? 'badge-astar' : r.winner === 'adaptive-barrier' ? 'badge-barrier' : r.winner === 'delta-stepping' ? 'badge-delta' : r.winner === 'ultra-dijkstra' ? 'badge-dijkstra' : 'badge-cpu'}"${title}>${label}</span>`;
-}
-
-async function appendRow(r) {
-  resultsSectionEl.hidden = false;
-  _currentPage = 1;
-  _currentRenderResults.push(r);
-  renderTable(_currentRenderResults);
-}
-
-function formatErrorColumn(r) {
-  const hasError = Boolean(
-    r.error ||
-    r.routeError ||
-    r.any_engine_error ||
-    r.bidirectional_astar_error ||
-    r.adaptive_barrier_error ||
-    r.delta_stepping_error ||
-    r.ultra_dijkstra_error ||
-    r.bidirectional_astar_timed_error ||
-    r.adaptive_barrier_timed_error ||
-    r.delta_stepping_timed_error ||
-    r.ultra_dijkstra_timed_error ||
-    r.bidirectional_astar_warm_error ||
-    r.adaptive_barrier_warm_error ||
-    r.delta_stepping_warm_error ||
-    r.ultra_dijkstra_warm_error
-  );
-  const icon = hasError ? '⚠' : '✓';
-  const tooltipLines = hasError ? formatErrorDetails(r) : ['No route or engine errors'];
-  return `
-    <td class="error-bool ${hasError ? 'has-error' : 'no-error'}" data-error-tooltip='${escapeHtml(JSON.stringify(tooltipLines))}'>${icon}</td>
-  `;
-}
-
-function formatSabColumn(r) {
-  const hasSab = Boolean(r._sab);
-  return `<td class="sab-bool ${hasSab ? 'has-sab' : 'no-sab'}">${hasSab ? '✓' : '—'}</td>`;
-}
-
-function buildRowHTML(r, ordinal) {
-  const displayOrdinal = r._routeOrdinal ?? ordinal;
-  const barrierParallelFlag = r.adaptive_barrier_parallel ? '✓' : '—';
-  const deltaParallelFlag = r.delta_stepping_parallel ? '✓' : '—';
-  const pickBadge = formatPickBadge(r.auto_engine);
-  const winnerCell = winnerBadge(r);
-  const hitIndicator = formatHitIndicator(r);
-  const regretCell = formatRegret(r.auto_vs_winner_pct);
-  return `
-    <td class="num ordinal-col">${displayOrdinal}</td>
-    ${formatSabColumn(r)}
-    <td>${r.name}</td>
-    <td>${r.category}</td>
-    <td>${r.lengthCategory}</td>
-    <td class="num">${fmtMs(r.bidirectional_astar_ms)}</td>
-    <td class="num">${fmtMs(r.adaptive_barrier_ms)}</td>
-    <td class="num">${barrierParallelFlag}</td>
-    <td class="num">${fmtMs(r.delta_stepping_ms)}</td>
-    <td class="num">${deltaParallelFlag}</td>
-    <td class="num">${fmtMs(r.ultra_dijkstra_ms)}</td>
-    <td>${pickBadge}</td>
-    <td>${winnerCell}</td>
-    <td class="num">${hitIndicator}</td>
-    <td class="num">${regretCell}</td>
-    ${formatErrorColumn(r)}
-  `;
-}
-
-function summarizeAutoSelector(results) {
-  const done = results.filter((r) => !r.error && r.winner);
-  const exactHits = done.filter(
-    (r) => Number(r.auto_matches_winner) === 1 && r.auto_engine === r.winner
-  ).length;
-  const nearTieHits = done.filter(
-    (r) => Number(r.auto_matches_winner) === 1 && r.auto_engine !== r.winner
-  ).length;
-  const misses = done.filter((r) => Number(r.auto_matches_winner) === 0).length;
-  const coverage = done.length;
-  const exactPct = coverage > 0 ? (exactHits / coverage) * 100 : 0;
-  const nearPct = coverage > 0 ? (nearTieHits / coverage) * 100 : 0;
-  const missPct = coverage > 0 ? (misses / coverage) * 100 : 0;
-  return { coverage, exactHits, nearTieHits, misses, exactPct, nearPct, missPct };
-}
-
-function renderAutoSelectorSummary(results) {
-  const summary = summarizeAutoSelector(results);
-  const wrap = autoSelectorSummaryEl;
-  const cards = autoSelectorCardsEl;
-  if (summary.coverage === 0) {
-    wrap.hidden = true;
-    cards.innerHTML = '';
-    return;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
   }
-  wrap.hidden = false;
-  cards.innerHTML = `
-    <article class="mini-summary-card exact">
-      <strong>${summary.exactHits}</strong>
-      <span>Exact hits</span>
-      <p>${summary.exactPct.toFixed(1)}% of routes where auto picked the unique fastest engine.</p>
-    </article>
-    <article class="mini-summary-card near">
-      <strong>${summary.nearTieHits}</strong>
-      <span>Near-tie hits</span>
-      <p>${summary.nearPct.toFixed(1)}% of routes where auto landed inside the timing tolerance band.</p>
-    </article>
-    <article class="mini-summary-card miss">
-      <strong>${summary.misses}</strong>
-      <span>Real misses</span>
-      <p>${summary.missPct.toFixed(1)}% of routes where auto was outside the winner tolerance band.</p>
-    </article>
-  `;
+
+  if (minutes > 0) {
+    return `${minutes}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  }
+
+  return `${seconds}.${tenths}s`;
 }
 
 function buildRunContextLabel(context) {
@@ -1481,172 +2827,86 @@ function buildReportContext() {
 }
 
 function showReport(results, context) {
-  if (!Array.isArray(results) || results.length === 0) {
-    if (reportStatusEl) reportStatusEl.textContent = 'No results to report';
-    if (reportNoteEl)
-      reportNoteEl.textContent = 'Run some benchmark routes before generating a report.';
-    if (reportPanelEl) reportPanelEl.hidden = false;
-    if (reportOutputEl) reportOutputEl.value = '';
-    if (copyReportBtn) copyReportBtn.disabled = true;
-    return null;
-  }
-
-  const report = buildReportWithContextHeader(generateCopilotReport(results, context), context);
-  if (reportPanelEl) reportPanelEl.hidden = false;
-  if (reportOutputEl) reportOutputEl.value = report;
-  if (reportStatusEl) reportStatusEl.textContent = 'Report ready';
-  if (reportNoteEl)
-    reportNoteEl.textContent = 'Use the generated report with other benchmark artifacts.';
-  if (copyReportBtn) copyReportBtn.disabled = false;
-  return report;
+  // Generate and return report; avoid writing to report UI in simplified benchmark
+  if (!Array.isArray(results) || results.length === 0) return null;
+  return buildReportWithContextHeader(generateCopilotReport(results, context), context);
 }
 
 function showReportVariant(variant) {
-  updateReportTypeControls();
+  // Return report text for the given variant without updating UI
   const results = Array.isArray(variant.results) ? variant.results : [];
   const context = variant.context || buildReportContext();
-  if (!results.length) {
-    if (reportStatusEl) reportStatusEl.textContent = `${variant.label} report not available`;
-    if (reportNoteEl) reportNoteEl.textContent = 'Run a benchmark to generate this report.';
-    if (reportPanelEl) reportPanelEl.hidden = false;
-    if (reportOutputEl) reportOutputEl.value = '';
-    if (copyReportBtn) copyReportBtn.disabled = true;
-    return null;
-  }
-
-  const report = buildReportWithContextHeader(generateCopilotReport(results, context), context);
-  if (reportPanelEl) reportPanelEl.hidden = false;
-  if (reportOutputEl) reportOutputEl.value = report;
-  if (reportStatusEl) reportStatusEl.textContent = `${variant.label} report ready`;
-  if (reportNoteEl)
-    reportNoteEl.textContent = `Use the ${variant.label.toLowerCase()} benchmark report with other benchmark artifacts.`;
-  if (copyReportBtn) copyReportBtn.disabled = false;
-  return report;
+  if (!results.length) return null;
+  return buildReportWithContextHeader(generateCopilotReport(results, context), context);
 }
 
 function updateRunContextLabels(context) {
   const label = buildRunContextLabel(context);
 
   if (!label) {
-    resultsRunContextEl.hidden = true;
-    resultsRunContextEl.innerHTML = '';
+    if (resultsRunContextEl) {
+      resultsRunContextEl.hidden = true;
+      try {
+        resultsRunContextEl.textContent = '';
+      } catch (e) {}
+    }
     return;
   }
 
-  const formatted = `<strong>${label}</strong>`;
-  resultsRunContextEl.hidden = false;
-  resultsRunContextEl.innerHTML = formatted;
+  if (resultsRunContextEl) {
+    resultsRunContextEl.hidden = false;
+    try {
+      resultsRunContextEl.textContent = '';
+      const strong = document.createElement('strong');
+      strong.textContent = label;
+      resultsRunContextEl.appendChild(strong);
+    } catch (e) {}
+  }
 }
 
-function renderTable(results) {
-  const sorted = [...results].sort((a, b) => {
-    const va = a[_sortCol] ?? -Infinity;
-    const vb = b[_sortCol] ?? -Infinity;
-    if (typeof va === 'string') return _sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
-    return _sortAsc ? va - vb : vb - va;
-  });
-  const visibleRows = getVisiblePageRows(sorted);
-  resultsTbodyEl.innerHTML = visibleRows
-    .map(
-      (r, index) =>
-        `<tr>${buildRowHTML(r, (_currentPage - 1) * RESULTS_PAGE_SIZE + index + 1)}</tr>`
-    )
-    .join('');
-  renderPaginationControls(results);
+function getOrCreateReportStatusEl() {
+  let el = document.getElementById('report-status');
+  if (el) return el;
+
+  el = document.createElement('div');
+  el.id = 'report-status';
+  if (document.body) {
+    document.body.appendChild(el);
+  }
+  return el;
 }
 
-function updateSummary(results) {
-  const routeErrorCount = results.filter((r) => r.error || r.routeError).length;
-  const completed = results.filter((r) => !r.error && !r.routeError);
-  const unrecoveredEngineErrorRouteCount = results.filter(
-    (r) => !(r.error || r.routeError) && r.any_engine_error
-  ).length;
-  const tieCount = completed.filter((r) => Number(r.winner_tied) === 1).length;
-
-  const engineWins = {
-    'bidirectional-astar': 0,
-    'adaptive-barrier': 0,
-    'delta-stepping': 0,
-    'ultra-dijkstra': 0,
-  };
-  completed.forEach((r) => {
-    if (r.winner && Object.prototype.hasOwnProperty.call(engineWins, r.winner)) {
-      engineWins[r.winner]++;
-    }
-  });
-
-  const engineNames = {
-    'bidirectional-astar': 'A★',
-    'adaptive-barrier': 'Barrier',
-    'delta-stepping': 'Delta',
-    'ultra-dijkstra': 'Dijkstra',
-  };
-
-  const cards = [];
-  cards.push(
-    `<div class="card"><div class="card-val">${results.length}</div><div class="card-lbl">Routes run</div></div>`
-  );
-  Object.entries(engineWins).forEach(([engine, count]) => {
-    const className =
-      engine === 'bidirectional-astar'
-        ? 'engine-astar'
-        : engine === 'adaptive-barrier'
-          ? 'engine-barrier'
-          : engine === 'delta-stepping'
-            ? 'engine-delta'
-            : engine === 'ultra-dijkstra'
-              ? 'engine-dijkstra'
-              : '';
-    cards.push(`
-      <div class="card ${className}">
-        <div class="card-val">${count}</div>
-        <div class="card-lbl">${engineNames[engine]} wins</div>
-      </div>
-    `);
-  });
-  if (tieCount > 0) {
-    cards.push(
-      `<div class="card gray"><div class="card-val">${tieCount}</div><div class="card-lbl">Near-ties</div></div>`
-    );
+function setReportStatus(message) {
+  const el = getOrCreateReportStatusEl();
+  try {
+    el.textContent = message;
+  } catch (e) {
+    /* ignore DOM write failures */
   }
-  if (routeErrorCount > 0) {
-    cards.push(
-      `<div class="card red"><div class="card-val">${routeErrorCount}</div><div class="card-lbl">Route errors</div></div>`
-    );
-  }
-  if (unrecoveredEngineErrorRouteCount > 0) {
-    cards.push(
-      `<div class="card coral"><div class="card-val">${unrecoveredEngineErrorRouteCount}</div><div class="card-lbl">Routes with unrecovered engine errors</div></div>`
-    );
-  }
-
-  summaryCardsEl.innerHTML = cards.join('');
-  renderAutoSelectorSummary(results);
 }
 
-function redrawCharts(results) {
-  _chartScatter = drawScatter(scatterEl, results, {}, _chartScatter);
-  _chartDensity = drawDensityScatter(densityEl, results, {}, _chartDensity);
-  _chartHistogram = drawFeatureHistogram(histogramEl, results, {}, _chartHistogram);
-  _chartBubble = drawTimingBubble(bubbleEl, results, {}, _chartBubble);
-  if (_cleanupTooltip) {
-    _cleanupTooltip();
-  }
-  _cleanupTooltip = installTooltip(null, results, null);
-}
-
-function showResults(results) {
-  resultsSectionEl.hidden = false;
+async function showResults(results) {
+  if (resultsSectionEl) resultsSectionEl.hidden = false;
+  if (resultsSectionHeaderEl) resultsSectionHeaderEl.hidden = false;
   updateRunContextLabels(_runContext ?? {});
-  updateSummary(results);
-  renderTable(results);
-  redrawCharts(results);
-  renderSummaryTable(results);
-  renderCostSummaryTable(results);
-  updateBenchmarkStopwatch();
+  setReportStatus('Report ready');
+  _currentPage = 1;
 
-  // Hide threshold suggestion (no longer relevant for multi-engine comparison)
-  suggestionWrapEl.hidden = true;
+  // Update summary cards only
+  let summaryState;
+  if (_currentRunId) {
+    try {
+      summaryState = await loadRunSummaryStateFromDb(_currentRunId);
+    } catch (err) {
+      summaryState = _benchmarkSummaryState ? _benchmarkSummaryState : deriveBenchmarkSummaryState(results);
+    }
+  } else {
+    summaryState = _benchmarkSummaryState ? _benchmarkSummaryState : deriveBenchmarkSummaryState(results);
+  }
+  updateSummaryCardsFromState(summaryState);
+  if (actionRowEl) actionRowEl.hidden = !_benchmarkRunComplete;
+  updateBenchmarkStopwatch();
+  if (suggestionWrapEl) suggestionWrapEl.hidden = true;
 }
 
 function deriveEngineWins(results) {
@@ -2053,7 +3313,30 @@ async function saveBenchmarkArtifact(results, context, { allowEmpty = false } = 
   const filename = `${timestamp}_benchmark_${mode}_${parallelOrSerial}.json`;
   const payload = buildBenchmarkJsonPayload(results, context);
 
-  const response = await fetch('/__benchmark/save-results', {
+  // Guard network I/O: if `fetch` isn't available (tests without a mock or
+  // environments that disable network), short-circuit with a synthetic
+  // saved-path result. Tests that install a `fetch` mock will still receive
+  // real fetch calls and can assert on them.
+  const fetchFn = typeof fetch === 'function'
+    ? fetch
+    : typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function'
+    ? globalThis.fetch
+    : null;
+
+  if (!fetchFn) {
+    if (typeof process !== 'undefined' && process.env && process.env.VITEST) {
+      __benchmarkLog.info('[benchmark] test env: skipping network save', filename);
+      return { path: `/__benchmark/test/${filename}` };
+    }
+    if (typeof globalThis !== 'undefined' && globalThis.__benchmarkDisableNetwork) {
+      __benchmarkLog.info('[benchmark] network disabled; skipping save', filename);
+      return { path: `/__benchmark/disabled/${filename}` };
+    }
+    __benchmarkLog.warn('[benchmark] fetch not available; cannot save artifact');
+    return null;
+  }
+
+  const response = await fetchFn('/__benchmark/save-results', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ filename, payload }),
@@ -2078,17 +3361,12 @@ async function saveRunArtifacts(results, context) {
   }
 
   const contextsAreOneBased = isOneBasedPassContext(passContexts);
-  const expectedResultCount =
-    Array.isArray(passContexts) && passContexts.length > 0 && Number.isFinite(context?.routesSelected)
-      ? Number(context.routesSelected) * passContexts.length
-      : null;
-  let presentPassCount = 0;
   let savedPassArtifactsFromDb = false;
   let loadedRunResultsFromDb = false;
 
   if (runId && typeof indexedDB !== 'undefined' && typeof IDBKeyRange !== 'undefined') {
     const persistedResults = await loadRunResultsFromDB(runId);
-    if (Array.isArray(persistedResults)) {
+    if (Array.isArray(persistedResults) && persistedResults.length > 0) {
       effectiveResults = persistedResults;
       loadedRunResultsFromDb = true;
     }
@@ -2117,7 +3395,6 @@ async function saveRunArtifacts(results, context) {
               )
           : [];
 
-        presentPassCount += 1;
         savedPassArtifactsFromDb = true;
         const reportContext = {
           ...passContext,
@@ -2140,7 +3417,6 @@ async function saveRunArtifacts(results, context) {
         const passResults = passIndexGroups.get(passIndex) || [];
         if (!Array.isArray(passResults) || passResults.length === 0) continue;
 
-        presentPassCount += 1;
         savedPassArtifactsFromDb = true;
         const reportContext = getPassContextFromResults(passResults, passPosition);
         try {
@@ -2163,7 +3439,6 @@ async function saveRunArtifacts(results, context) {
           parallelOrSerial: sharedArrayBuffer ? 'parallel' : 'serial',
           sharedArrayBuffer,
         };
-        presentPassCount += 1;
         savedPassArtifactsFromDb = true;
         try {
           const saveResult = await saveBenchmarkArtifact(passResults, reportContext, {
@@ -2191,7 +3466,6 @@ async function saveRunArtifacts(results, context) {
       if (!passContext || !Array.isArray(passResults)) {
         continue;
       }
-      presentPassCount += 1;
       const reportContext = {
         ...passContext,
         ...getPassContextFromResults(passResults, passIndex),
@@ -2208,24 +3482,12 @@ async function saveRunArtifacts(results, context) {
     }
   }
 
-  const hasPartialPassCoverage =
-    Array.isArray(passContexts) &&
-    passContexts.length > 0 &&
-    presentPassCount > 0 &&
-    presentPassCount < passContexts.length;
-  const isIncompleteRun =
-    Array.isArray(effectiveResults) &&
-    effectiveResults.length > 0 &&
-    expectedResultCount !== null &&
-    effectiveResults.length < expectedResultCount &&
-    passContexts.length > 1;
-
   return savedPaths;
 }
 
 export function setCurrentRunId(runId) {
   _currentRunId = runId;
-  _currentRenderResults = [];
+  _currentPageResults = [];
   _reportVariants = [];
 }
 
@@ -2233,170 +3495,48 @@ export function setPassContexts(contexts) {
   _passContexts = Array.isArray(contexts) ? contexts : null;
 }
 
+export function _getBenchmarkRouteWorkerState() {
+  return _benchmarkRouteWorkerState;
+}
+
+export function _setBenchmarkRouteWorkerState(state) {
+  _benchmarkRouteWorkerState = state;
+}
+
+export function _handleBenchmarkRouteWorkerMessage(event) {
+  return handleBenchmarkRouteWorkerMessage(event);
+}
+
+export function _getBenchmarkSummaryState() {
+  return _benchmarkSummaryState;
+}
+
+export function _setBenchmarkSummaryState(state) {
+  _benchmarkSummaryState = state;
+}
+
+export function _flushBenchmarkUi() {
+  renderProgressFromState(_benchmarkRouteWorkerState, _benchmarkSummaryState);
+}
+
 export {
   getCheckedValues,
   getSelectedRoutes,
   updateRouteCount,
   getReportVariantLabel,
+  getReportFilename,
   buildReportVariants,
   createReportVariants,
   updateReportTypeControls,
   getSelectedReportVariant,
-  getReportFilename,
-  createUIResultRow,
+  computeBenchmarkEstimatedTotalMs,
+  
   getReportResults,
   saveRunArtifacts,
+  markRunComplete,
   buildBenchmarkJsonPayload,
-  refreshReportVariantsFromCurrentRun,
   showResults,
   round4,
+  formatDuration,
 };
 
-function renderCostSummaryTable(results) {
-  const { groupKeys, rows, formatValue } = generateCostSummary(results);
-  const winCountsByLabel = Object.fromEntries(rows.map((row) => [row.engine, 0]));
-  results.forEach((r) => {
-    const winnerLabel =
-      r.costWinner === 'bidirectional-astar'
-        ? 'A★ (Bidirectional)'
-        : r.costWinner === 'adaptive-barrier'
-          ? 'Barrier (Adaptive SSP)'
-          : r.costWinner === 'delta-stepping'
-            ? 'Delta-Stepping'
-            : r.costWinner === 'ultra_dijkstra'
-              ? 'Dijkstra (Ultra)'
-              : r.costWinner === 'ultra-dijkstra'
-                ? 'Dijkstra (Ultra)'
-                : null;
-    if (winnerLabel && Object.hasOwn(winCountsByLabel, winnerLabel)) {
-      winCountsByLabel[winnerLabel]++;
-    }
-  });
-
-  const thead = costSummaryTheadEl;
-  thead.innerHTML = '';
-  const headerRow = document.createElement('tr');
-  headerRow.innerHTML = '<th style="text-align: left; padding: 8px 10px;">Engine</th>';
-  const winsHeader = document.createElement('th');
-  winsHeader.className = 'num';
-  winsHeader.style.padding = '8px 10px';
-  winsHeader.textContent = 'Wins';
-  headerRow.appendChild(winsHeader);
-  groupKeys.forEach((gk) => {
-    const th = document.createElement('th');
-    th.className = 'num';
-    th.style.padding = '8px 10px';
-    th.style.whiteSpace = 'normal';
-    th.textContent = gk;
-    headerRow.appendChild(th);
-  });
-  thead.appendChild(headerRow);
-
-  const tbody = costSummaryTbodyEl;
-  tbody.innerHTML = '';
-  rows.forEach((row) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td style="padding: 8px 10px; font-weight: 500;">${row.engine}</td>`;
-    const winsTd = document.createElement('td');
-    winsTd.className = 'num';
-    winsTd.style.padding = '8px 10px';
-    winsTd.style.fontWeight = '600';
-    winsTd.textContent = String(winCountsByLabel[row.engine] ?? 0);
-    tr.appendChild(winsTd);
-    groupKeys.forEach((gk) => {
-      const td = document.createElement('td');
-      td.className = 'num';
-      td.style.padding = '8px 10px';
-      const val = row[gk];
-      if (val === null) {
-        td.textContent = '—';
-        td.style.color = 'var(--muted)';
-      } else {
-        td.textContent = formatValue(val);
-        if (val >= 100) {
-          td.style.color = 'var(--green)';
-          td.style.fontWeight = '600';
-        } else if (val < 70) {
-          td.style.color = 'var(--red)';
-        }
-      }
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-}
-
-function renderSummaryTable(results) {
-  const { groupKeys, rows } = generatePerformanceSummary(results);
-  const winCountsByLabel = Object.fromEntries(rows.map((row) => [row.engine, 0]));
-  results.forEach((r) => {
-    const winnerLabel =
-      r.winner === 'bidirectional-astar'
-        ? 'A★ (Bidirectional)'
-        : r.winner === 'adaptive-barrier'
-          ? 'Barrier (Adaptive SSP)'
-          : r.winner === 'delta-stepping'
-            ? 'Delta-Stepping'
-            : r.winner === 'ultra-dijkstra'
-              ? 'Dijkstra (Ultra)'
-              : null;
-    if (winnerLabel && Object.hasOwn(winCountsByLabel, winnerLabel)) {
-      winCountsByLabel[winnerLabel]++;
-    }
-  });
-
-  // Build header
-  const thead = summaryTheadEl;
-  thead.innerHTML = '';
-  const headerRow = document.createElement('tr');
-  headerRow.innerHTML = '<th style="text-align: left; padding: 8px 10px;">Engine</th>';
-  const winsHeader = document.createElement('th');
-  winsHeader.className = 'num';
-  winsHeader.style.padding = '8px 10px';
-  winsHeader.textContent = 'Wins';
-  headerRow.appendChild(winsHeader);
-  groupKeys.forEach((gk) => {
-    const th = document.createElement('th');
-    th.className = 'num';
-    th.style.padding = '8px 10px';
-    th.style.whiteSpace = 'normal';
-    th.textContent = gk;
-    headerRow.appendChild(th);
-  });
-  thead.appendChild(headerRow);
-
-  // Build body
-  const tbody = summaryTbodyEl;
-  tbody.innerHTML = '';
-  rows.forEach((row) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td style="padding: 8px 10px; font-weight: 500;">${row.engine}</td>`;
-    const winsTd = document.createElement('td');
-    winsTd.className = 'num';
-    winsTd.style.padding = '8px 10px';
-    winsTd.style.fontWeight = '600';
-    winsTd.textContent = String(winCountsByLabel[row.engine] ?? 0);
-    tr.appendChild(winsTd);
-    groupKeys.forEach((gk) => {
-      const td = document.createElement('td');
-      td.className = 'num';
-      td.style.padding = '8px 10px';
-      const val = row[gk];
-      if (val === null) {
-        td.textContent = '—';
-        td.style.color = 'var(--muted)';
-      } else {
-        td.textContent = `${val}%`;
-        // Color code: 100 = green, <70 = red
-        if (val >= 100) {
-          td.style.color = 'var(--green)';
-          td.style.fontWeight = '600';
-        } else if (val < 70) {
-          td.style.color = 'var(--red)';
-        }
-      }
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-}

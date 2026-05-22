@@ -75,6 +75,26 @@ describe('graphMetrics utilities', () => {
     expect(secondResult).toEqual(firstResult);
   });
 
+  it('reuses the same density sampler for identical maxRes and rebuilds for a new maxRes', () => {
+    const preparedGraph = {
+      N: 2,
+      coordsArr: [
+        [0, 0],
+        [1, 1],
+      ],
+    };
+    const firstSampler = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
+    const firstInstance = preparedGraph._densitySampler;
+
+    const secondResult = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
+    expect(preparedGraph._densitySampler).toBe(firstInstance);
+    expect(secondResult).toEqual(firstSampler);
+
+    getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 32 });
+    expect(preparedGraph._densitySampler).not.toBe(firstInstance);
+    expect(preparedGraph._densitySampler.maxRes).toBe(32);
+  });
+
   it('computes all graph metrics and executes centrality logic for car mode', () => {
     const preparedGraph = {
       N: 2,

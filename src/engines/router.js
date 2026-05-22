@@ -109,6 +109,7 @@ import { getAllGraphMetrics } from '../graphs/graphMetrics.js';
  * @property {boolean} [allowFallback]
  * @property {boolean} [forceSerialRouting]
  * @property {boolean} [useWorkerPool]
+ * @property {boolean} [useEngineWorker]
  * @property {number} [engineWorkerPoolSize]
  *
  * @typedef {Object} RouteResult
@@ -125,17 +126,30 @@ import { getAllGraphMetrics } from '../graphs/graphMetrics.js';
  */
 export { selectBestEngine, nearestNode };
 
-const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router' });
+const logger = new PowerLogger(0, { name: 'omt-router' });
 
 const DIST_SCALE = 10;
 const PARALLEL_ROUTING_RUNTIME_AVAILABLE = hasParallelRoutingRuntime();
 // ── Route result cache ──────────────────────────────────────────────────────
 // Keyed by `${startId}:${endId}:${costField}`, stored on each `prepared`
 // object so the cache is graph-scoped and naturally evicted with the graph.
-// 200 entries covers ~30 min of typical navigation use before LRU eviction.
-const ROUTE_CACHE_MAX = 200;
-const ROUTE_CACHE_TTL = 10 * 60_000; // 10 min
+// 100 entries reduces retained route result state while still supporting
+// common repeated origin/destination lookups.
+const ROUTE_CACHE_MAX = 100;
+const ROUTE_CACHE_TTL = 5 * 60_000; // 5 min
+const MAX_PREPARED_COSTFIELDS_PER_GRAPH = 2;
+const MAX_PREPARED_VARIANTS_PER_COSTFIELD = 2;
 const ROUTE_CACHE_KEY_VERSION = 'v2';
+
+function disposeRouteCache(routeCache) {
+  if (!routeCache) return;
+  try {
+    routeCache.stopCleanup?.();
+    routeCache.clear?.();
+  } catch (_err) {
+    // Ignore cleanup failures.
+  }
+}
 const ENGINE_WORKER_STATES = Object.freeze({
   IDLE: 'idle',
   RUNNING: 'running',
@@ -205,13 +219,54 @@ function getOptimalTravelTimeCost(edge, mode) {
 
 function getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targetId, opts = {}) {
   const penaltyKey = getPenaltyKey(costField, normalizedPenalties);
-  let prepared = graph._prepared?.[costField]?.[penaltyKey];
-  if (!prepared) {
-    prepared = buildCH(graph, costField, normalizedPenalties);
-    (graph._prepared ??= {})[costField] ??= {};
-    graph._prepared[costField][penaltyKey] = prepared;
+  const preparedGroup = (graph._prepared ??= {});
+  const preparedCostFields = Object.keys(preparedGroup);
+  if (
+    preparedCostFields.length >= MAX_PREPARED_COSTFIELDS_PER_GRAPH &&
+    preparedGroup[costField] === undefined
+  ) {
+    const oldestCostField = preparedCostFields[0];
+    const oldestGroup = preparedGroup[oldestCostField];
+    if (oldestGroup) {
+      Object.values(oldestGroup).forEach((oldPrepared) => {
+        if (oldPrepared?._routeCache) {
+          disposeRouteCache(oldPrepared._routeCache);
+          oldPrepared._routeCache = null;
+        }
+      });
+    }
+    delete preparedGroup[oldestCostField];
   }
-  prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
+
+  const costFieldGroup = (preparedGroup[costField] ??= {});
+  let prepared = costFieldGroup[penaltyKey];
+  if (!prepared) {
+    const penaltyKeys = Object.keys(costFieldGroup);
+    if (penaltyKeys.length >= MAX_PREPARED_VARIANTS_PER_COSTFIELD) {
+      const oldestPenaltyKey = penaltyKeys[0];
+      const oldestPrepared = costFieldGroup[oldestPenaltyKey];
+      if (oldestPrepared?._routeCache) {
+        disposeRouteCache(oldestPrepared._routeCache);
+        oldestPrepared._routeCache = null;
+      }
+      delete costFieldGroup[oldestPenaltyKey];
+    }
+    prepared = buildCH(graph, costField, normalizedPenalties);
+    costFieldGroup[penaltyKey] = prepared;
+  }
+  try {
+    prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
+    try {
+      if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+        const mk = prepared.metrics && typeof prepared.metrics === 'object' ? Object.keys(prepared.metrics).slice(0, 10) : null;
+        console.debug('[router] prepared.metrics set', { sourceId, targetId, preparedN: prepared?.N ?? null, preparedE: prepared?.E ?? null, metricKeys: mk });
+      }
+    } catch (_e) {}
+  } catch (e) {
+    // Preserve original error behaviour but include a compact debug hint.
+    try { console.warn('[router] getAllGraphMetrics() threw', { sourceId, targetId, err: e && e.message ? e.message : String(e) }); } catch (_e) {}
+    throw e;
+  }
   return prepared;
 }
 
@@ -248,6 +303,13 @@ function emitEngineWorkerStatus(nextState) {
 
 function rejectAllEngineJobs(error) {
   for (const job of _engineWorkerJobs.values()) {
+    if (job.preparedTransferred && job.prepared?.reclaimFromWorker) {
+      try {
+        job.prepared.reclaimFromWorker();
+      } catch {
+        // best effort
+      }
+    }
     job.reject(error);
   }
   _engineWorkerJobs.clear();
@@ -322,7 +384,14 @@ function ensureEngineWorker() {
     if (!job) return;
 
     _engineWorkerJobs.delete(message.requestId);
-    const { resolve, reject } = job;
+    const { resolve, reject, prepared, preparedTransferred } = job;
+    if (preparedTransferred && prepared?.reclaimFromWorker) {
+      try {
+        prepared.reclaimFromWorker();
+      } catch {
+        // best effort
+      }
+    }
 
     if (message.ok) {
       emitEngineWorkerStatus({
@@ -385,6 +454,7 @@ function getEngineWorkerPreparedId(prepared) {
 
 function ensureWorkerPreparedBackup(prepared) {
   if (!prepared._engineWorkerBackup) {
+    ensurePreparedCoordsArrays(prepared);
     prepared._engineWorkerBackup = {
       adjPtr: prepared.adjPtr.slice(),
       adjTo: prepared.adjTo.slice(),
@@ -392,6 +462,8 @@ function ensureWorkerPreparedBackup(prepared) {
       revAdjPtr: prepared.revAdjPtr.slice(),
       revAdjFrom: prepared.revAdjFrom.slice(),
       revAdjCost: prepared.revAdjCost.slice(),
+      coordsX: prepared._coordsX.slice(),
+      coordsY: prepared._coordsY.slice(),
     };
   }
   return prepared._engineWorkerBackup;
@@ -454,6 +526,8 @@ function attachPreparedWorkerTransferMethods(prepared) {
       this.revAdjPtr = backup.revAdjPtr;
       this.revAdjFrom = backup.revAdjFrom;
       this.revAdjCost = backup.revAdjCost;
+      this._coordsX = backup.coordsX;
+      this._coordsY = backup.coordsY;
       this._engineWorkerBackup = null;
     } else if (
       isDetachedArray(this.adjPtr) ||
@@ -476,13 +550,8 @@ function attachPreparedWorkerTransferMethods(prepared) {
 
 function serializePreparedForEngineWorker(prepared) {
   attachPreparedWorkerTransferMethods(prepared);
-  const serializedPrepared = prepared.transferToWorker({ preserveMainThread: true });
-  return serializedPrepared;
-}
-
-function clonePreparedForEngineWorker(prepared) {
-  attachPreparedWorkerTransferMethods(prepared);
   ensurePreparedCoordsArrays(prepared);
+
   return {
     preparedId: getEngineWorkerPreparedId(prepared),
     adjPtr: prepared.adjPtr.slice(),
@@ -496,9 +565,17 @@ function clonePreparedForEngineWorker(prepared) {
     coordsX: prepared._coordsX.slice(),
     coordsY: prepared._coordsY.slice(),
     costField: prepared.costField,
-    distScale: prepared.distScale,
-    coordsAreGeographic: prepared.coordsAreGeographic,
   };
+}
+
+function clonePreparedForEngineWorker(prepared) {
+  return serializePreparedForEngineWorker(prepared);
+}
+
+function transferPreparedForEngineWorker(prepared) {
+  attachPreparedWorkerTransferMethods(prepared);
+  ensurePreparedCoordsArrays(prepared);
+  return prepared.transferToWorker({ preserveMainThread: true });
 }
 
 function getPreparedWorkerTransferables(serializedPrepared) {
@@ -623,6 +700,8 @@ async function runEngineInWorker(
       reject,
       engineId: selectedEngine,
       startedAt,
+      prepared,
+      preparedTransferred: false,
     });
 
     emitEngineWorkerStatus({
@@ -636,25 +715,73 @@ async function runEngineInWorker(
     });
 
     const preparedId = getEngineWorkerPreparedId(prepared);
+    let preparedTransferred = false;
     if (_engineWorkerPreparedIdInWorker !== preparedId) {
-      const serializedPrepared = serializePreparedForEngineWorker(prepared);
-      worker.postMessage(
-        { type: 'prepare', prepared: serializedPrepared },
-        getPreparedWorkerTransferables(serializedPrepared)
-      );
+      const serializedPrepared = transferPreparedForEngineWorker(prepared);
+      try {
+        worker.postMessage(
+          { type: 'prepare', prepared: serializedPrepared },
+          getPreparedWorkerTransferables(serializedPrepared)
+        );
+      } catch (error) {
+        if (prepared?.reclaimFromWorker) {
+          try {
+            prepared.reclaimFromWorker();
+          } catch {
+            // best effort
+          }
+        }
+        _engineWorkerJobs.delete(requestId);
+        emitEngineWorkerStatus({
+          state: ENGINE_WORKER_STATES.IDLE,
+          running: false,
+          engineId: null,
+          requestId: null,
+          requestCount: 0,
+          startedAt: null,
+          lastError: error?.message ?? null,
+        });
+        reject(error);
+        return;
+      }
       _engineWorkerPreparedIdInWorker = preparedId;
+      preparedTransferred = true;
+      const job = _engineWorkerJobs.get(requestId);
+      if (job) job.preparedTransferred = true;
     }
 
-    worker.postMessage({
-      type: 'run',
-      requestId,
-      engineId: selectedEngine,
-      startId,
-      endId,
-      forceSerialRouting,
-      parallelPolicy,
-      preparedId,
-    });
+    try {
+      worker.postMessage({
+        type: 'run',
+        requestId,
+        engineId: selectedEngine,
+        startId,
+        endId,
+        forceSerialRouting,
+        parallelPolicy,
+        preparedId,
+      });
+    } catch (error) {
+      if (preparedTransferred && prepared?.reclaimFromWorker) {
+        try {
+          prepared.reclaimFromWorker();
+        } catch {
+          // best effort
+        }
+      }
+      _engineWorkerJobs.delete(requestId);
+      emitEngineWorkerStatus({
+        state: ENGINE_WORKER_STATES.IDLE,
+        running: false,
+        engineId: null,
+        requestId: null,
+        requestCount: 0,
+        startedAt: null,
+        lastError: error?.message ?? null,
+      });
+      reject(error);
+      return;
+    }
   });
 }
 
@@ -930,22 +1057,21 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
 
   // ── Collect directed edges (dedup) ─────────────────────────────────────────
   // Each undirected edge produces at most 2 directed edges (fwd + bwd).
-  // Pre-size all scratch arrays to the theoretical maximum to avoid dynamic
-  // growth / GC pressure during the O(E) build loop.
-  const maxDE = edges.length * 2; // max directed edge count
-  const edgeSrc = new Int32Array(maxDE);
-  const edgeTgt = new Int32Array(maxDE);
-  const edgeCostInt = new Int32Array(maxDE);
-  // Flat triples [src, tgt, cost, src, tgt, cost, ...] for CSR pass 1/2.
-  const fwdRaw = new Int32Array(maxDE * 3);
-  const revRaw = new Int32Array(maxDE * 3);
-  let eCount = 0,
-    fwdLen = 0,
-    revLen = 0;
+  const _maxDE = edges.length * 2; // theoretical max directed edge count
+  const edgeSrc = new Int32Array(_maxDE);
+  const edgeTgt = new Int32Array(_maxDE);
+  const edgeCostInt = new Int32Array(_maxDE);
+  let eCount = 0;
   // Use Map<src, Set<tgt>> for deduplication
   const seen = new Map();
 
   const addEdge = (src, tgt, floatCost) => {
+    if (!Number.isInteger(src) || src < 0 || !Number.isInteger(tgt) || tgt < 0) {
+      throw new Error(`buildCH.addEdge: invalid node ids src=${src}, tgt=${tgt}`);
+    }
+    if (!Number.isFinite(floatCost) || floatCost < 0) {
+      throw new Error(`buildCH.addEdge: invalid edge cost for ${src}->${tgt}: ${floatCost}`);
+    }
     const intersectionPenalty =
       useIntersectionPenalty && isIntersection && isIntersection[tgt]
         ? normalizedPenalties.intersectionPenaltySec
@@ -962,12 +1088,6 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
     edgeTgt[eCount] = tgt;
     edgeCostInt[eCount] = costInt;
     eCount++;
-    fwdRaw[fwdLen++] = src;
-    fwdRaw[fwdLen++] = tgt;
-    fwdRaw[fwdLen++] = costInt;
-    revRaw[revLen++] = tgt;
-    revRaw[revLen++] = src;
-    revRaw[revLen++] = costInt;
   };
 
   for (const edge of edges) {
@@ -993,12 +1113,13 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   }
 
   const E = eCount;
-
-  // Trim the pre-allocated typed arrays to the actual edge count.
-  // .subarray() is zero-copy — a view into the same buffer.
   const edgeSrcView = edgeSrc.subarray(0, E);
   const edgeTgtView = edgeTgt.subarray(0, E);
   const edgeCostIntView = edgeCostInt.subarray(0, E);
+
+  // Free dedup state now that the preparatory CSR arrays exist.
+  seen.clear();
+  isIntersection = null;
 
   // ── Build CSR for forward adjacency (adj) ──────────────────────────────────
   const adjPtr = new Int32Array(N + 1); // adjPtr[u]..adjPtr[u+1]-1 = range in adjTo/adjCost
@@ -1006,15 +1127,21 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   const adjCost = new Int32Array(E);
 
   // Pass 1: count out-degrees
-  for (let i = 0; i < fwdLen; i += 3) adjPtr[fwdRaw[i] + 1]++;
+  for (let i = 0; i < E; i++) {
+    const src = edgeSrcView[i];
+    if (src < 0 || src >= N) {
+      throw new Error(`buildCH: invalid source node id ${src} in edgeSrcView`);
+    }
+    adjPtr[src + 1]++;
+  }
   // Prefix-sum → offsets
   for (let u = 0; u < N; u++) adjPtr[u + 1] += adjPtr[u];
   // Pass 2: fill (cursor tracks next write position per node)
   const adjCursor = adjPtr.slice(0, N); // copy of prefix sums as write cursors
-  for (let i = 0; i < fwdLen; i += 3) {
-    const src = fwdRaw[i],
-      tgt = fwdRaw[i + 1],
-      cost = fwdRaw[i + 2];
+  for (let i = 0; i < E; i++) {
+    const src = edgeSrcView[i];
+    const tgt = edgeTgtView[i];
+    const cost = edgeCostIntView[i];
     const pos = adjCursor[src]++;
     adjTo[pos] = tgt;
     adjCost[pos] = cost;
@@ -1025,13 +1152,19 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   const revAdjFrom = new Int32Array(E);
   const revAdjCost = new Int32Array(E);
 
-  for (let i = 0; i < revLen; i += 3) revAdjPtr[revRaw[i] + 1]++;
+  for (let i = 0; i < E; i++) {
+    const tgt = edgeTgtView[i];
+    if (tgt < 0 || tgt >= N) {
+      throw new Error(`buildCH: invalid target node id ${tgt} in edgeTgtView`);
+    }
+    revAdjPtr[tgt + 1]++;
+  }
   for (let u = 0; u < N; u++) revAdjPtr[u + 1] += revAdjPtr[u];
   const revCursor = revAdjPtr.slice(0, N);
-  for (let i = 0; i < revLen; i += 3) {
-    const tgt = revRaw[i],
-      src = revRaw[i + 1],
-      cost = revRaw[i + 2];
+  for (let i = 0; i < E; i++) {
+    const tgt = edgeTgtView[i];
+    const src = edgeSrcView[i];
+    const cost = edgeCostIntView[i];
     const pos = revCursor[tgt]++;
     revAdjFrom[pos] = src;
     revAdjCost[pos] = cost;
@@ -1096,10 +1229,7 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
     chEdgeCostInt = costArr;
   }
 
-  return {
-    edgeSrc: chEdgeSrc,
-    edgeTgt: chEdgeTgt,
-    edgeCostInt: chEdgeCostInt,
+  const prepared = {
     adjPtr,
     adjTo,
     adjCost,
@@ -1117,6 +1247,14 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
     distScale: DIST_SCALE,
     coordsAreGeographic: Boolean(graph.coordsAreGeographic === true),
   };
+
+  if (graph.mode === 'pedestrian') {
+    prepared.edgeSrc = chEdgeSrc;
+    prepared.edgeTgt = chEdgeTgt;
+    prepared.edgeCostInt = chEdgeCostInt;
+  }
+
+  return prepared;
 }
 
 /**
@@ -1141,7 +1279,9 @@ export async function queryRoute(
     allowFallback = true,
     forceSerialRouting = false,
     useWorkerPool = false,
+    useEngineWorker = true,
     engineWorkerPoolSize = null,
+    engineWorkerFallbackToMainThread = true,
     _engineWorkerMaxPoolSize = null,
   } = {}
 ) {
@@ -1167,6 +1307,7 @@ export async function queryRoute(
       maxEntries: ROUTE_CACHE_MAX,
       defaultTTL: ROUTE_CACHE_TTL,
     });
+    prepared._routeCache.startCleanup?.({ interval: ROUTE_CACHE_TTL, maxCleanupPerTick: 64 });
   }
 
   // Intelligent engine selection
@@ -1225,40 +1366,43 @@ export async function queryRoute(
 
   let result;
   let fallback = null;
-  if (typeof Worker === 'undefined' || !useWorkerPool) {
-    if (typeof Worker === 'undefined') {
-      result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
+  const engineWorkerEnabled = useEngineWorker && typeof Worker !== 'undefined';
+
+  if (!engineWorkerEnabled) {
+    result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
+      forceSerialRouting: resolvedForceSerialRouting,
+      parallelPolicy,
+    });
+  } else if (!useWorkerPool) {
+    try {
+      result = await runEngineInWorker(normalizedSelectedEngine, startId, endId, prepared, {
         forceSerialRouting: resolvedForceSerialRouting,
         parallelPolicy,
       });
-    } else {
-      try {
-        result = await runEngineInWorker(normalizedSelectedEngine, startId, endId, prepared, {
+    } catch (error) {
+      if (
+        error?.code === EngineErrorCode.ENGINE_CANCELLED ||
+        error?.code === EngineErrorCode.ENGINE_WORKER_BUSY
+      ) {
+        throw error;
+      }
+      if (!engineWorkerFallbackToMainThread) {
+        throw error;
+      }
+      logger.warn(
+        `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`
+      );
+      result = await runEngineDirect(
+        normalizedSelectedEngine,
+        startId,
+        endId,
+        prepared,
+        beelineM,
+        {
           forceSerialRouting: resolvedForceSerialRouting,
           parallelPolicy,
-        });
-      } catch (error) {
-        if (
-          error?.code === EngineErrorCode.ENGINE_CANCELLED ||
-          error?.code === EngineErrorCode.ENGINE_WORKER_BUSY
-        ) {
-          throw error;
         }
-        logger.warn(
-          `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`
-        );
-        result = await runEngineDirect(
-          normalizedSelectedEngine,
-          startId,
-          endId,
-          prepared,
-          beelineM,
-          {
-            forceSerialRouting: resolvedForceSerialRouting,
-            parallelPolicy,
-          }
-        );
-      }
+      );
     }
   } else {
     try {
@@ -1269,6 +1413,9 @@ export async function queryRoute(
       });
     } catch (error) {
       if (error?.code === EngineErrorCode.ENGINE_CANCELLED) {
+        throw error;
+      }
+      if (!engineWorkerFallbackToMainThread) {
         throw error;
       }
       logger.warn(

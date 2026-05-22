@@ -1,7 +1,8 @@
 /**
  * @module src/isolines/index
- * @description Public isoline API that computes GeoJSON isolines from a prepared graph.
- *   Uses CH preprocessing, point snapping, and d3-tricontour band generation.
+ * @description Public isoline API for generating GeoJSON isolines from a snapped point.
+ *   Builds a prepared CH graph, runs a bounded isoPHAST search, and converts the
+ *   sampled distance field into d3-tricontour isobands.
  */
 
 import isoPHAST from './isoPHAST.js';
@@ -44,8 +45,10 @@ import { prettyBreaks } from '../utils/misc.js';
  * Notes:
  * - `isoline()` snaps the provided coordinate to the nearest segment and creates
  *   an augmented graph with a new node for the projected point.
+ * - `searchThreshold` is used only for contour sampling and may exceed the
+ *   reachable `maxCost` cutoff to gather enough distance samples for smoother bands.
  * - The prepared graph returned by `buildCH()` exposes `distScale` and
- *   `coordsAreGeographic` that `isoPHAST()` uses (see `src/isolines/README.md`).
+ *   `coordsAreGeographic` that the isolines pipeline expects (see `src/isolines/README.md`).
  */
 export async function isoline({
   point,
@@ -88,10 +91,12 @@ export async function isoline({
   const prepared = buildCH(workingGraph, costField, penalties);
 
   // Pass full prepared graph and let isoPHAST handle direction and mode.
-  const { distances, reachable } = isoPHAST(prepared, startId, maxCost, {
+  const SEARCH_FACTOR = 3;
+  const { distances, reachable, visited } = isoPHAST(prepared, startId, maxCost, {
     outputUnscaled: true,
     direction,
     mode,
+    searchThreshold: maxCost * SEARCH_FACTOR,
   });
 
   const DEBUG_ISOLINES =
@@ -113,14 +118,13 @@ export async function isoline({
   // points array as `[x, y, value]` entries which tricontour expects.
   const coordsArr = prepared.coordsArr || [];
   const points = [];
-  // Exclude values strictly greater than the threshold + epsilon so tricontour
-  // only receives points within the requested isoband range.
-  const factor = 3; // x3 factor to ensure a convex hull big enough to build isolines
-  for (let i = 0; i < distances.length; i++) {
-    const v = distances[i];
-    if (!Number.isFinite(v)) continue;
-    if (v > maxCost * factor) continue;
-    const coord = coordsArr[i];
+  const maxSampleCost = maxCost * SEARCH_FACTOR;
+  const candidates = visited;
+  for (let i = 0; i < candidates.length; i++) {
+    const nodeId = candidates[i];
+    const v = distances[nodeId];
+    if (!Number.isFinite(v) || v > maxSampleCost) continue;
+    const coord = coordsArr[nodeId];
     if (!coord || coord.length < 2) continue;
     points.push([coord[0], coord[1], v]);
   }

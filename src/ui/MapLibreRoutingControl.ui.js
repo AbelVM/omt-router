@@ -172,13 +172,11 @@ export function buildPanelMarkup(ctrl) {
  */
 export function updateIsolineThresholdUI(ctrl) {
   try {
-    const isoPanel =
-      ctrl._panel && ctrl._panel.querySelector
-        ? ctrl._panel.querySelector('#rp-isoline-panel')
-        : null;
-    if (!isoPanel) return;
-    const isoThreshold = isoPanel.querySelector('#rp-isoline-threshold');
-    const isoUnit = isoPanel.querySelector('#rp-isoline-threshold-unit');
+    const isoPanel = ctrl._isolinePanel || ctrl._panel?.querySelector('#rp-isoline-panel') || ctrl._panel || null;
+    const isoThreshold =
+      ctrl._isolineThresholdInput || isoPanel?.querySelector('#rp-isoline-threshold');
+    const isoUnit =
+      ctrl._isolineThresholdUnitEl || isoPanel?.querySelector('#rp-isoline-threshold-unit');
     if (!isoThreshold || !isoUnit) return;
     if (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') {
       isoUnit.textContent = 'min';
@@ -306,34 +304,39 @@ export function syncModeAndCostUI(ctrl) {
   try {
     if (!ctrl || !ctrl._panel) return;
 
-    const routingPanel = ctrl._panel.querySelector('#rp-routing-panel');
-    const isolinePanel = ctrl._panel.querySelector('#rp-isoline-panel');
-    const panels = [];
-    if (routingPanel) panels.push(routingPanel);
-    if (isolinePanel) panels.push(isolinePanel);
+    const modeBtns = Array.from(
+      new Set([
+        ...(ctrl._modeButtons || []),
+        ...(ctrl._isolineModeButtons || []),
+        ...Array.from(ctrl._panel.querySelectorAll('.rp-mode-btn')),
+      ]),
+    );
+    const costBtns = Array.from(
+      new Set([
+        ...(ctrl._costButtons || []),
+        ...(ctrl._isolineCostButtons || []),
+        ...Array.from(ctrl._panel.querySelectorAll('.rp-cost-btn')),
+      ]),
+    );
+    const isoDirBtns =
+      ctrl._isolineDirectionButtons || Array.from(ctrl._panel.querySelectorAll('.rp-isoline-direction-btn'));
 
-    panels.forEach((panel) => {
-      const modeBtns = panel.querySelectorAll('.rp-mode-btn');
-      modeBtns.forEach((b) => {
-        const isActive = b.dataset.mode === ctrl._mode;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
+    modeBtns.forEach((b) => {
+      const isActive = b.dataset.mode === ctrl._mode;
+      b.classList.toggle('active', isActive);
+      b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
 
-      const costBtns = panel.querySelectorAll('.rp-cost-btn');
-      costBtns.forEach((b) => {
-        const isActive = b.dataset.costField === ctrl._costField;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
+    costBtns.forEach((b) => {
+      const isActive = b.dataset.costField === ctrl._costField;
+      b.classList.toggle('active', isActive);
+      b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
 
-      // sync isoline direction buttons when present
-      const isoDirBtns = panel.querySelectorAll('.rp-isoline-direction-btn');
-      isoDirBtns.forEach((b) => {
-        const isActive = ctrl._isoline && b.dataset.direction === ctrl._isoline.direction;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
+    isoDirBtns.forEach((b) => {
+      const isActive = ctrl._isoline && b.dataset.direction === ctrl._isoline.direction;
+      b.classList.toggle('active', isActive);
+      b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
 
     // Ensure isoline threshold UI matches the selected costField
@@ -352,6 +355,13 @@ export function resetOtherUI(ctrl, activeTab) {
   try {
     if (!ctrl || !ctrl._panel) return;
 
+    const isoPanel = ctrl._isolinePanel || ctrl._panel.querySelector('#rp-isoline-panel');
+    const isoThresholdInput =
+      ctrl._isolineThresholdInput || isoPanel?.querySelector('#rp-isoline-threshold');
+    const isoThresholdUnitEl =
+      ctrl._isolineThresholdUnitEl || isoPanel?.querySelector('#rp-isoline-threshold-unit');
+    const isoPointInput = ctrl._isolinePointInput || isoPanel?.querySelector('#rp-isoline-point');
+
     if (activeTab === 'routing') {
       // Reset isoline inputs/state (keep mode/cost)
       // Derive default isoline max cost based on currently selected costField
@@ -366,46 +376,39 @@ export function resetOtherUI(ctrl, activeTab) {
       ctrl._isoline.direction = 'from';
       ctrl._isoline.maxCost = _defaultIso;
 
-      const isoPanel = ctrl._panel.querySelector('#rp-isoline-panel');
-      if (isoPanel) {
-        const isoPoint = isoPanel.querySelector('#rp-isoline-point');
-        if (isoPoint) isoPoint.value = '';
-
-        const isoThreshold = isoPanel.querySelector('#rp-isoline-threshold');
-        const isoUnit = isoPanel.querySelector('#rp-isoline-threshold-unit');
-        if (isoThreshold && isoUnit) {
-          if (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') {
-            isoUnit.textContent = 'min';
-            isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost)
-              ? Math.round(ctrl._isoline.maxCost / 60)
-              : '';
-          } else {
-            isoUnit.textContent = 'm';
-            isoThreshold.value = Number.isFinite(ctrl._isoline.maxCost)
-              ? ctrl._isoline.maxCost
-              : '';
-          }
+      if (isoPointInput) isoPointInput.value = '';
+      if (isoThresholdInput && isoThresholdUnitEl) {
+        if (ctrl._costField === 'travelTime' || ctrl._costField === 'optimal') {
+          isoThresholdUnitEl.textContent = 'min';
+          isoThresholdInput.value = Number.isFinite(ctrl._isoline.maxCost)
+            ? Math.round(ctrl._isoline.maxCost / 60)
+            : '';
+        } else {
+          isoThresholdUnitEl.textContent = 'm';
+          isoThresholdInput.value = Number.isFinite(ctrl._isoline.maxCost)
+            ? ctrl._isoline.maxCost
+            : '';
         }
+      }
 
-        const isoDirBtns = isoPanel.querySelectorAll('.rp-isoline-direction-btn');
-        isoDirBtns.forEach((b) => {
-          const isActive = b.dataset.direction === 'from';
-          b.classList.toggle('active', isActive);
-          b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-        });
+      const isoDirBtns = ctrl._isolineDirectionButtons ||
+        Array.from(isoPanel?.querySelectorAll('.rp-isoline-direction-btn') || []);
+      isoDirBtns.forEach((b) => {
+        const isActive = b.dataset.direction === 'from';
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
 
-        const svg = isoPanel.querySelector('.rp-point-icon');
-        if (svg && svg.classList) {
-          svg.classList.toggle('rp-point-icon--origin', true);
-          svg.classList.toggle('rp-point-icon--dest', false);
-        }
+      if (ctrl._isolinePointIconEl && ctrl._isolinePointIconEl.classList) {
+        ctrl._isolinePointIconEl.classList.toggle('rp-point-icon--origin', true);
+        ctrl._isolinePointIconEl.classList.toggle('rp-point-icon--dest', false);
+      }
 
-        const statusIso = isoPanel.querySelector('#rp-status-isoline') || ctrl._statusElIsoline;
-        if (statusIso) {
-          statusIso.textContent = '';
-          statusIso.hidden = true;
-          statusIso.className = 'rp-status';
-        }
+      const statusIso = ctrl._statusElIsoline || isoPanel?.querySelector('#rp-status-isoline') || null;
+      if (statusIso) {
+        statusIso.textContent = '';
+        statusIso.hidden = true;
+        statusIso.className = 'rp-status';
       }
     } else if (activeTab === 'isoline') {
       // Reset routing inputs/state (keep mode/cost)
@@ -417,7 +420,7 @@ export function resetOtherUI(ctrl, activeTab) {
       if (ctrl._statsEl) ctrl._statsEl.hidden = true;
       if (ctrl._engineBadgeEl) ctrl._engineBadgeEl.hidden = true;
 
-      const statusRoute = ctrl._statusEl || null;
+      const statusRoute = ctrl._statusEl || ctrl._panel.querySelector('#rp-status-route') || null;
       if (statusRoute) {
         statusRoute.textContent = '';
         statusRoute.hidden = true;

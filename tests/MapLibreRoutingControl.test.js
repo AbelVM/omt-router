@@ -580,12 +580,20 @@ describe('MapLibreRoutingControl', () => {
     const expression = fillColorCall[2];
     expect(expression[0]).toBe('interpolate-hcl');
     expect(expression[1]).toEqual(['linear']);
-    expect(expression[2]).toEqual(['get', 'valueMax']);
+    expect(expression[2]).toEqual([
+      'coalesce',
+      ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], expect.any(Number)]],
+      expect.any(Number),
+    ]);
     expect(expression).toEqual(
       expect.arrayContaining([
         'interpolate-hcl',
         ['linear'],
-        ['get', 'valueMax'],
+        [
+          'coalesce',
+          ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], expect.any(Number)]],
+          expect.any(Number),
+        ],
         expect.any(Number),
         control._options.startColor,
         expect.any(Number),
@@ -596,6 +604,24 @@ describe('MapLibreRoutingControl', () => {
         control._options.endColor,
       ])
     );
+
+    const sortKeyCall = fakeMap.setLayoutProperty.mock.calls.find(
+      ([layerId, property]) =>
+        layerId === control._options.isolineFillLayerId && property === 'fill-sort-key'
+    );
+    expect(sortKeyCall).toBeDefined();
+    expect(sortKeyCall[2]).toEqual([
+      'coalesce',
+      ['to-number', ['*', -1, [
+        'coalesce',
+        ['coalesce',
+          ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], expect.any(Number)]],
+          expect.any(Number),
+        ],
+        expect.any(Number),
+      ]]],
+      0,
+    ]);
   });
 
   it('loads tile template once and caches the promise', async () => {
@@ -863,11 +889,11 @@ describe('MapLibreRoutingControl', () => {
     const delayedMap = {
       ...fakeMap,
       isStyleLoaded: () => false,
-      once: (event, _cb) => {
+      once: vi.fn((event, _cb) => {
         if (event === 'load') {
           // do not invoke callback to simulate a still-loading style
         }
-      },
+      }),
       getSource: () => null,
     };
 
@@ -875,6 +901,29 @@ describe('MapLibreRoutingControl', () => {
     await control._tryRoute();
 
     expect(control._statusEl.className).toContain('loading');
+  });
+
+  it('registers the route style load handler only once before the style loads', () => {
+    const control = new MapLibreRoutingControl({ maplibre: fakeMaplibre });
+    control._mounted = true;
+    control._routeSourceStyleLoadHandler = null;
+    control._map = {
+      ...fakeMap,
+      isStyleLoaded: () => false,
+      once: vi.fn((event, _cb) => {
+        if (event === 'load') {
+          // do not invoke callback to simulate style loading later
+        }
+      }),
+      getSource: () => null,
+    };
+
+    control._setupRouteSource();
+    control._setupRouteSource();
+    control._setupRouteSource();
+
+    expect(control._map.once).toHaveBeenCalledTimes(1);
+    expect(control._routeSourceStyleLoadHandler).toBeTypeOf('function');
   });
 
   it('calculates isoline and writes GeoJSON to isoline source', async () => {

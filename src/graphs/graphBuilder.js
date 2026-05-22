@@ -13,11 +13,13 @@ import { PowerLogger } from 'performance-helpers/powerLogger';
 import { ways, getDefaultSpeedKmh } from '../utils/ways_defaults.js';
 import { haversineDistanceCoords, isWithinDistanceMetersCoords } from '../utils/misc.js';
 
-const logger = new PowerLogger(import.meta.env?.DEV ? 3 : 0, { name: 'omt-router/graph' });
+const logger = new PowerLogger(0, { name: 'omt-router/graph' });
 const COORD_KEY_SCALE = 1e6;
 const BOUNDARY_MATCH_DISTANCE_M = 15;
 const T_JUNCTION_SNAP_DISTANCE_M = 2;
 const T_JUNCTION_BUCKET_SIZE_DEG = 0.001;
+const T_JUNCTION_BUCKET_KEY_OFFSET = 200000;
+const T_JUNCTION_BUCKET_KEY_MULT = 400001;
 const CAR_CLASS_FIB_SCORE = buildCarClassFibonacciScore();
 
 function buildCarClassFibonacciScore() {
@@ -157,19 +159,19 @@ export function parseTile(buffer, x, y, z, mode) {
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
     if (feature.type !== 2) continue;
-    const rawProps = feature.properties;
-    const normalizedClass = normalizeTagValue(rawProps.class);
+    const { class: rawClass, subclass, access, foot, bicycle, oneway: rawOneway, maxspeed: rawMaxspeed } = feature.properties;
+    const normalizedClass = normalizeTagValue(rawClass);
     const props = {
-      ...rawProps,
-      access: normalizeTagValue(rawProps.access),
+      access: normalizeTagValue(access),
       class: normalizedClass,
-      subclass: normalizeTagValue(rawProps.subclass),
-      foot: normalizeTagValue(rawProps.foot),
-      bicycle: normalizeTagValue(rawProps.bicycle),
+      subclass: normalizeTagValue(subclass),
+      foot: normalizeTagValue(foot),
+      bicycle: normalizeTagValue(bicycle),
+      maxspeed: normalizeTagValue(rawMaxspeed),
     };
     if (!featureAccessible(props)) continue;
-    const oneway = effectiveOneway(mode, normalizeOneway(rawProps.oneway ?? 0));
-    const speed = getDefaultSpeedKmh(mode, normalizedClass);
+    const oneway = effectiveOneway(mode, normalizeOneway(rawOneway ?? 0));
+    const speed = getDefaultSpeedKmh(mode, normalizedClass, rawMaxspeed);
     const roadId = feature.id == null ? undefined : Math.floor(feature.id / 10);
     for (const line of feature.loadGeometry()) {
       for (let j = 0; j < line.length - 1; j++) {
@@ -283,10 +285,26 @@ function projectPointToSegment(lng, lat, x1, y1, x2, y2) {
 
 function splitSegmentsAtEndpoints(segments) {
   if (segments.length === 0) return segments;
+  if (segments.length % SEGMENT_STRIDE !== 0) {
+    throw new Error(`splitSegmentsAtEndpoints: invalid segment buffer length ${segments.length}`);
+  }
+
+  const assertFiniteNumber = (value, label, segmentIndex) => {
+    if (!Number.isFinite(value)) {
+      throw new Error(`splitSegmentsAtEndpoints: invalid ${label} in segment ${segmentIndex}: ${value}`);
+    }
+  };
 
   const segmentCount = segments.length / SEGMENT_STRIDE;
   const segmentBuckets = new Map();
-  const splitCandidates = Array.from({ length: segmentCount }, () => new Map());
+  const splitCandidates = new Array(segmentCount);
+  const visitedSegmentStamps = new Uint32Array(segmentCount);
+  let visitId = 1;
+  const bucketScale = 1 / T_JUNCTION_BUCKET_SIZE_DEG;
+  const bucketOffset = T_JUNCTION_BUCKET_KEY_OFFSET;
+  const bucketMult = T_JUNCTION_BUCKET_KEY_MULT;
+  const endpointScale = COORD_KEY_SCALE;
+  const getBucketKey = (bx, by) => (bx + bucketOffset) * bucketMult + (by + bucketOffset);
 
   for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
     const segmentIndex = i / SEGMENT_STRIDE;
@@ -294,74 +312,101 @@ function splitSegmentsAtEndpoints(segments) {
     const c1lat = segments[i + 1];
     const c2lng = segments[i + 2];
     const c2lat = segments[i + 3];
+    assertFiniteNumber(c1lng, 'c1lng', segmentIndex);
+    assertFiniteNumber(c1lat, 'c1lat', segmentIndex);
+    assertFiniteNumber(c2lng, 'c2lng', segmentIndex);
+    assertFiniteNumber(c2lat, 'c2lat', segmentIndex);
     const minLng = Math.min(c1lng, c2lng) - T_JUNCTION_BUCKET_SIZE_DEG;
     const maxLng = Math.max(c1lng, c2lng) + T_JUNCTION_BUCKET_SIZE_DEG;
     const minLat = Math.min(c1lat, c2lat) - T_JUNCTION_BUCKET_SIZE_DEG;
     const maxLat = Math.max(c1lat, c2lat) + T_JUNCTION_BUCKET_SIZE_DEG;
 
-    const minBucketX = Math.floor(minLng / T_JUNCTION_BUCKET_SIZE_DEG);
-    const maxBucketX = Math.floor(maxLng / T_JUNCTION_BUCKET_SIZE_DEG);
-    const minBucketY = Math.floor(minLat / T_JUNCTION_BUCKET_SIZE_DEG);
-    const maxBucketY = Math.floor(maxLat / T_JUNCTION_BUCKET_SIZE_DEG);
+    const minBucketX = Math.floor(minLng * bucketScale);
+    const maxBucketX = Math.floor(maxLng * bucketScale);
+    const minBucketY = Math.floor(minLat * bucketScale);
+    const maxBucketY = Math.floor(maxLat * bucketScale);
 
     for (let bx = minBucketX; bx <= maxBucketX; bx++) {
       for (let by = minBucketY; by <= maxBucketY; by++) {
-        const key = `${bx},${by}`;
-        const bucket = segmentBuckets.get(key) ?? [];
-        bucket.push(segmentIndex);
-        if (!segmentBuckets.has(key)) {
-          segmentBuckets.set(key, bucket);
+        const bucketKey = (bx + bucketOffset) * bucketMult + (by + bucketOffset);
+        let bucket = segmentBuckets.get(bucketKey);
+        if (bucket === undefined) {
+          bucket = [];
+          segmentBuckets.set(bucketKey, bucket);
         }
+        bucket.push(segmentIndex);
       }
     }
   }
 
   for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
     const currentSegmentIndex = i / SEGMENT_STRIDE;
-    for (let endpointOffset = 0; endpointOffset <= 2; endpointOffset += 2) {
-      const endpointLng = segments[i + endpointOffset];
-      const endpointLat = segments[i + endpointOffset + 1];
-      const endpointKey = coordKey(endpointLng, endpointLat);
-      const endpointBucketX = Math.floor(endpointLng / T_JUNCTION_BUCKET_SIZE_DEG);
-      const endpointBucketY = Math.floor(endpointLat / T_JUNCTION_BUCKET_SIZE_DEG);
 
-      const candidateSegmentIndices = new Set();
+    for (let endpointIndex = 0; endpointIndex < 2; endpointIndex++) {
+      const endpointLng = endpointIndex === 0 ? segments[i] : segments[i + 2];
+      const endpointLat = endpointIndex === 0 ? segments[i + 1] : segments[i + 3];
+      const endpointKeyX = Math.round(endpointLng * endpointScale);
+      const endpointKeyY = Math.round(endpointLat * endpointScale);
+      const endpointBucketX = Math.floor(endpointLng * bucketScale);
+      const endpointBucketY = Math.floor(endpointLat * bucketScale);
+
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
-          const bucketKey = `${endpointBucketX + dx},${endpointBucketY + dy}`;
-          const candidates = segmentBuckets.get(bucketKey);
-          if (!candidates) continue;
-          for (const candidateIndex of candidates) {
-            if (candidateIndex === currentSegmentIndex) continue;
-            candidateSegmentIndices.add(candidateIndex);
+          const bucket = segmentBuckets.get(getBucketKey(endpointBucketX + dx, endpointBucketY + dy));
+          if (!bucket) continue;
+          for (const candidateIndex of bucket) {
+            if (candidateIndex === currentSegmentIndex || visitedSegmentStamps[candidateIndex] === visitId) continue;
+            visitedSegmentStamps[candidateIndex] = visitId;
+
+            const base = candidateIndex * SEGMENT_STRIDE;
+            const candidateC1lng = segments[base];
+            const candidateC1lat = segments[base + 1];
+            const candidateC2lng = segments[base + 2];
+            const candidateC2lat = segments[base + 3];
+            const candidateC1KeyX = Math.round(candidateC1lng * endpointScale);
+            const candidateC1KeyY = Math.round(candidateC1lat * endpointScale);
+            const candidateC2KeyX = Math.round(candidateC2lng * endpointScale);
+            const candidateC2KeyY = Math.round(candidateC2lat * endpointScale);
+            if (
+              (endpointKeyX === candidateC1KeyX && endpointKeyY === candidateC1KeyY) ||
+              (endpointKeyX === candidateC2KeyX && endpointKeyY === candidateC2KeyY)
+            ) {
+              continue;
+            }
+
+            const projection = projectPointToSegment(
+              endpointLng,
+              endpointLat,
+              candidateC1lng,
+              candidateC1lat,
+              candidateC2lng,
+              candidateC2lat
+            );
+            if (!projection) continue;
+            if (!Number.isFinite(projection.t) || projection.t <= 0 || projection.t >= 1) {
+              throw new Error(`splitSegmentsAtEndpoints: invalid projection.t=${projection.t} for segment ${candidateIndex}`);
+            }
+
+            const splitKey = coordKey(endpointLng, endpointLat);
+            let candidateSplits = splitCandidates[candidateIndex];
+            if (!candidateSplits) {
+              splitCandidates[candidateIndex] = [[splitKey, projection.t]];
+              continue;
+            }
+            let duplicate = false;
+            for (let j = 0; j < candidateSplits.length; j++) {
+              if (candidateSplits[j][0] === splitKey) {
+                duplicate = true;
+                break;
+              }
+            }
+            if (duplicate) continue;
+            candidateSplits.push([splitKey, projection.t]);
           }
         }
       }
 
-      for (const candidateIndex of candidateSegmentIndices) {
-        const base = candidateIndex * SEGMENT_STRIDE;
-        const candidateC1Key = segments[base + 4];
-        const candidateC2Key = segments[base + 5];
-        if (endpointKey === candidateC1Key || endpointKey === candidateC2Key) continue;
-
-        const candidateC1lng = segments[base];
-        const candidateC1lat = segments[base + 1];
-        const candidateC2lng = segments[base + 2];
-        const candidateC2lat = segments[base + 3];
-        const projection = projectPointToSegment(
-          endpointLng,
-          endpointLat,
-          candidateC1lng,
-          candidateC1lat,
-          candidateC2lng,
-          candidateC2lat
-        );
-        if (!projection) continue;
-
-        const splitKey = coordKey(endpointLng, endpointLat);
-        if (splitCandidates[candidateIndex].has(splitKey)) continue;
-        splitCandidates[candidateIndex].set(splitKey, projection.t);
-      }
+      visitId += 1;
     }
   }
 
@@ -381,9 +426,9 @@ function splitSegmentsAtEndpoints(segments) {
     const c1boundary = segments[i + 10];
     const c2boundary = segments[i + 11];
     const clipped = segments[i + 12];
-    const splitMap = splitCandidates[segmentIndex];
+    const candidateSplits = splitCandidates[segmentIndex];
 
-    if (splitMap.size === 0) {
+    if (!candidateSplits || candidateSplits.length === 0) {
       result.push(
         c1lng,
         c1lat,
@@ -402,16 +447,14 @@ function splitSegmentsAtEndpoints(segments) {
       continue;
     }
 
-    const splits = [...splitMap.entries()]
-      .map(([key, t]) => ({ key, t }))
-      .sort((a, b) => a.t - b.t);
+    const splits = candidateSplits.length > 1 ? candidateSplits.sort((a, b) => a[1] - b[1]) : candidateSplits;
 
     let previousLng = c1lng;
     let previousLat = c1lat;
     let previousKey = c1Key;
     let previousBoundary = c1boundary;
 
-    for (const { key: splitKey, t } of splits) {
+    for (const [splitKey, t] of splits) {
       const splitLng = c1lng + (c2lng - c1lng) * t;
       const splitLat = c1lat + (c2lat - c1lat) * t;
       const splitCoordsKey = splitKey;
@@ -461,6 +504,30 @@ function splitSegmentsAtEndpoints(segments) {
  * This avoids allocating a temporary list of all parsed tile batches.
  * @param {'car'|'pedestrian'|'bicycle'} mode
  */
+const TYPED_ARRAY_INITIAL_CAPACITY = 1024;
+
+function createInt32Buffer(initialCapacity = TYPED_ARRAY_INITIAL_CAPACITY) {
+  return {
+    data: new Int32Array(initialCapacity),
+    length: 0,
+  };
+}
+
+function ensureInt32Capacity(buffer, index) {
+  if (index >= buffer.data.length) {
+    const newCapacity = Math.max(index + 1, buffer.data.length * 2);
+    const next = new Int32Array(newCapacity);
+    next.set(buffer.data);
+    buffer.data = next;
+  }
+  if (index >= buffer.length) buffer.length = index + 1;
+}
+
+function incrementInt32(buffer, index, delta = 1) {
+  ensureInt32Capacity(buffer, index);
+  buffer.data[index] += delta;
+}
+
 function createGraphAccumulator(mode) {
   /** @type {Map<number, { id: number, coords: [number, number] }>} */
   const nodes = new Map();
@@ -478,12 +545,8 @@ function createGraphAccumulator(mode) {
   const edges = [];
   /** @type {Map<number, Set<number>>} */
   const edgeSet = new Map();
-  /** @type {number[]} */
-  const outDegree = [];
-  /** @type {number[]|null} */
-  const outCarCentrality = mode === 'car' ? [] : null;
-  let nodeCounter = 0;
-  let edgeCounter = 0;
+  const outDegree = createInt32Buffer();
+  const outCarCentrality = mode === 'car' ? createInt32Buffer() : null;
   const classToFibonacciScore = mode === 'car' ? CAR_CLASS_FIB_SCORE : null;
 
   const getOrCreateNode = (lng, lat, roadId, boundary, clipped, key) => {
@@ -527,7 +590,7 @@ function createGraphAccumulator(mode) {
       }
     }
 
-    const id = nodeCounter++;
+    const id = acc.nodeCounter++;
     nodeIndex.set(resolvedKey, id);
     const coords = [lng, lat];
     nodes.set(id, { id, coords });
@@ -548,19 +611,21 @@ function createGraphAccumulator(mode) {
     return id;
   };
 
-  return {
+  const acc = {
     nodes,
     nodeIndex,
     edges,
     edgeSet,
     outDegree,
     outCarCentrality,
-    nodeCounter,
-    edgeCounter,
+    nodeCounter: 0,
+    edgeCounter: 0,
     classToFibonacciScore,
     mode,
     getOrCreateNode,
   };
+
+  return acc;
 }
 
 const SEGMENT_STRIDE = 13;
@@ -570,6 +635,11 @@ function appendSegments(acc, segments) {
   if (segments.length === 0) return;
 
   const firstSegment = segments[0];
+  if (typeof firstSegment !== 'object' || firstSegment === null) {
+    if (segments.length % SEGMENT_STRIDE !== 0) {
+      throw new Error(`appendSegments: invalid flat segment buffer length ${segments.length}`);
+    }
+  }
   if (typeof firstSegment === 'object' && firstSegment !== null && 'c1' in firstSegment) {
     for (const segment of segments) {
       const [c1lng, c1lat] = segment.c1;
@@ -609,14 +679,14 @@ function appendSegments(acc, segments) {
         properties: props,
       };
 
-      if (acc.classToFibonacciScore) {
+        if (acc.classToFibonacciScore) {
         const roadClass = props.class ?? '';
         edge.fibonacciScore = acc.classToFibonacciScore[roadClass] ?? 1;
       }
 
-      outDegree[src] = (outDegree[src] || 0) + 1;
+      incrementInt32(outDegree, src, 1);
       if (outCarCentrality) {
-        outCarCentrality[src] = (outCarCentrality[src] || 0) + (edge.fibonacciScore ?? 1);
+        incrementInt32(outCarCentrality, src, edge.fibonacciScore ?? 1);
       }
       acc.edges.push(edge);
     }
@@ -668,9 +738,9 @@ function appendSegments(acc, segments) {
       edge.fibonacciScore = acc.classToFibonacciScore[roadClass] ?? 1;
     }
 
-    outDegree[src] = (outDegree[src] || 0) + 1;
+    incrementInt32(outDegree, src, 1);
     if (outCarCentrality) {
-      outCarCentrality[src] = (outCarCentrality[src] || 0) + (edge.fibonacciScore ?? 1);
+      incrementInt32(outCarCentrality, src, edge.fibonacciScore ?? 1);
     }
     acc.edges.push(edge);
   }
@@ -682,8 +752,10 @@ function finalizeGraph(acc) {
     nodes: acc.nodes,
     edges: acc.edges,
     nodeIndex: acc.nodeIndex,
-    outDegree: new Int32Array(acc.outDegree),
-    outCarCentrality: acc.outCarCentrality ? new Int32Array(acc.outCarCentrality) : undefined,
+    outDegree: acc.outDegree.data.subarray(0, acc.nodeCounter),
+    outCarCentrality: acc.outCarCentrality
+      ? acc.outCarCentrality.data.subarray(0, acc.nodeCounter)
+      : undefined,
   };
 }
 
@@ -802,7 +874,7 @@ export async function buildGraphAsync(
     1,
     typeof maxConcurrentTiles === 'number' && maxConcurrentTiles > 0
       ? Math.min(maxConcurrentTiles, tiles.length)
-      : Math.min(8, tiles.length, typeof pool?.maxSize === 'number' ? pool.maxSize : 4)
+      : Math.min(6, tiles.length, typeof pool?.maxSize === 'number' ? pool.maxSize : 6)
   );
 
   const buildTileSegment = ({ url, x, y, z }) =>
@@ -838,34 +910,31 @@ export async function buildGraphAsync(
       { ttl }
     );
 
-  const results = [];
-
-  for (let i = 0; i < tiles.length; i += tileBatchSize) {
-    const batch = tiles.slice(i, i + tileBatchSize).map((tile) => buildTileSegment(tile));
-    const settled = await Promise.allSettled(batch);
-    results.push(...settled);
-
-    if (settled.some((result) => result.status === 'rejected' && isFatalTileError(result.reason))) {
-      break;
-    }
-  }
-
   const accumulator = createGraphAccumulator(mode);
   let hasMissingTiles = false;
   const missingTileErrors = [];
 
-  for (const result of results) {
-    if (result.status === 'rejected') {
-      hasMissingTiles = true;
-      logger.warn(() => `tile fetch failed, skipping: ${result.reason?.message ?? result.reason}`);
-      missingTileErrors.push({
-        code: result.reason?.code ?? 'TileFetchFailed',
-        message: result.reason?.message ?? String(result.reason),
-        tile: result.reason?.tile ?? null,
-      });
-      continue;
+  for (let i = 0; i < tiles.length; i += tileBatchSize) {
+    const batch = tiles.slice(i, i + tileBatchSize).map((tile) => buildTileSegment(tile));
+    const settled = await Promise.allSettled(batch);
+
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        hasMissingTiles = true;
+        logger.warn(() => `tile fetch failed, skipping: ${result.reason?.message ?? result.reason}`);
+        missingTileErrors.push({
+          code: result.reason?.code ?? 'TileFetchFailed',
+          message: result.reason?.message ?? String(result.reason),
+          tile: result.reason?.tile ?? null,
+        });
+        continue;
+      }
+      appendSegments(accumulator, result.value);
     }
-    appendSegments(accumulator, result.value);
+
+    if (settled.some((result) => result.status === 'rejected' && isFatalTileError(result.reason))) {
+      break;
+    }
   }
 
   const graph = finalizeGraph(accumulator);

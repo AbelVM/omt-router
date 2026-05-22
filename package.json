@@ -44,9 +44,15 @@
     "maplibre",
     "a-star",
     "dijkstra",
+    "delta-stepping",
+    "barrier",
+    "SSSP",
     "pedestrian",
     "bicycle",
-    "car"
+    "car",
+    "isolines",
+    "isochrones",
+    "contours"
   ],
   "author": {
     "name": "Abel Vázquez Montoro",
@@ -64,26 +70,24 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@fullhuman/postcss-purgecss": "^8.0.0",
-    "@vitest/coverage-v8": "^4.1.6",
-    "chart.js": "^4.5.1",
+    "@vitest/coverage-v8": "^4.1.7",
     "cssnano": "^8.0.1",
     "depcheck": "^1.4.7",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.14",
+    "postcss": "^8.5.15",
     "prettier": "^3.8.3",
     "terser": "^5.47.1",
-    "vite": "^8.0.13",
+    "vite": "^8.0.14",
     "vite-plugin-cross-origin-isolation": "^0.1.6",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^2.0.4",
-    "contraction-hierarchy-js": "^2.0.0",
     "d3-tricontour": "^1.1.0",
-    "kdbush": "^4.0.2",
+    "kdbush": "^4.1.0",
     "pbf": "^4.0.1",
     "performance-helpers": "^1.0.1",
     "rbush": "^4.0.1"

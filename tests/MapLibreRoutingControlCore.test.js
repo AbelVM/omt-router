@@ -287,6 +287,81 @@ describe('MapLibreRoutingControl core helpers', () => {
     expect(ctrl._setStatus).toHaveBeenCalledWith('', '');
   });
 
+  it('uses a null-safe fill-sort-key expression when updating isoline styles', async () => {
+    isoline.mockResolvedValueOnce({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { valueMax: 3 },
+          geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 1], [0, 0]]] },
+        },
+        {
+          type: 'Feature',
+          properties: { valueMax: 5 },
+          geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 1], [0, 0]]] },
+        },
+      ],
+    });
+    buildGraphForTiles.mockResolvedValueOnce({
+      nodes: new Map([[0, { coords: [0, 0] }]]),
+      edges: [{ source: 0, target: 0 }],
+    });
+
+    const src = { setData: vi.fn() };
+    const ctrl = {
+      _mounted: true,
+      _isoline: { point: [0, 0], maxCost: 100, direction: 'from' },
+      _setupRouteSource: vi.fn(),
+      _map: {
+        getSource: () => src,
+        getLayer: () => true,
+        setPaintProperty: vi.fn(),
+        setLayoutProperty: vi.fn(),
+      },
+      _options: {
+        isolineSourceId: 'isoline',
+        isolineFillLayerId: 'fill',
+        isolineOutlineLayerId: 'outline',
+        startColor: '#000',
+        endColor: '#fff',
+      },
+      _text: {
+        status: { waitingStyle: 'Waiting for style', calculatingIsoline: 'Calculating isoline' },
+      },
+      _setStatus: vi.fn(),
+      _routeOptions: { maxAcceptableSnapDistanceM: 100, penalties: {} },
+      _mode: 'car',
+      _costField: 'distance',
+      _urlTemplate: 'http://example.com/{z}/{x}/{y}.pbf',
+      _tileUrlTransform: undefined,
+      _tileProxyTemplate: undefined,
+      _routeFunction: vi.fn(),
+      _calcId: 0,
+      _centerMapOnSource: vi.fn(),
+    };
+
+    await Core.tryIsoline(ctrl);
+
+    expect(ctrl._map.setLayoutProperty).toHaveBeenCalledWith(
+      'fill',
+      'fill-sort-key',
+      [
+        'coalesce',
+        ['to-number', ['*', -1, [
+          'coalesce',
+          [
+            'coalesce',
+            ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], 3]],
+            3,
+          ],
+          3,
+        ]]],
+        0,
+      ]
+    );
+  });
+
   it('builds Y when route function fallback is used for isoline graph creation', async () => {
     buildGraphForTiles.mockRejectedValueOnce(new Error('tile failure'));
     isoline.mockResolvedValueOnce({ type: 'FeatureCollection', features: [] });

@@ -208,7 +208,8 @@ class DatasetRun:
     timestamp: str
     profile: str
     rows: List[dict]
-    payload: dict = field(default_factory=dict)
+    overview: dict = field(default_factory=dict)
+    clustering: dict = field(default_factory=dict)
     quality: float = 0.0
     agreement: float = 0.0
     coverage: float = 0.0
@@ -303,7 +304,8 @@ def load_runs(root: Path) -> List[DatasetRun]:
                     timestamp=ts,
                     profile=profile,
                     rows=rows,
-                    payload=payload,
+                    overview=payload.get("overview", {}),
+                    clustering=payload.get("clustering", {}),
                 )
             )
             profiles_found[profile] += 1
@@ -577,8 +579,8 @@ def summarize_benchmark_run(run: DatasetRun) -> dict:
         "coverage": round(run.coverage, 4),
         "recency": round(run.recency, 4),
         "routeSummary": summarize_route_quality(run.rows),
-        "overview": run.payload.get("overview", {}),
-        "clusteringSummary": summarize_clustering(run.payload),
+        "overview": run.overview,
+        "clusteringSummary": summarize_clustering({"clustering": run.clustering}),
     }
 
 

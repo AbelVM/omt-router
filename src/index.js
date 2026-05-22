@@ -82,14 +82,17 @@ export {
 // the tile cache persist between calls so revisited tiles are never re-fetched.
 
 // Tile-segment cache: individual parsed tile results.
-// 5000 entries × ~5 KB avg = ~25 MB max; tiles expire after 5 min.
-const _tileCache = new PowerCache({ maxEntries: 5000, defaultTTL: 300_000 });
+// Lower-memory mode keeps a smaller pool of recently-used tiles, while still
+// avoiding repeated fetches for short-lived route retries and nearby queries.
+const _tileCache = new PowerCache({ maxEntries: 500, defaultTTL: 60_000 });
+_tileCache.startCleanup?.({ interval: 60_000, maxCleanupPerTick: 64 });
 
 // Graph cache: merged graphs keyed by sorted tile list + mode.
-// Reuses an already-merged graph when the exact same tile set is requested again
-// (e.g. repeated route queries in the same area or after transportation-mode
-// toggle back to a previously used mode). 50 entries is enough for typical use.
-const _graphCache = new PowerCache({ maxEntries: 50, defaultTTL: 300_000 });
+// Keep the cache focused on short-lived reuse patterns: repeated queries in
+// the same corridor, mode toggles, UI graph/isolines over the same tile set,
+// and overlapping route batches.
+const _graphCache = new PowerCache({ maxEntries: 8, defaultTTL: 90_000 });
+_graphCache.startCleanup?.({ interval: 90_000, maxCleanupPerTick: 32 });
 const DEG_TO_RAD = Math.PI / 180;
 
 function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate } = {}) {

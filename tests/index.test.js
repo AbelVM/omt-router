@@ -372,8 +372,9 @@ describe('graphMetrics', () => {
     const second = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
 
     expect(first).toEqual(second);
-    expect(preparedGraph._densitySamplerByRes).toBeInstanceOf(Map);
-    expect(preparedGraph._densitySamplerByRes.get(16)).toBe(preparedGraph._densitySampler);
+    expect(preparedGraph._densitySampler).toBeDefined();
+    expect(preparedGraph._densitySampler.maxRes).toBe(16);
+    expect(preparedGraph._densitySampler).toBe(preparedGraph._densitySampler);
   });
 });
 

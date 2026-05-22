@@ -232,6 +232,42 @@ describe('MapLibreRoutingControl UI helpers', () => {
     expect(() => syncModeAndCostUI(ctrl)).not.toThrow();
   });
 
+  it('syncs mode and cost button state across routing and isoline tabs', () => {
+    const routingModeBtn = { dataset: { mode: 'car' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
+    const isolineModeBtn = { dataset: { mode: 'car' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
+    const routingCostBtn = { dataset: { costField: 'travelTime' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
+    const isolineCostBtn = { dataset: { costField: 'travelTime' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
+    const panel = {
+      querySelectorAll: (selector) => {
+        if (selector === '.rp-mode-btn') return [routingModeBtn, isolineModeBtn];
+        if (selector === '.rp-cost-btn') return [routingCostBtn, isolineCostBtn];
+        if (selector === '.rp-isoline-direction-btn') return [];
+        return [];
+      },
+    };
+    const ctrl = {
+      _panel: panel,
+      _mode: 'car',
+      _costField: 'travelTime',
+      _isoline: { direction: 'from' },
+      _modeButtons: [routingModeBtn],
+      _costButtons: [routingCostBtn],
+      _isolineModeButtons: [isolineModeBtn],
+      _isolineCostButtons: [isolineCostBtn],
+    };
+
+    syncModeAndCostUI(ctrl);
+
+    expect(routingModeBtn.classList.toggle).toHaveBeenCalledWith('active', true);
+    expect(isolineModeBtn.classList.toggle).toHaveBeenCalledWith('active', true);
+    expect(routingCostBtn.classList.toggle).toHaveBeenCalledWith('active', true);
+    expect(isolineCostBtn.classList.toggle).toHaveBeenCalledWith('active', true);
+    expect(routingModeBtn.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+    expect(isolineModeBtn.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+    expect(routingCostBtn.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+    expect(isolineCostBtn.setAttribute).toHaveBeenCalledWith('aria-pressed', 'true');
+  });
+
   it('resets other UI state when switching tabs', () => {
     const statusIso = { textContent: 'bad', hidden: false, className: 'rp-status error' };
     const isoPanel = {

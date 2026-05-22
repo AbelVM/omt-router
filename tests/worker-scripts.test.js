@@ -112,9 +112,90 @@ describe('tilesWorker worker script', () => {
     });
 
     expect(global.self.postMessage).toHaveBeenCalled();
-    const [[message]] = global.self.postMessage.mock.calls;
+    const [[message, transferables]] = global.self.postMessage.mock.calls;
     expect(message).toEqual(expect.objectContaining({ correlationId: 'cid2' }));
     expect(message.output).toBeInstanceOf(ArrayBuffer);
+    expect(Array.isArray(transferables)).toBe(true);
+    expect(transferables[0]).toBe(message.output);
+  });
+
+  it('ignores unsupported worker messages without resetting task state', async () => {
+    vi.stubGlobal('self', {
+      postMessage: vi.fn(),
+      location: { href: 'https://app.test/app', origin: 'https://app.test' },
+    });
+
+    global.fetch = vi.fn();
+    vi.doMock('../src/graphs/graphBuilder.js', () => ({ parseTile: () => [] }));
+
+    await import('../src/tiles/tilesWorker.js');
+
+    await global.self.onmessage({ data: { op: 'noop' } });
+
+    expect(global.self.postMessage).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('aborts stale parse-tile work when a reused worker receives a new message', async () => {
+    vi.stubGlobal('self', {
+      postMessage: vi.fn(),
+      location: { href: 'https://app.test/app', origin: 'https://app.test' },
+    });
+
+    let firstFetchResolve;
+    global.fetch = vi.fn((url, opts) => {
+      const signal = opts?.signal;
+      if (url.includes('tile1')) {
+        return new Promise((resolve, reject) => {
+          if (signal) {
+            signal.addEventListener(
+              'abort',
+              () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })),
+              { once: true }
+            );
+          }
+          firstFetchResolve = () => resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(1)) });
+        });
+      }
+      return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(2)) });
+    });
+
+    vi.doMock('../src/graphs/graphBuilder.js', () => ({
+      parseTile: () => new Uint8Array([7, 8, 9]),
+    }));
+
+    await import('../src/tiles/tilesWorker.js');
+
+    const firstMessage = {
+      op: 'parse-tile',
+      url: 'https://app.test/tile1.pbf',
+      x: 0,
+      y: 0,
+      z: 0,
+      mode: 'car',
+      correlationId: 'cid1',
+    };
+    const secondMessage = {
+      op: 'parse-tile',
+      url: 'https://app.test/tile2.pbf',
+      x: 0,
+      y: 0,
+      z: 0,
+      mode: 'car',
+      correlationId: 'cid2',
+    };
+
+    const firstTask = global.self.onmessage({ data: firstMessage });
+    const secondTask = global.self.onmessage({ data: secondMessage });
+    firstFetchResolve();
+    await secondTask;
+    await firstTask;
+
+    expect(global.self.postMessage).toHaveBeenCalledTimes(1);
+    expect(global.self.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'cid2' }),
+      expect.any(Array)
+    );
   });
 });
 

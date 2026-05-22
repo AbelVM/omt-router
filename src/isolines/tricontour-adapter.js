@@ -2,11 +2,12 @@
  * @module src/isolines/tricontour-adapter
  * @description Utility adapter converting d3-tricontour isoband output into GeoJSON.
  *   Includes ring cleanup, hull artifact removal, and polygon/hole topology reconstruction.
+ *   Emits a fallback polygon when contour generation produces no valid bands.
  */
 
 import { tricontour } from 'd3-tricontour';
-import { signedArea } from '../utils/misc';
-import { pointInRing, findInteriorPoint } from '../utils/fastPointInRing';
+import { signedArea } from '../utils/misc.js';
+import { prepareRing, pointInPreparedRing, findInteriorPoint } from '../utils/fastPointInRing.js';
 
 function computeBBox(points) {
   let minX = Infinity;
@@ -34,21 +35,34 @@ function bboxOverlapRatio(a, b) {
   return union === 0 ? 0 : intersection / union;
 }
 
-// helper: accept only already-closed rings; drop unclosed rings
-// Note: we intentionally DO NOT auto-close rings produced upstream
-// (d3-tricontour sometimes yields open rings). Unclosed rings are
-// considered invalid polygons and will be discarded.
-function closeRing(r) {
+// helper: accept closed rings or close rings whose endpoints are within
+// floating-point epsilon of each other. This preserves valid contour loops
+// that were emitted with near-closed endpoints while still discarding true
+// open line fragments.
+function closeRing(r, eps = 1e-6) {
   if (!Array.isArray(r) || r.length === 0) return null;
   const first = r[0];
   const last = r[r.length - 1];
-  if (first[0] === last[0] && first[1] === last[1]) return r.slice();
+  if (first[0] === last[0] && first[1] === last[1]) return r;
+  if (Math.abs(first[0] - last[0]) <= eps && Math.abs(first[1] - last[1]) <= eps) {
+    const closed = r.slice();
+    closed.push([first[0], first[1]]);
+    return closed;
+  }
   return null;
 }
 
 // monotone chain convex hull; returns closed hull ring or [].
 function convexHull(points) {
-  const uniq = Array.from(new Map(points.map((p) => [`${p[0]},${p[1]}`, p])).values());
+  const seen = new Set();
+  const uniq = [];
+  for (const p of points) {
+    const key = `${p[0]},${p[1]}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniq.push(p);
+    }
+  }
   if (uniq.length <= 1) return uniq;
   uniq.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
@@ -106,7 +120,7 @@ function ringMatchesHull(ring, hull, eps = 1e-6) {
     }
 
     // try reversed hull
-    const hr = h.slice(0, -1).slice().reverse();
+    const hr = h.slice(0, -1).reverse();
     for (let offset = 0; offset < n; offset++) {
       let ok = true;
       for (let i = 0; i < n; i++) {
@@ -148,14 +162,16 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
     tri.thresholds(breaks);
     maxCost = breaks.at(-1);
   }
-  const triOut = Array.from(tri.isobands(points));
-  // Filter out bands with no coordinates or that exceed maxCost (if specified)
-  const bands = triOut.filter(
-    (band) =>
+  const bands = [];
+  for (const band of tri.isobands(points)) {
+    if (
       Array.isArray(band.coordinates) &&
       band.coordinates.length > 0 &&
       (maxCost > 0 ? band.valueMax <= maxCost : true)
-  );
+    ) {
+      bands.push(band);
+    }
+  }
 
   // no debug logging here
 
@@ -208,16 +224,28 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
   // 3) Rebuild containment topology (parent-child) by area + PIP
   // 4) Emit polygons with outer shells and holes (respecting winding)
   const features = bands.map((band, bandIndex) => {
-    // 1) flatten rings
-    const rings = [];
+    // 1) flatten rings and filter near-hull artifacts immediately.
+    const nodes = [];
     for (const poly of band.coordinates) {
       if (!Array.isArray(poly)) continue;
       for (const r of poly) {
         const cr = closeRing(r);
-        if (cr && cr.length >= 4) rings.push(cr);
+        if (!cr || cr.length < 4) continue;
+        if (ringMatchesHull(cr, hull)) continue;
+        const area = Math.abs(signedArea(cr));
+        if (area === 0) continue;
+        nodes.push({
+          ring: cr,
+          area,
+          bbox: computeBBox(cr),
+          parent: null,
+          children: [],
+          prepared: null,
+          depth: 0,
+        });
       }
     }
-    if (rings.length === 0) {
+    if (nodes.length === 0) {
       return {
         type: 'Feature',
         properties: {
@@ -233,35 +261,8 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
       };
     }
 
-    // 2) remove hull artifacts (rings that match domain hull)
-    const goodRings = rings.filter((r) => !ringMatchesHull(r, hull));
-    if (goodRings.length === 0) {
-      return {
-        type: 'Feature',
-        properties: {
-          label:
-            costField === 'distance'
-              ? `${band.valueMax} m`
-              : `${Math.round(band.valueMax / 60)} min`,
-          valueMin: band.value,
-          valueMax: band.valueMax,
-          bandIndex,
-        },
-        geometry: {
-          type: 'MultiPolygon',
-          coordinates: [],
-        },
-      };
-    }
-
-    // 3) build nodes and containment tree
-    const nodes = goodRings.map((r) => ({
-      ring: r,
-      area: Math.abs(signedArea(r)),
-      bbox: computeBBox(r),
-      parent: null,
-      children: [],
-    }));
+    // 3) build containment tree
+    // `nodes` already contains candidate rings after hull filtering.
 
     // sort by descending area
     nodes.sort((a, b) => b.area - a.area);
@@ -273,7 +274,9 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
 
     for (let i = 0; i < nodes.length; i++) {
       const child = nodes[i];
-      const testPoint = findInteriorPoint(child.ring) || child.ring[0];
+      child.prepared = child.prepared || prepareRing(child.ring);
+      const interior = findInteriorPoint(child.prepared);
+      const testPoint = interior || child.ring[0];
       let bestParent = null;
       let bestArea = Infinity;
       for (let j = 0; j < nodes.length; j++) {
@@ -281,7 +284,8 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
         const parent = nodes[j];
         if (parent.area <= child.area) continue;
         if (!bboxContains(parent.bbox, child.bbox)) continue;
-        if (!pointInRing(testPoint, parent.ring)) continue;
+        parent.prepared = parent.prepared || prepareRing(parent.ring);
+        if (!pointInPreparedRing(testPoint[0], testPoint[1], parent.prepared)) continue;
         if (parent.area < bestArea) {
           bestArea = parent.area;
           bestParent = parent;
@@ -291,15 +295,15 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
       if (bestParent) bestParent.children.push(child);
     }
 
-    // 4) parity topology -> build polygons (outer shells with holes)
-    function nodeDepth(node) {
+    // compute depth once per node so polygon assembly avoids repeated parent traversal
+    for (const node of nodes) {
       let depth = 0;
       let p = node.parent;
       while (p) {
         depth++;
         p = p.parent;
       }
-      return depth;
+      node.depth = depth;
     }
 
     function ensureCCW(ring) {
@@ -311,13 +315,12 @@ export default function isobandsToFeatures(points, breaks = [], costField = 'dis
 
     const polygons = [];
     for (const node of nodes) {
-      const depth = nodeDepth(node);
+      const depth = node.depth;
       // even depth => shell
       if ((depth & 1) === 0) {
         const poly = [ensureCCW(node.ring)];
         for (const child of node.children) {
-          const childDepth = nodeDepth(child);
-          if ((childDepth & 1) === 1) {
+          if ((child.depth & 1) === 1) {
             poly.push(ensureCW(child.ring));
           }
         }

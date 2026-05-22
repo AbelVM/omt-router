@@ -177,6 +177,19 @@ export class MapLibreRoutingControl {
     this._statDistEl = null;
     this._statTimeEl = null;
     this._engineBadgeEl = null;
+    this._isolineThresholdInput = null;
+    this._isolineThresholdUnitEl = null;
+    this._isolinePanel = null;
+    this._routingPanel = null;
+    this._modeButtons = null;
+    this._costButtons = null;
+    this._isolineModeButtons = null;
+    this._isolineCostButtons = null;
+    this._isolineDirectionButtons = null;
+    this._isolinePointIconEl = null;
+    this._swapBtn = null;
+    this._tabRoutingBtn = null;
+    this._tabIsolineBtn = null;
     this._markers = { origin: null, dest: null, isoline: null };
     this._calcId = 0;
     this._suppressNextMapPointerSet = false;
@@ -247,6 +260,18 @@ export class MapLibreRoutingControl {
     this._engineBadgeEl = this._panel.querySelector('#rp-engine');
     this._isolinePointInput = this._panel.querySelector('#rp-isoline-point');
     this._isolineThresholdInput = this._panel.querySelector('#rp-isoline-threshold');
+    this._isolineThresholdUnitEl = this._panel.querySelector('#rp-isoline-threshold-unit');
+    this._isolinePanel = this._panel.querySelector('#rp-isoline-panel');
+    this._routingPanel = this._panel.querySelector('#rp-routing-panel');
+    this._modeButtons = this._routingPanel ? Array.from(this._routingPanel.querySelectorAll('.rp-mode-btn')) : [];
+    this._costButtons = this._routingPanel ? Array.from(this._routingPanel.querySelectorAll('.rp-cost-btn')) : [];
+    this._isolineModeButtons = Array.from(this._isolinePanel?.querySelectorAll('.rp-mode-btn') || []);
+    this._isolineCostButtons = Array.from(this._isolinePanel?.querySelectorAll('.rp-cost-btn') || []);
+    this._isolineDirectionButtons = Array.from(this._panel.querySelectorAll('.rp-isoline-direction-btn'));
+    this._isolinePointIconEl = this._panel.querySelector('#rp-isoline-panel .rp-point-icon');
+    this._swapBtn = this._panel.querySelector('#rp-swap-btn');
+    this._tabRoutingBtn = this._panel.querySelector('#rp-tab-routing');
+    this._tabIsolineBtn = this._panel.querySelector('#rp-tab-isoline');
 
     this._bindPanelEvents();
     // Ensure mode/cost UI and threshold UI are synced on mount
@@ -466,8 +491,9 @@ export class MapLibreRoutingControl {
   _bindPanelEvents() {
     // Scope routing controls to the routing panel (if present) so isoline
     // controls don't accidentally get bound by the routing handlers.
-    const routingPanel = this._panel.querySelector('#rp-routing-panel') || this._panel;
-    const modeButtons = routingPanel.querySelectorAll('.rp-mode-btn');
+    const routingPanel =
+      this._routingPanel || this._panel.querySelector('#rp-routing-panel') || this._panel;
+    const modeButtons = this._modeButtons || Array.from(routingPanel.querySelectorAll('.rp-mode-btn'));
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const newMode = btn.dataset.mode;
@@ -492,7 +518,7 @@ export class MapLibreRoutingControl {
       });
     });
 
-    const costButtons = routingPanel.querySelectorAll('.rp-cost-btn');
+    const costButtons = this._costButtons || Array.from(routingPanel.querySelectorAll('.rp-cost-btn'));
     costButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const newCost = btn.dataset.costField;
@@ -539,7 +565,7 @@ export class MapLibreRoutingControl {
       });
     }
 
-    const swapBtn = this._panel.querySelector('#rp-swap-btn');
+    const swapBtn = this._swapBtn || this._panel.querySelector('#rp-swap-btn');
     if (swapBtn) {
       swapBtn.addEventListener('click', () => {
         this._reverseRoute();
@@ -551,16 +577,16 @@ export class MapLibreRoutingControl {
     this._panel.addEventListener('contextmenu', (e) => e.stopPropagation());
 
     // Tabs (when both features available)
-    const tabRoutingBtn = this._panel.querySelector('#rp-tab-routing');
-    const tabIsolineBtn = this._panel.querySelector('#rp-tab-isoline');
+    const tabRoutingBtn = this._tabRoutingBtn || this._panel.querySelector('#rp-tab-routing');
+    const tabIsolineBtn = this._tabIsolineBtn || this._panel.querySelector('#rp-tab-isoline');
+    const routePanel = this._routingPanel || this._panel.querySelector('#rp-routing-panel');
+    const isolinePanel = this._isolinePanel || this._panel.querySelector('#rp-isoline-panel');
     if (tabRoutingBtn && tabIsolineBtn) {
       tabRoutingBtn.addEventListener('click', () => {
         tabRoutingBtn.classList.add('active');
         tabIsolineBtn.classList.remove('active');
-        const rpRoute = this._panel.querySelector('#rp-routing-panel');
-        const rpIso = this._panel.querySelector('#rp-isoline-panel');
-        if (rpRoute) rpRoute.hidden = false;
-        if (rpIso) rpIso.hidden = true;
+        if (routePanel) routePanel.hidden = false;
+        if (isolinePanel) isolinePanel.hidden = true;
         this._activeTab = 'routing';
         this._clearIsoline();
         UI.syncModeAndCostUI(this);
@@ -569,10 +595,8 @@ export class MapLibreRoutingControl {
       tabIsolineBtn.addEventListener('click', () => {
         tabIsolineBtn.classList.add('active');
         tabRoutingBtn.classList.remove('active');
-        const rpRoute = this._panel.querySelector('#rp-routing-panel');
-        const rpIso = this._panel.querySelector('#rp-isoline-panel');
-        if (rpRoute) rpRoute.hidden = true;
-        if (rpIso) rpIso.hidden = false;
+        if (routePanel) routePanel.hidden = true;
+        if (isolinePanel) isolinePanel.hidden = false;
         this._activeTab = 'isoline';
         // Clear routing visuals (route layers/sources) and remove any
         // routing markers (origin/dest) so the isoline view is clean.
@@ -599,7 +623,8 @@ export class MapLibreRoutingControl {
     }
 
     // Isoline controls
-    const isoDirBtns = this._panel.querySelectorAll('.rp-isoline-direction-btn');
+    const isoDirBtns =
+      this._isolineDirectionButtons || Array.from(this._panel.querySelectorAll('.rp-isoline-direction-btn') || []);
     isoDirBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         const newDir = btn.dataset.direction;
@@ -619,22 +644,16 @@ export class MapLibreRoutingControl {
         } catch (_e) {
           void _e;
         }
-        // Update the small bullet in the isoline point input to match direction
-        try {
-          const svg = this._panel.querySelector('#rp-isoline-panel .rp-point-icon');
-          if (svg && svg.classList) {
-            svg.classList.toggle('rp-point-icon--origin', this._isoline.direction === 'from');
-            svg.classList.toggle('rp-point-icon--dest', this._isoline.direction === 'to');
-          }
-        } catch (_e) {
-          void _e;
+        if (this._isolinePointIconEl && this._isolinePointIconEl.classList) {
+          this._isolinePointIconEl.classList.toggle('rp-point-icon--origin', this._isoline.direction === 'from');
+          this._isolinePointIconEl.classList.toggle('rp-point-icon--dest', this._isoline.direction === 'to');
         }
 
         if (!wasSame && this._isoline.point) this._tryIsoline();
       });
     });
 
-    const isoPoint = this._panel.querySelector('#rp-isoline-point');
+    const isoPoint = this._isolinePointInput;
     if (isoPoint) {
       isoPoint.addEventListener('change', () => {
         const coords = parseCoords(isoPoint.value || '');
@@ -647,75 +666,75 @@ export class MapLibreRoutingControl {
     }
 
     // Bind isoline-specific mode/cost controls (scoped to isoline panel)
-    const isoPanel = this._panel.querySelector('#rp-isoline-panel');
-    if (isoPanel) {
-      const isoModeBtns = isoPanel.querySelectorAll('.rp-mode-btn');
-      isoModeBtns.forEach((b) => {
-        b.addEventListener('click', () => {
-          const newMode = b.dataset.mode;
-          // If mode unchanged, refresh UI state only
-          if (this._mode === newMode) {
-            isoModeBtns.forEach((bb) => {
-              const isActive = bb === b;
-              bb.classList.toggle('active', isActive);
-              bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-            });
-            UI.syncModeAndCostUI(this);
-            return;
-          }
-          this._mode = newMode;
+    const isoModeBtns =
+      this._isolineModeButtons || Array.from(isolinePanel?.querySelectorAll('.rp-mode-btn') || []);
+    isoModeBtns.forEach((b) => {
+      b.addEventListener('click', () => {
+        const newMode = b.dataset.mode;
+        // If mode unchanged, refresh UI state only
+        if (this._mode === newMode) {
           isoModeBtns.forEach((bb) => {
             const isActive = bb === b;
             bb.classList.toggle('active', isActive);
             bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
           });
           UI.syncModeAndCostUI(this);
-          this._tryIsoline();
+          return;
+        }
+        this._mode = newMode;
+        isoModeBtns.forEach((bb) => {
+          const isActive = bb === b;
+          bb.classList.toggle('active', isActive);
+          bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
+        UI.syncModeAndCostUI(this);
+        this._tryIsoline();
       });
+    });
 
-      const isoCostBtns = isoPanel.querySelectorAll('.rp-cost-btn');
-      isoCostBtns.forEach((b) => {
-        b.addEventListener('click', () => {
-          const newCost = b.dataset.costField;
-          // If the cost selection didn't change, just refresh UI/threshold
-          if (this._costField === newCost) {
-            isoCostBtns.forEach((bb) => {
-              const isActive = bb === b;
-              bb.classList.toggle('active', isActive);
-              bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-            });
-            UI.syncModeAndCostUI(this);
-            return;
-          }
-          this._costField = newCost;
+    const isoCostBtns =
+      this._isolineCostButtons || Array.from(isolinePanel?.querySelectorAll('.rp-cost-btn') || []);
+    isoCostBtns.forEach((b) => {
+      b.addEventListener('click', () => {
+        const newCost = b.dataset.costField;
+        // If the cost selection didn't change, just refresh UI/threshold
+        if (this._costField === newCost) {
           isoCostBtns.forEach((bb) => {
             const isActive = bb === b;
             bb.classList.toggle('active', isActive);
             bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
           });
           UI.syncModeAndCostUI(this);
-          this._tryIsoline();
+          return;
+        }
+        this._costField = newCost;
+        isoCostBtns.forEach((bb) => {
+          const isActive = bb === b;
+          bb.classList.toggle('active', isActive);
+          bb.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
+        UI.syncModeAndCostUI(this);
+        this._tryIsoline();
       });
+    });
 
-      const isoThreshold = isoPanel.querySelector('#rp-isoline-threshold');
-      if (isoThreshold) {
-        const handleIsoThresholdChange = () => {
-          const raw = Number(isoThreshold.value || 0);
-          if (!Number.isFinite(raw) || raw < 0) return;
-          // Convert minutes -> seconds for travelTime/optimal, otherwise meters
-          if (this._costField === 'travelTime' || this._costField === 'optimal') {
-            this._isoline.maxCost = raw * 60;
-          } else {
-            this._isoline.maxCost = raw;
-          }
-          this._tryIsoline();
-        };
-        // Trigger recalculation immediately on input changes (not just on blur/enter)
-        isoThreshold.addEventListener('input', handleIsoThresholdChange);
-        isoThreshold.addEventListener('change', handleIsoThresholdChange);
-      }
+    const isoThreshold =
+      this._isolineThresholdInput || isolinePanel?.querySelector('#rp-isoline-threshold');
+    if (isoThreshold) {
+      const handleIsoThresholdChange = () => {
+        const raw = Number(isoThreshold.value || 0);
+        if (!Number.isFinite(raw) || raw < 0) return;
+        // Convert minutes -> seconds for travelTime/optimal, otherwise meters
+        if (this._costField === 'travelTime' || this._costField === 'optimal') {
+          this._isoline.maxCost = raw * 60;
+        } else {
+          this._isoline.maxCost = raw;
+        }
+        this._tryIsoline();
+      };
+      // Trigger recalculation immediately on input changes (not just on blur/enter)
+      isoThreshold.addEventListener('input', handleIsoThresholdChange);
+      isoThreshold.addEventListener('change', handleIsoThresholdChange);
     }
   }
 

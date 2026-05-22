@@ -205,6 +205,10 @@ export function findTopTwoIndices(probs) {
  * @returns {object} A normalized map of ML feature values for runtime engine inference.
  */
 export function resolveMlFeatureValues(features = {}) {
+  if (!features || typeof features !== 'object') {
+    features = {};
+  }
+
   const {
     safeN: safeNRaw,
     safeE: safeERaw,
@@ -354,30 +358,39 @@ export function resolveMlFeatureValues(features = {}) {
  * @param {string[]} classes Ordered engine class labels.
  * @returns {number[]|null} Probability vector for each class or null for invalid input.
  */
-function inferDistanceEngineWithRuntimeLinear(regressors, normalized, classes) {
-  if (!regressors || typeof regressors !== 'object' || !Array.isArray(classes)) {
+function inferDistanceEngineWithRuntimeLinear(regressors, featureValues, runtimeFeatureOrder, means, scales, classes) {
+  if (
+    !regressors ||
+    typeof regressors !== 'object' ||
+    !Array.isArray(runtimeFeatureOrder) ||
+    !Array.isArray(means) ||
+    !Array.isArray(scales) ||
+    !Array.isArray(classes)
+  ) {
     return null;
   }
 
+  const featureCount = runtimeFeatureOrder.length;
   const classCount = classes.length;
-  const featureCount = normalized.length;
   const scores = new Array(classCount);
 
   for (let i = 0; i < classCount; i += 1) {
     const reg = regressors[classes[i]];
-    const intercept = Number.isFinite(reg.intercept) ? reg.intercept : 0;
-    const coeffs = reg.coefficients;
-    let value = intercept;
-    for (let j = 0; j < featureCount; j += 1) {
-      value += normalized[j] * coeffs[j];
+    if (!reg || !Array.isArray(reg.coefficients) || reg.coefficients.length !== featureCount) {
+      return null;
     }
-    scores[i] = value;
+
+    const coeffs = reg.coefficients;
+    let value = Number.isFinite(reg.intercept) ? reg.intercept : 0;
+
+    for (let j = 0; j < featureCount; j += 1) {
+      const raw = safeNumber(featureValues[runtimeFeatureOrder[j]], 0);
+      value += ((raw - safeNumber(means[j], 0)) / safeScale(scales[j])) * coeffs[j];
+    }
+
+    scores[i] = Number.isFinite(value) ? -value : value;
   }
 
-  for (let i = 0; i < classCount; i += 1) {
-    const score = scores[i];
-    scores[i] = Number.isFinite(score) ? -score : score;
-  }
   return softmax(scores);
 }
 
@@ -408,17 +421,15 @@ function inferDistanceEngineWithMl(features, profileKey) {
   } = cached;
 
   if (!hasValidRegressors) return fallbackEngine;
-  const normalized = new Array(runtimeFeatureOrder.length);
-  const featureValues = resolveMlFeatureValues(features || {});
-  const featureCount = runtimeFeatureOrder.length;
-
-  for (let i = 0; i < featureCount; i += 1) {
-    const name = runtimeFeatureOrder[i];
-    const raw = safeNumber(featureValues[name], 0);
-    normalized[i] = (raw - safeNumber(means[i], 0)) / safeScale(scales[i]);
-  }
-
-  const probs = inferDistanceEngineWithRuntimeLinear(regressors, normalized, classes);
+  const featureValues = resolveMlFeatureValues(features);
+  const probs = inferDistanceEngineWithRuntimeLinear(
+    regressors,
+    featureValues,
+    runtimeFeatureOrder,
+    means,
+    scales,
+    classes
+  );
   if (!probs || !probs.length) return fallbackEngine;
 
   const { bestIndex, secondIndex } = findTopTwoIndices(probs);

@@ -33,6 +33,13 @@ describe('tuning utilities', () => {
     expect(values.logSourceTargetDegreeRatio).toBeCloseTo(Math.log1p(0.5));
   });
 
+  it('tolerates invalid feature input without throwing', () => {
+    expect(() => resolveMlFeatureValues(null)).not.toThrow();
+    const values = resolveMlFeatureValues(null);
+    expect(values.safeN).toBe(1);
+    expect(values.safeBeelineKm).toBeCloseTo(0.25);
+  });
+
   it('returns correct parallel decisions for supported engines', () => {
     expect(shouldUseParallelForEngine('delta-stepping', true)).toBe(true);
     expect(shouldUseParallelForEngine('adaptive-barrier', true)).toBe(false);

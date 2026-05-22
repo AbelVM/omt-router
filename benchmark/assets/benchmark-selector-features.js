@@ -10,6 +10,8 @@ const SELECTOR_BANDS = Object.freeze({
 });
 
 export function classifySelectorFeatures(metrics = {}) {
+  // Defensive: callers may pass `null` explicitly — normalize to an object.
+  metrics = metrics ?? {};
   const safeN = Math.max(1, Number.isFinite(metrics.nodeCount) ? metrics.nodeCount : 1);
   const safeE = Math.max(1, Number.isFinite(metrics.edgeCount) ? metrics.edgeCount : safeN);
   const haversineDistance = Number.isFinite(metrics.haversineDistance)

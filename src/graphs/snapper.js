@@ -66,6 +66,12 @@ export function buildSpatialIndex(graph) {
  * @param {number} maxDistM
  * @returns {number[]}
  */
+function queryWithin(index, x, y, r, out) {
+  const count = index.withinInto(x, y, r, out);
+  out.length = count;
+  return out;
+}
+
 export function getNearbyNodeIds(graph, coords, maxDistM) {
   if (!graph._spatialIndex) {
     graph._spatialIndex = buildSpatialIndex(graph);
@@ -75,7 +81,14 @@ export function getNearbyNodeIds(graph, coords, maxDistM) {
   const [lng, lat] = coords;
   const cosLat = safeCosLat(lat);
   const radiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
-  return index.within(lng, lat, radiusDeg).map((pointIndex) => nodeIds[pointIndex]);
+  const out = graph._spatialIndex._withinOut || (graph._spatialIndex._withinOut = []);
+  const hits = queryWithin(index, lng, lat, radiusDeg, out);
+
+  const result = new Array(hits.length);
+  for (let i = 0; i < hits.length; i += 1) {
+    result[i] = nodeIds[hits[i]];
+  }
+  return result;
 }
 
 /**
@@ -107,13 +120,15 @@ export function nearestNode(coords, graph, maxDistM = 500) {
   const [lng, lat] = coords;
   const cosLat = safeCosLat(lat);
   const radiusDeg = maxDistM / (LATITUDE_METERS * cosLat);
-  const candidates = index.within(lng, lat, radiusDeg);
+  const out = graph._spatialIndex._withinOut || (graph._spatialIndex._withinOut = []);
+  const candidates = queryWithin(index, lng, lat, radiusDeg, out);
 
   if (candidates.length === 0) return -1;
 
   let bestId = -1;
   let bestDist = maxDistM;
-  for (const pointIndex of candidates) {
+  for (let i = 0; i < candidates.length; i += 1) {
+    const pointIndex = candidates[i];
     const nodeId = nodeIds[pointIndex];
     const d = haversine(coords, coordsArr[pointIndex]);
     if (d < bestDist) {
@@ -131,12 +146,19 @@ export function nearestNode(coords, graph, maxDistM = 500) {
  */
 export function buildIncidentEdgeIndex(graph) {
   if (graph._incidentEdgeIndex) return graph._incidentEdgeIndex;
-  const count = graph.nodes.size;
-  const incident = Array.from({ length: count }, () => []);
+  const incident = new Map();
   for (let edgeIndex = 0; edgeIndex < graph.edges.length; edgeIndex++) {
     const edge = graph.edges[edgeIndex];
-    if (edge.source >= 0 && edge.source < count) incident[edge.source].push(edgeIndex);
-    if (edge.target >= 0 && edge.target < count) incident[edge.target].push(edgeIndex);
+    if (edge.source >= 0) {
+      const edges = incident.get(edge.source);
+      if (edges) edges.push(edgeIndex);
+      else incident.set(edge.source, [edgeIndex]);
+    }
+    if (edge.target >= 0) {
+      const edges = incident.get(edge.target);
+      if (edges) edges.push(edgeIndex);
+      else incident.set(edge.target, [edgeIndex]);
+    }
   }
   graph._incidentEdgeIndex = incident;
   return incident;
@@ -237,7 +259,7 @@ export function findClosestSegmentProjection(
   const candidateEdges = new Set();
 
   for (const nodeId of nodeIds) {
-    const edges = incident[nodeId];
+    const edges = incident.get(nodeId);
     if (!edges) continue;
     for (const edgeIndex of edges) candidateEdges.add(edgeIndex);
   }

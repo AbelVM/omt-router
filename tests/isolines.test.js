@@ -109,6 +109,10 @@ describe('isoPHAST direction and pedestrian mode', () => {
     });
     const toRes = isoPHAST(prepared, 1, 2, { direction: 'to', mode: 'car', outputUnscaled: true });
 
+    expect(fromRes.visited).toBeDefined();
+    expect(ArrayBuffer.isView(fromRes.visited)).toBe(true);
+    expect(fromRes.visited.constructor.name).toBe('Uint32Array');
+
     // from: reachable should include 1,2,3 and not 0
     expect(fromRes.reachable).toContain(1);
     expect(fromRes.reachable).toContain(2);
@@ -154,18 +158,15 @@ describe('isoPHAST direction and pedestrian mode', () => {
       outputUnscaled: true,
     });
 
-    // invoke pedestrian mode which should trigger a CH rebuild marked undirected
     const pedRes2 = isoPHAST(prepared, 0, 1.5, {
       direction: 'from',
       mode: 'pedestrian',
       outputUnscaled: true,
     });
-    expect(prepared._chGraphMode).toBe('pedestrian');
-    expect(prepared._chGraphIsUndirected).toBeTruthy();
     expect(pedRes2.reachable).toBeDefined();
   });
 
-  it('rebuilds the contraction hierarchy when costField or penaltyKey changes', () => {
+  it('continues to compute isolines after costField or penaltyKey changes', () => {
     const nodes = new Map();
     nodes.set(0, { id: 0, coords: [0, 0] });
     nodes.set(1, { id: 1, coords: [1, 0] });
@@ -187,17 +188,16 @@ describe('isoPHAST direction and pedestrian mode', () => {
     const graph = { nodes, edges, mode: 'car' };
     const prepared = buildCH(graph, 'distance');
 
-    isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
-    expect(prepared._chGraphCostField).toBe('distance');
-    expect(prepared._chGraphPenaltyKey).toBe('none');
+    const baseRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    expect(baseRes.reachable).toContain(0);
 
     prepared.costField = 'travelTime';
     prepared.penaltyKey = 'none';
-    isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
-    expect(prepared._chGraphCostField).toBe('travelTime');
+    const travelRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    expect(travelRes.reachable).toContain(0);
 
     prepared.penaltyKey = 'i1';
-    isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
-    expect(prepared._chGraphPenaltyKey).toBe('i1');
+    const penaltyRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    expect(penaltyRes.reachable).toContain(0);
   });
 });

@@ -316,17 +316,9 @@ export function getDensityFeatures(preparedGraph, srcCoords, tgtCoords, opts = {
     preparedGraph.coordsFloat32 = coords;
   }
 
-  let samplerCache = preparedGraph._densitySamplerByRes;
-  const lastSampler = preparedGraph._densitySampler;
-  if (!samplerCache) {
-    samplerCache = preparedGraph._densitySamplerByRes = new Map();
-  }
-
-  let sampler = lastSampler?.maxRes === maxRes ? lastSampler : samplerCache.get(maxRes);
-
-  if (!sampler) {
+  let sampler = preparedGraph._densitySampler;
+  if (!sampler || sampler.maxRes !== maxRes) {
     sampler = new UniversalGraphSampler(coords, maxRes);
-    samplerCache.set(maxRes, sampler);
     preparedGraph._densitySampler = sampler;
   }
 
@@ -375,7 +367,6 @@ class UniversalGraphSampler {
   }
 
   _build(coords) {
-    const grid = new Uint8Array(this.totalCells);
     const sat = this.sat;
     const { minX, minY } = this.bounds;
     const scaleX = this.scaleX;
@@ -384,26 +375,27 @@ class UniversalGraphSampler {
     const resY = this.resY;
     const coordsLen = coords.length;
 
+    sat.fill(0);
     for (let i = 0; i < coordsLen; i += 2) {
       const gx = Math.floor((coords[i] - minX) * scaleX);
       const gy = Math.floor((coords[i + 1] - minY) * scaleY);
-      grid[gy * resX + gx] = 1;
+      sat[gy * resX + gx] = 1;
     }
 
-    // Construcción de la Summed-Area Table (SAT)
+    // Construcción de la Summed-Area Table (SAT) in-place
     for (let y = 0; y < resY; y++) {
       let rowSum = 0;
       const rowOffset = y * resX;
       const aboveOffset = rowOffset - resX;
       for (let x = 0; x < resX; x++) {
-        rowSum += grid[rowOffset + x];
+        rowSum += sat[rowOffset + x];
         const above = y > 0 ? sat[aboveOffset + x] : 0;
         sat[rowOffset + x] = rowSum + above;
       }
     }
 
     // Guardamos la ocupación total para el índice global
-    this.totalOccupiedCells = this.sat[this.totalCells - 1];
+    this.totalOccupiedCells = sat[this.totalCells - 1];
     this.invTotalOccupiedCells = 1 / (this.totalOccupiedCells || 1);
     this.globalAreaScale = this.totalCells * this.invTotalOccupiedCells;
   }

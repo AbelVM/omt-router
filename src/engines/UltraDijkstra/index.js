@@ -22,17 +22,31 @@ import QuadHeap from './heap.js';
  */
 class UltraDijkstra {
   /**
-   *
-   * @param {*} n
-   * @param {*} m
+   * @param {number} n
+   * @param {number} m
+   * @param {object} [options]
+   * @param {Int32Array} [options.adjPtr]
+   * @param {Int32Array} [options.adjTo]
+   * @param {Int32Array} [options.adjCost]
+   * @param {number} [options.distScale]
    */
-  constructor(n, m) {
+  constructor(n, m, options = {}) {
     this.n = n;
-    this.head = new Int32Array(n).fill(-1);
-    this.next = new Int32Array(m);
-    this.to = new Int32Array(m);
-    this.weight = new Float64Array(m);
     this.edgeCount = 0;
+    this.DIST_SCALE = options.distScale ?? 10;
+
+    if (options.adjPtr && options.adjTo && options.adjCost) {
+      this.adjPtr = options.adjPtr;
+      this.adjTo = options.adjTo;
+      this.adjCost = options.adjCost;
+      this.useCSR = true;
+    } else {
+      this.head = new Int32Array(n).fill(-1);
+      this.next = new Int32Array(m);
+      this.to = new Int32Array(m);
+      this.weight = new Float64Array(m);
+      this.useCSR = false;
+    }
 
     this.dists = new Float64Array(n).fill(Infinity);
     this.prev = new Int32Array(n).fill(-1);
@@ -40,6 +54,10 @@ class UltraDijkstra {
   }
 
   addEdge(u, v, w) {
+    if (this.useCSR) {
+      throw new Error('UltraDijkstra.addEdge cannot be used with CSR-backed graphs');
+    }
+
     const i = this.edgeCount++;
     this.to[i] = v;
     this.weight[i] = w;
@@ -49,17 +67,15 @@ class UltraDijkstra {
 
   solve(source, target = -1) {
     const dists = this.dists;
-    const head = this.head;
-    const next = this.next;
-    const to = this.to;
-    const weight = this.weight;
-    const heap = this.heap;
     const prev = this.prev;
+    const heap = this.heap;
 
     dists.fill(Infinity);
     prev.fill(-1);
     dists[source] = 0;
     prev[source] = source;
+    heap.size = 0;
+    heap.pos.fill(-1);
     heap.pushOrReduce(source, 0);
 
     while (!heap.isEmpty()) {
@@ -68,15 +84,33 @@ class UltraDijkstra {
 
       if (u === target) return d_u;
 
-      // Manual relaxation loop for JIT optimization
-      for (let i = head[u] | 0; i !== -1; i = next[i] | 0) {
-        const v = to[i] | 0;
-        const newDist = d_u + weight[i];
-
-        if (newDist < dists[v]) {
-          dists[v] = newDist;
-          prev[v] = u;
-          heap.pushOrReduce(v, newDist);
+      if (this.useCSR) {
+        const adjPtr = this.adjPtr;
+        const adjTo = this.adjTo;
+        const adjCost = this.adjCost;
+        const scale = this.DIST_SCALE;
+        for (let k = adjPtr[u]; k < adjPtr[u + 1]; k++) {
+          const v = adjTo[k] | 0;
+          const newDist = d_u + adjCost[k] / scale;
+          if (newDist < dists[v]) {
+            dists[v] = newDist;
+            prev[v] = u;
+            heap.pushOrReduce(v, newDist);
+          }
+        }
+      } else {
+        const head = this.head;
+        const next = this.next;
+        const to = this.to;
+        const weight = this.weight;
+        for (let i = head[u] | 0; i !== -1; i = next[i] | 0) {
+          const v = to[i] | 0;
+          const newDist = d_u + weight[i];
+          if (newDist < dists[v]) {
+            dists[v] = newDist;
+            prev[v] = u;
+            heap.pushOrReduce(v, newDist);
+          }
         }
       }
     }
@@ -99,16 +133,12 @@ export async function ultraDijkstraRouter(startId, endId, prepared) {
   const { adjPtr, adjTo, adjCost, N } = prepared;
   const DIST_SCALE = 10;
 
-  const solver = new UltraDijkstra(N, adjCost.length);
-
-  // Load graph into solver: iterate through CSR format
-  for (let u = 0; u < N; u++) {
-    for (let k = adjPtr[u]; k < adjPtr[u + 1]; k++) {
-      const v = adjTo[k];
-      const cost = adjCost[k] / DIST_SCALE;
-      solver.addEdge(u, v, cost);
-    }
-  }
+  const solver = new UltraDijkstra(N, adjCost.length, {
+    adjPtr,
+    adjTo,
+    adjCost,
+    distScale: DIST_SCALE,
+  });
 
   // Run Dijkstra from start
   solver.solve(startId);

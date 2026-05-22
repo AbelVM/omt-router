@@ -5,6 +5,7 @@
 export function setupRouteSource(ctrl) {
   if (!ctrl._map) return;
   if (ctrl._map.getSource(ctrl._options.routeSourceId)) return;
+  if (ctrl._routeSourceStyleLoadHandler) return;
 
   ctrl._routeSourceStyleLoadHandler = () => {
     if (!ctrl._mounted || !ctrl._map) return;
@@ -53,7 +54,7 @@ export function setupRouteSource(ctrl) {
         'line-gradient': [
           'interpolate-hcl',
           ['linear'],
-          ['line-progress'],
+          ['coalesce', ['to-number', ['coalesce', ['line-progress'], 0]], 0],
           0,
           ctrl._options.startColor,
           1,
@@ -87,7 +88,7 @@ export function setupRouteSource(ctrl) {
           'fill-opacity': 0.4,
         },
         layout: {
-          'fill-sort-key': ['-', ['get', 'valueMax']],
+          'fill-sort-key': 0,
         },
       });
 
@@ -98,8 +99,8 @@ export function setupRouteSource(ctrl) {
         source: ctrl._options.isolineSourceId,
         layout: {
           'symbol-placement': 'point',
-          'text-field': ['to-string', ['get', 'label']],
-          'text-font': ['Open Sans Regular'],
+          'text-field': ['to-string', ['coalesce', ['get', 'label'], '']],
+          'text-font': ['Noto Sans Regular'],
           'text-size': 12,
         },
         paint: {
@@ -113,6 +114,7 @@ export function setupRouteSource(ctrl) {
     if (ctrl._origin && ctrl._dest) {
       ctrl._tryRoute?.();
     }
+    ctrl._routeSourceStyleLoadHandler = null;
   };
 
   if (ctrl._map.isStyleLoaded()) {

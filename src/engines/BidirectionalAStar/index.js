@@ -6,14 +6,58 @@ import { haversineDistance as haversine } from '../../utils/misc.js';
 
 const DIST_SCALE = 10;
 const INF_I32 = 2_000_000_000;
+const MAX_HEAP_BUFFER_BYTES = 1 << 30; // 1 GiB total for heap arrays (costs + nodes)
+const MAX_HEAP_ELEMENTS = MAX_HEAP_BUFFER_BYTES / (Int32Array.BYTES_PER_ELEMENT * 2);
+const RESIZABLE_ARRAY_BUFFER_SUPPORTED = (() => {
+  if (typeof ArrayBuffer === 'undefined' || typeof ArrayBuffer.prototype.resize !== 'function') {
+    return false;
+  }
+  try {
+    new ArrayBuffer(0, { maxByteLength: 0 });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+const WORKSPACE = Symbol('BidirectionalAStarWorkspace');
+
+function ensureWorkspace(prepared, N) {
+  let ws = prepared[WORKSPACE];
+  if (!ws || ws.N !== N) {
+    ws = {
+      N,
+      distFwd: new Int32Array(N).fill(INF_I32),
+      distBwd: new Int32Array(N).fill(INF_I32),
+      prevFwd: new Int32Array(N).fill(-1),
+      nextBwd: new Int32Array(N).fill(-1),
+      settled: new Uint8Array(N),
+      heapFwd: new MinHeap(),
+      heapBwd: new MinHeap(),
+    };
+    prepared[WORKSPACE] = ws;
+    return ws;
+  }
+
+  ws.distFwd.fill(INF_I32);
+  ws.distBwd.fill(INF_I32);
+  ws.prevFwd.fill(-1);
+  ws.nextBwd.fill(-1);
+  ws.settled.fill(0);
+  ws.heapFwd.clear();
+  ws.heapBwd.clear();
+  return ws;
+}
 
 /**
  * Binary min-heap backed by flat typed arrays.
  *
- * Flat Float64Array (costs) + Int32Array (nodes) store both values
+ * Flat Int32Array (costs) + Int32Array (nodes) store both values
  * contiguously, avoiding per-push object allocation.
  */
 class MinHeap {
+  #costBuffer;
+  #nodeBuffer;
   #costs;
   #nodes;
   #size = 0;
@@ -21,18 +65,47 @@ class MinHeap {
 
   constructor(initialCapacity = 256) {
     this.#cap = initialCapacity;
-    this.#costs = new Float64Array(initialCapacity);
-    this.#nodes = new Int32Array(initialCapacity);
+    if (RESIZABLE_ARRAY_BUFFER_SUPPORTED) {
+      this.#costBuffer = new ArrayBuffer(initialCapacity * Int32Array.BYTES_PER_ELEMENT, {
+        maxByteLength: MAX_HEAP_BUFFER_BYTES,
+      });
+      this.#nodeBuffer = new ArrayBuffer(initialCapacity * Int32Array.BYTES_PER_ELEMENT, {
+        maxByteLength: MAX_HEAP_BUFFER_BYTES,
+      });
+      this.#costs = new Int32Array(this.#costBuffer);
+      this.#nodes = new Int32Array(this.#nodeBuffer);
+    } else {
+      this.#costs = new Int32Array(initialCapacity);
+      this.#nodes = new Int32Array(initialCapacity);
+    }
   }
 
   #grow() {
-    this.#cap *= 2;
-    const c = new Float64Array(this.#cap);
+    const nextCap = Math.min(this.#cap * 2, MAX_HEAP_ELEMENTS);
+    if (nextCap <= this.#cap) {
+      throw new Error('BidirectionalAStar heap capacity exceeded');
+    }
+    this.#cap = nextCap;
+    if (RESIZABLE_ARRAY_BUFFER_SUPPORTED) {
+      const newCostBytes = this.#cap * Int32Array.BYTES_PER_ELEMENT;
+      const newNodeBytes = this.#cap * Int32Array.BYTES_PER_ELEMENT;
+      this.#costBuffer.resize(newCostBytes);
+      this.#nodeBuffer.resize(newNodeBytes);
+      this.#costs = new Int32Array(this.#costBuffer);
+      this.#nodes = new Int32Array(this.#nodeBuffer);
+      return;
+    }
+
+    const c = new Int32Array(this.#cap);
     const n = new Int32Array(this.#cap);
     c.set(this.#costs);
     n.set(this.#nodes);
     this.#costs = c;
     this.#nodes = n;
+  }
+
+  clear() {
+    this.#size = 0;
   }
 
   push(cost, node) {
@@ -111,25 +184,16 @@ export function bidirectionalAStar(startId, endId, prepared) {
     ? (id) => Math.round(haversine(coordsArr[id], startCoords) * DIST_SCALE)
     : () => 0;
 
-  const distFwd = new Int32Array(N).fill(INF_I32);
-  const distBwd = new Int32Array(N).fill(INF_I32);
-  // Parent pointers for deterministic full-path reconstruction.
-  // prevFwd[v] = predecessor of v on the best known path from start to v.
-  // nextBwd[v] = next node after v on the best known path from v to end.
-  const prevFwd = new Int32Array(N).fill(-1);
-  const nextBwd = new Int32Array(N).fill(-1);
+  const { distFwd, distBwd, prevFwd, nextBwd, settled, heapFwd: pqFwd, heapBwd: pqBwd } =
+    ensureWorkspace(prepared, N);
 
   distFwd[startId] = 0;
   distBwd[endId] = 0;
-
-  const pqFwd = new MinHeap();
-  const pqBwd = new MinHeap();
 
   pqFwd.push(hFwd(startId), startId);
   pqBwd.push(hBwd(endId), endId);
 
   // settled[v] bit 0 = settled by forward, bit 1 = settled by backward.
-  const settled = new Uint8Array(N);
   let bestCost = INF_I32;
   let meetNode = -1;
 

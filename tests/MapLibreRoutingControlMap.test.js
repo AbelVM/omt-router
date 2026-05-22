@@ -84,6 +84,49 @@ describe('MapLibreRoutingControl.map helpers', () => {
     expect(ctrl._tryRoute).toHaveBeenCalled();
   });
 
+  it('uses a null-safe line-gradient expression for route layers', () => {
+    const ctrl = {
+      _mounted: true,
+      _map: map,
+      _options: {
+        routeSourceId: 'route-src',
+        routeCasingLayerId: 'route-casing',
+        routeLayerId: 'route-line',
+        graphSourceId: 'graph-src',
+        graphLayerId: 'graph-line',
+        isolineSourceId: 'isoline-src',
+        isolineFillLayerId: 'isoline-fill',
+        isolineOutlineLayerId: 'isoline-outline',
+        startColor: '#00f',
+        endColor: '#f00',
+        showGraph: false,
+      },
+      _isoline: { direction: 'from' },
+      _origin: null,
+      _dest: null,
+      _tryRoute: vi.fn(),
+    };
+
+    setupRouteSource(ctrl);
+
+    expect(map.addLayer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'route-line',
+        paint: expect.objectContaining({
+          'line-gradient': [
+            'interpolate-hcl',
+            ['linear'],
+            ['coalesce', ['to-number', ['coalesce', ['line-progress'], 0]], 0],
+            0,
+            '#00f',
+            1,
+            '#f00',
+          ],
+        }),
+      })
+    );
+  });
+
   it('removes existing route, graph, and isoline layers and sources', () => {
     map.layers.add('route-line');
     map.layers.add('route-casing');

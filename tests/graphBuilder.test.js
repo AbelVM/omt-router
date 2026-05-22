@@ -47,6 +47,33 @@ describe('graphBuilder mergeSegments', () => {
     expect(graph.nodeIndex.get('1000,0')).toBe(graph.nodeIndex.get('1002,0'));
   });
 
+  it('returns typed outDegree and outCarCentrality arrays for car graphs', () => {
+    const graph = mergeSegments(
+      [
+        [
+          {
+            c1: [0, 0],
+            c2: [0.001, 0],
+            oneway: 0,
+            speed: 50,
+            props: { class: 'residential' },
+            roadId: 1,
+            c1boundary: false,
+            c2boundary: false,
+            clipped: false,
+          },
+        ],
+      ],
+      'car'
+    );
+
+    expect(graph.outDegree).toBeInstanceOf(Int32Array);
+    expect(graph.outCarCentrality).toBeInstanceOf(Int32Array);
+    expect(graph.outDegree.length).toBe(graph.nodes.size);
+    expect(graph.outCarCentrality.length).toBe(graph.nodes.size);
+    expect(graph.outDegree[graph.edges[0].source]).toBe(1);
+  });
+
   it('splits a segment at a T-junction endpoint on another segment', () => {
     const tJunctionSegments = [
       0,

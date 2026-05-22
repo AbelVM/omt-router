@@ -43,6 +43,17 @@ import RBush from 'rbush';
  * @returns {{coords:Float64Array,n:number,bbox:[number,number,number,number],eps:number}}
  */
 function prepareRing(ring, eps = 1e-12) {
+  if (
+    ring &&
+    typeof ring === 'object' &&
+    ring.coords instanceof Float64Array &&
+    Number.isInteger(ring.n) &&
+    Array.isArray(ring.bbox) &&
+    ring.bbox.length === 4
+  ) {
+    return ring;
+  }
+
   const n0 = Array.isArray(ring) ? ring.length : 0;
   if (n0 === 0) return { coords: new Float64Array(0), n: 0, bbox: [0, 0, 0, 0], eps };
   const closed =
@@ -97,7 +108,7 @@ function pointInPreparedRing(px, py, prepared, { inclusive = true } = {}) {
   if (px < minX || px > maxX || py < minY || py > maxY) return false;
   const coords = prepared.coords;
   const n = prepared.n;
-  const eps = prepared.eps || 1e-12;
+  const eps = prepared.eps ?? 1e-12;
   let inside = false;
   let j = n - 1;
   for (let i = 0; i < n; i++) {
@@ -124,6 +135,7 @@ function pointInPreparedRing(px, py, prepared, { inclusive = true } = {}) {
  */
 function buildRingIndex(preparedRings) {
   const tree = new RBush();
+  if (!preparedRings || preparedRings.length === 0) return tree;
   const items = preparedRings.map((p, i) => {
     const [minX, minY, maxX, maxY] = p.bbox;
     return { minX, minY, maxX, maxY, id: i };
@@ -149,12 +161,8 @@ function ringsContainingPoint(px, py, preparedRings, tree, { inclusive = true } 
   const hits = tree.search({ minX: px, minY: py, maxX: px, maxY: py });
   const result = [];
   for (const h of hits) {
-    const id = h.id;
-    const p = preparedRings[id];
-    if (!p) continue;
-    const [minX, minY, maxX, maxY] = p.bbox;
-    if (px < minX || px > maxX || py < minY || py > maxY) continue;
-    if (pointInPreparedRing(px, py, p, { inclusive })) result.push(id);
+    const p = preparedRings[h.id];
+    if (p && pointInPreparedRing(px, py, p, { inclusive })) result.push(h.id);
   }
   return result;
 }

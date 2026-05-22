@@ -8,8 +8,25 @@ import deltaWorker from './delta-worker.js?worker&inline';
 const INF_DISTANCE = 0x3fffffff;
 const STATE_NEXT_SIZE = 0;
 const MAX_PARALLEL_WORKERS = 8;
+const MAX_RESIZABLE_BUFFER_BYTES = 1 << 30; // 1 GiB
+const MAX_ENGINE_BUFFER_BYTES = 256 << 20; // 256 MiB
+const RESIZABLE_ARRAY_BUFFER_SUPPORTED =
+  typeof ArrayBuffer !== 'undefined' && typeof ArrayBuffer.prototype.resize === 'function';
+
+const allocateBuffer = (BufferType, byteLength) => {
+  if (BufferType === ArrayBuffer && RESIZABLE_ARRAY_BUFFER_SUPPORTED) {
+    try {
+      return new ArrayBuffer(byteLength, { maxByteLength: MAX_RESIZABLE_BUFFER_BYTES });
+    } catch {
+      return new ArrayBuffer(byteLength);
+    }
+  }
+  return new BufferType(byteLength);
+};
+
 let sharedPool = null;
 let sharedPoolWorkers = 0;
+let sharedPoolRefCount = 0;
 
 function getSharedPool(workerCount) {
   if (!sharedPool || sharedPoolWorkers !== workerCount) {
@@ -34,7 +51,9 @@ function getSharedPool(workerCount) {
       },
     });
     sharedPoolWorkers = workerCount;
+    sharedPoolRefCount = 0;
   }
+  sharedPoolRefCount++;
   return sharedPool;
 }
 
@@ -50,7 +69,6 @@ class DeltaSteppingSSSP {
 
     this.hasParallelSupport = !forceSerialRouting && typeof SharedArrayBuffer !== 'undefined';
     this.hasWorkerSupport = typeof Worker !== 'undefined';
-    const BufferType = this.hasParallelSupport ? SharedArrayBuffer : ArrayBuffer;
 
     const align4 = (offset) => (offset + 3) & ~3;
     let off = 0;
@@ -74,8 +92,13 @@ class DeltaSteppingSSSP {
     off += n;
     this.stateOff = align4(off);
     const size = this.stateOff + 64;
+    const shouldUseSharedBuffer = this.hasParallelSupport && size <= MAX_ENGINE_BUFFER_BYTES;
+    if (!shouldUseSharedBuffer) {
+      this.hasParallelSupport = false;
+    }
+    const BufferType = this.hasParallelSupport ? SharedArrayBuffer : ArrayBuffer;
 
-    this.buffer = new BufferType(size);
+    this.buffer = allocateBuffer(BufferType, size);
 
     this.dist = new Int32Array(this.buffer, this.distOff, n);
     this.prev = new Int32Array(this.buffer, this.prevOff, n);
@@ -97,10 +120,9 @@ class DeltaSteppingSSSP {
     this.MIN_FRONTIER_FOR_PARALLEL = Number.isFinite(minFrontierForParallel)
       ? Math.max(1, Math.floor(minFrontierForParallel))
       : defaultMinFrontierForParallel;
-    this.pool =
-      this.hasParallelSupport && this.hasWorkerSupport && workerCount > 1
-        ? getSharedPool(workerCount)
-        : null;
+    const enableParallelWorkers =
+      this.hasParallelSupport && this.hasWorkerSupport && workerCount > 1;
+    this.pool = enableParallelWorkers ? getSharedPool(workerCount) : null;
 
     this.buckets = new Map();
     this.head.fill(-1);
@@ -172,19 +194,19 @@ class DeltaSteppingSSSP {
       const b = this.takeSmallestBucketIndex();
       if (!Number.isFinite(b)) break;
 
-      let S = Array.from(this.buckets.get(b));
+      let S = this.buckets.get(b);
       this.buckets.delete(b);
-      const settledInBucket = [];
+      const settledInBucket = new Set();
 
-      while (S.length > 0) {
-        settledInBucket.push(...S);
+      while (S && S.size > 0) {
+        for (const v of S) settledInBucket.add(v);
         const next = await this.relaxFrontier(S, 'light');
 
-        S = [];
+        S = new Set();
         for (let i = 0; i < next.length; i++) {
           const v = next[i];
           const vBucket = Math.floor(this.dist[v] / this.delta);
-          if (vBucket === b) S.push(v);
+          if (vBucket === b) S.add(v);
           else this.addToBucket(vBucket, v);
         }
       }
@@ -201,26 +223,32 @@ class DeltaSteppingSSSP {
   }
 
   async relaxFrontier(nodes, mode) {
-    if (nodes.length === 0) return [];
+    const size = nodes?.length ?? nodes?.size ?? 0;
+    if (size === 0) return [];
 
     this.setState(STATE_NEXT_SIZE, 0);
-    this.qCurr.set(nodes, 0);
+    if (typeof nodes.length === 'number') {
+      this.qCurr.set(nodes, 0);
+    } else {
+      let qCurrSize = 0;
+      for (const node of nodes) this.qCurr[qCurrSize++] = node;
+    }
     this.inQueue.fill(0);
 
-    if (this.pool && nodes.length >= this.MIN_FRONTIER_FOR_PARALLEL) {
+    if (this.pool && size >= this.MIN_FRONTIER_FOR_PARALLEL) {
       try {
         this.lastParallelUsed = true;
-        await this.dispatchParallel(nodes.length, mode);
+        await this.dispatchParallel(size, mode);
       } catch {
-        this.dispatchSerial(nodes.length, mode);
+        this.dispatchSerial(size, mode);
       }
     } else {
-      this.dispatchSerial(nodes.length, mode);
+      this.dispatchSerial(size, mode);
     }
 
     const nextSize = this.getState(STATE_NEXT_SIZE);
-    const nextNodes = Array.from(this.qNext.subarray(0, nextSize));
-    for (let i = 0; i < nextNodes.length; i++) this.inQueue[nextNodes[i]] = 0;
+    const nextNodes = this.qNext.subarray(0, nextSize);
+    for (let i = 0; i < nextSize; i++) this.inQueue[nextNodes[i]] = 0;
     return nextNodes;
   }
 
@@ -292,7 +320,27 @@ class DeltaSteppingSSSP {
   }
 
   terminate() {
+    if (this.pool) {
+      sharedPoolRefCount = Math.max(0, sharedPoolRefCount - 1);
+      if (sharedPoolRefCount === 0) {
+        sharedPool?.terminate();
+        sharedPool = null;
+        sharedPoolWorkers = 0;
+      }
+    }
     this.pool = null;
+    this.buffer = null;
+    this.dist = null;
+    this.prev = null;
+    this.head = null;
+    this.next = null;
+    this.targets = null;
+    this.weights = null;
+    this.qCurr = null;
+    this.qNext = null;
+    this.inQueue = null;
+    this.state = null;
+    this.buckets = null;
   }
 }
 

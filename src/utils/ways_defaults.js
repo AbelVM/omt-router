@@ -196,23 +196,61 @@ export const MODE_BASE_SPEEDS_KMH = {
 };
 
 /**
+ * Parse an OSM maxspeed tag into kilometers per hour.
+ * Supports values like `50`, `50 km/h`, and `50 mph`.
+ * Returns null for unknown or non-numeric tags such as `none`, `walk`, or `signals`.
+ *
+ * @param {string|number|null|undefined} maxspeed
+ * @returns {number|null}
+ */
+export function parseMaxspeedKmh(maxspeed) {
+  if (maxspeed == null) return null;
+  if (typeof maxspeed === 'number') {
+    return Number.isFinite(maxspeed) && maxspeed > 0 ? maxspeed : null;
+  }
+  if (typeof maxspeed !== 'string') return null;
+
+  const value = maxspeed.trim().toLowerCase();
+  if (!value || value === 'none') return null;
+
+  const mphMatch = value.match(/^(\d+(?:\.\d+)?)\s*mph$/);
+  if (mphMatch) {
+    return Number(mphMatch[1]) * 1.609344;
+  }
+
+  const kmhMatch = value.match(/^(\d+(?:\.\d+)?)\s*(?:km\/h|kph)$/);
+  if (kmhMatch) {
+    return Number(kmhMatch[1]);
+  }
+
+  const numericMatch = value.match(/^(\d+(?:\.\d+)?)/);
+  if (numericMatch) {
+    return Number(numericMatch[1]);
+  }
+
+  return null;
+}
+
+/**
  * Default speed profile by transport mode.
  * Car uses per-class legal-driving defaults while bicycle and pedestrian
  * use conservative mode-wide averages when explicit road speeds are absent.
  *
  * @param {'car'|'pedestrian'|'bicycle'} mode
  * @param {string} roadClass
+ * @param {string|number|null|undefined} [maxspeed]
  * @returns {number}
  */
 /**
  * Get the default speed in km/h for a given transport mode and road class.
  * @param {'car'|'pedestrian'|'bicycle'} mode Transport mode.
  * @param {string} roadClass OpenMapTiles road class.
+ * @param {string|number|null|undefined} [maxspeed] Optional explicit maxspeed tag.
  * @returns {number} Default speed in kilometers per hour.
  */
-export function getDefaultSpeedKmh(mode, roadClass) {
+export function getDefaultSpeedKmh(mode, roadClass, maxspeed) {
   if (mode === 'car') {
-    return CLASS_SPEEDS_KMH[roadClass] ?? 50;
+    return parseMaxspeedKmh(maxspeed) ?? CLASS_SPEEDS_KMH[roadClass] ?? 50;
   }
 
   if (mode === 'bicycle' || mode === 'pedestrian') {

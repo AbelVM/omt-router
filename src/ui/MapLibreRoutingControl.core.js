@@ -464,10 +464,16 @@ export async function tryIsoline(ctrl) {
         const bigColor =
           ctrl._isoline.direction === 'from' ? ctrl._options.endColor : ctrl._options.startColor;
         const eps = Math.max(1e-6, (maxVal - minVal) * 1e-6);
+        const valueExpr = [
+          'coalesce',
+          ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], minVal]],
+          minVal,
+        ];
+        const safeValueExpr = ['coalesce', valueExpr, minVal];
         const expr = [
           'interpolate-hcl',
           ['linear'],
-          ['get', 'valueMax'],
+          valueExpr,
           minVal,
           smallColor,
           minVal + eps,
@@ -486,10 +492,11 @@ export async function tryIsoline(ctrl) {
               'fill-outline-color',
               expr
             );
-            ctrl._map.setLayoutProperty(ctrl._options.isolineFillLayerId, 'fill-sort-key', [
-              '-',
-              ['get', 'valueMax'],
-            ]);
+            ctrl._map.setLayoutProperty(
+              ctrl._options.isolineFillLayerId,
+              'fill-sort-key',
+              ['coalesce', ['to-number', ['*', -1, safeValueExpr]], 0]
+            );
           }
           if (ctrl._map.getLayer(ctrl._options.isolineOutlineLayerId)) {
             ctrl._map.setPaintProperty(ctrl._options.isolineOutlineLayerId, 'text-color', expr);

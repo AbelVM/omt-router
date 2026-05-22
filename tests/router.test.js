@@ -16,6 +16,18 @@ function createSimpleGraph() {
   return { nodes, edges, mode: 'car' };
 }
 
+function createGraphWithDuplicateEdges() {
+  const nodes = new Map([
+    [0, { coords: [0, 0] }],
+    [1, { coords: [1, 0] }],
+  ]);
+  const edges = [
+    { source: 0, target: 1, cost: 1, length: 10, travelTime: 5, reverseCost: -1 },
+    { source: 0, target: 1, cost: 1, length: 10, travelTime: 5, reverseCost: -1 },
+  ];
+  return { nodes, edges, mode: 'car' };
+}
+
 describe('router utilities', () => {
   it('builds a prepared graph with adjacency and cost map', () => {
     const graph = createSimpleGraph();
@@ -70,6 +82,17 @@ describe('router utilities', () => {
     expect(prepared.penaltyKey).toBe('none');
     expect(prepared.N).toBe(2);
     expect(prepared.adjPtr.length).toBe(3);
+  });
+
+  it('deduplicates repeated edges when building the prepared graph', () => {
+    const graph = createGraphWithDuplicateEdges();
+    const prepared = buildCH(graph, 'distance');
+
+    expect(prepared.E).toBe(1);
+    expect(Array.from(prepared.adjTo)).toEqual([1]);
+    expect(Array.from(prepared.adjCost)).toEqual([100]);
+    expect(prepared.adjPtr[0]).toBe(0);
+    expect(prepared.adjPtr[1]).toBe(1);
   });
 
   it('throws when computeRoute receives an invalid graph object', async () => {

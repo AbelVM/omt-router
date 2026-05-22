@@ -1,7 +1,21 @@
 /**
  * @vitest-environment jsdom
  */
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+
+let formatDuration;
+let benchmarkModule;
+let benchmarkRouteWorkerModule;
+
+beforeAll(async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ tiles: ['https://example.com/tiles'] }) }));
+  buildMinimalBenchmarkDOM();
+  benchmarkModule = await import('../benchmark/assets/index.js');
+  benchmarkRouteWorkerModule = await import('../benchmark/assets/benchmark-route-worker.js');
+  formatDuration = benchmarkModule.formatDuration;
+  globalThis.fetch = oldFetch;
+});
 
 function buildMinimalBenchmarkDOM() {
   document.body.innerHTML = `
@@ -24,10 +38,10 @@ function buildMinimalBenchmarkDOM() {
     <div id="progress-text"></div>
     <div id="results-run-context"></div>
     <div id="benchmark-stopwatch"></div>
-    <div id="scatter"></div>
-    <div id="density"></div>
-    <div id="histogram"></div>
-    <div id="bubble"></div>
+    <canvas id="scatter"></canvas>
+    <canvas id="density"></canvas>
+    <canvas id="histogram"></canvas>
+    <canvas id="bubble"></canvas>
     <input id="url-input" />
     <div id="pagination-controls"></div>
     <div id="pagination-info"></div>
@@ -37,22 +51,276 @@ function buildMinimalBenchmarkDOM() {
     <input id="runs-input" />
     <input id="pause-input" />
     <button id="pause-btn" type="button"></button>
+    <div id="pending-run-prompt" hidden>
+      <div id="pending-run-message"></div>
+      <button id="resume-run-btn" type="button"></button>
+      <button id="restart-run-btn" type="button"></button>
+    </div>
     <button id="download-btn" type="button"></button>
-    <button id="report-btn" type="button"></button>
-    <button id="copy-report-btn" type="button"></button>
-    <div id="report-panel"></div>
-    <div id="report-type-controls"></div>
-    <select id="report-view-select"></select>
-    <div id="report-status"></div>
-    <div id="report-note"></div>
-    <textarea id="report-output"></textarea>
     <div id="pause-state"></div>
     <div id="suggestion-wrap"></div>
   `;
 }
 
+describe('benchmark stopwatch formatting', () => {
+  it('formats durations longer than one hour with hours', () => {
+    expect(formatDuration(3_660_500)).toBe('1:01:00.5');
+    expect(formatDuration(7_205_900)).toBe('2:00:05.9');
+  });
+
+  it('formats durations under one hour with minutes and seconds', () => {
+    expect(formatDuration(125_400)).toBe('2:05.4');
+  });
+
+  it('formats durations under one minute with seconds and tenths', () => {
+    expect(formatDuration(9_200)).toBe('9.2s');
+  });
+});
+
+describe('benchmark route worker cleanup', () => {
+  beforeEach(() => {
+    window.__benchmarkAttachedPorts = 0;
+  });
+
+  it('releases a shared tile pool port when cleanup is invoked', () => {
+    expect(window.__debug_benchmark).toBeDefined();
+    const debug = window.__debug_benchmark;
+    const sharedPortMap = debug.benchmarkRouteWorkerSharedPortMap;
+    expect(sharedPortMap).toBeInstanceOf(WeakMap);
+
+    const fakePort = {
+      close: vi.fn(),
+      onmessage: null,
+    };
+    const fakeWorkerObj = {};
+    sharedPortMap.set(fakeWorkerObj, fakePort);
+    window.__benchmarkAttachedPorts = 1;
+
+    debug.cleanupSharedTilePoolPort(fakeWorkerObj);
+
+    expect(fakePort.close).toHaveBeenCalled();
+    expect(window.__benchmarkAttachedPorts).toBe(0);
+  });
+
+  it('restores the original terminate method during cleanup', () => {
+    expect(window.__debug_benchmark).toBeDefined();
+    const debug = window.__debug_benchmark;
+    const sharedPortMap = debug.benchmarkRouteWorkerSharedPortMap;
+    expect(sharedPortMap).toBeInstanceOf(WeakMap);
+
+    const fakePort = {
+      close: vi.fn(),
+      onmessage: null,
+    };
+    const originalTerminate = vi.fn();
+    const underlyingWorker = {
+      terminate: vi.fn(),
+      __benchmark_original_terminate: originalTerminate,
+    };
+    const fakeWorkerObj = { worker: { _underlying: underlyingWorker } };
+    sharedPortMap.set(fakeWorkerObj, fakePort);
+    window.__benchmarkAttachedPorts = 1;
+
+    debug.cleanupSharedTilePoolPort(fakeWorkerObj);
+
+    expect(fakePort.close).toHaveBeenCalled();
+    expect(window.__benchmarkAttachedPorts).toBe(0);
+    expect(underlyingWorker.terminate).toBe(originalTerminate);
+    expect(underlyingWorker.__benchmark_original_terminate).toBeUndefined();
+  });
+
+  it('cleans up shared tile port when worker terminate is called', () => {
+    expect(window.__debug_benchmark).toBeDefined();
+    const debug = window.__debug_benchmark;
+    const originalTerminate = vi.fn();
+    const underlyingWorker = {
+      postMessage: vi.fn(),
+      terminate: originalTerminate,
+    };
+    const fakeWorkerObj = { worker: { _underlying: underlyingWorker } };
+    window.__benchmarkAttachedPorts = 0;
+
+    debug.attachSharedTilePoolPort(fakeWorkerObj);
+    expect(window.__benchmarkAttachedPorts).toBe(1);
+    expect(underlyingWorker.postMessage).toHaveBeenCalled();
+    expect(underlyingWorker.terminate).not.toBe(originalTerminate);
+
+    underlyingWorker.terminate();
+
+    expect(window.__benchmarkAttachedPorts).toBe(0);
+    expect(originalTerminate).toHaveBeenCalled();
+  });
+
+  it('re-registers route worker error handlers after cleanup when the same wrapper is reused', () => {
+    expect(window.__debug_benchmark).toBeDefined();
+    const debug = window.__debug_benchmark;
+    const addEventListener = vi.fn();
+    const removeEventListener = vi.fn();
+    const underlyingWorker = {
+      postMessage: vi.fn(),
+      addEventListener,
+      removeEventListener,
+    };
+    const wrapper = {
+      _underlying: underlyingWorker,
+      addEventListener,
+      removeEventListener,
+    };
+    const fakeWorkerObj = { worker: wrapper };
+    window.__benchmarkAttachedPorts = 0;
+
+    debug.patchRouteWorkerMessageHandling(fakeWorkerObj);
+    expect(addEventListener).toHaveBeenCalledTimes(6);
+    expect(removeEventListener).toHaveBeenCalledTimes(0);
+
+    debug.cleanupSharedTilePoolPort(fakeWorkerObj);
+    expect(removeEventListener).toHaveBeenCalledTimes(6);
+
+    debug.patchRouteWorkerMessageHandling(fakeWorkerObj);
+    expect(addEventListener).toHaveBeenCalledTimes(12);
+  });
+
+  it('registers shared tile pool port cleanup with FinalizationRegistry when available', async () => {
+    const originalFinalizationRegistry = globalThis.FinalizationRegistry;
+    const originalFetch = globalThis.fetch;
+    const originalBenchmarkRouteWorkerCtor = globalThis.__benchmarkRouteWorkerCtor;
+    const registerSpy = vi.fn();
+    const unregisterSpy = vi.fn();
+
+    globalThis.FinalizationRegistry = vi.fn(function () {
+      this.register = registerSpy;
+      this.unregister = unregisterSpy;
+    });
+    globalThis.fetch = vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ tiles: ['https://example.com/tiles'] }) }));
+    globalThis.__benchmarkRouteWorkerCtor = class FakeBenchmarkRouteWorker {
+      constructor() {
+        this.onmessage = null;
+        this.onerror = null;
+      }
+      postMessage() {}
+      terminate() {}
+      addEventListener() {}
+      removeEventListener() {}
+      dispatchEvent() {
+        return true;
+      }
+    };
+    vi.resetModules();
+
+    await import('../benchmark/assets/index.js');
+    globalThis.fetch = originalFetch;
+    globalThis.FinalizationRegistry = originalFinalizationRegistry;
+    if (originalBenchmarkRouteWorkerCtor === undefined) {
+      delete globalThis.__benchmarkRouteWorkerCtor;
+    } else {
+      globalThis.__benchmarkRouteWorkerCtor = originalBenchmarkRouteWorkerCtor;
+    }
+    vi.resetModules();
+
+    const debug = window.__debug_benchmark;
+    expect(debug).toBeDefined();
+
+    const fakeWorkerObj = { worker: { _underlying: { postMessage: vi.fn(), addEventListener: vi.fn() } } };
+    window.__benchmarkAttachedPorts = 0;
+
+    debug.attachSharedTilePoolPort(fakeWorkerObj);
+
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+    const registerArgs = registerSpy.mock.calls[0];
+    expect(registerArgs[0]).toBe(fakeWorkerObj);
+    expect(registerArgs[1]).toEqual(expect.any(Object));
+    expect(registerArgs[2]).toEqual(expect.any(Object));
+    expect(registerArgs[2]).not.toBe(fakeWorkerObj);
+
+    // Ensure explicit cleanup uses the token instead of the worker object.
+    debug.cleanupSharedTilePoolPort(fakeWorkerObj);
+    expect(unregisterSpy).toHaveBeenCalledWith(registerArgs[2]);
+  });
+
+  it('disposes an existing shared tile pool port before reinitializing a new port', () => {
+    const { initSharedTilePoolPort, disposeSharedTilePoolPort } = benchmarkRouteWorkerModule;
+    const oldPort = { close: vi.fn(), onmessage: vi.fn(), postMessage: vi.fn(), start: vi.fn() };
+    initSharedTilePoolPort(oldPort);
+
+    const newPort = { close: vi.fn(), onmessage: null, postMessage: vi.fn(), start: vi.fn() };
+    initSharedTilePoolPort(newPort);
+
+    expect(oldPort.onmessage).toBeNull();
+    expect(oldPort.close).toHaveBeenCalled();
+
+    disposeSharedTilePoolPort();
+  });
+
+  it('releases route cache entries and disposes prepared graph state', () => {
+    const {
+      _routeCache,
+      releasePreparedRoute,
+      getRouteCacheStats,
+    } = benchmarkRouteWorkerModule;
+
+    const routeDef = { start: [1, 2], end: [3, 4], forceRadius: 5 };
+    const cacheKey = '1,2|3,4|car|10|distance|5|5';
+    const stopCleanup = vi.fn();
+    const clear = vi.fn();
+    const cacheEntry = {
+      prepared: { _routeCache: { stopCleanup, clear } },
+      graph: { nodes: new Map() },
+      routeSetup: { graph: { edges: [] } },
+      radius: 5,
+      fetchMs: 42,
+      startId: 1,
+      endId: 2,
+    };
+    _routeCache.set(cacheKey, cacheEntry);
+
+    const released = releasePreparedRoute(routeDef, 'https://example.com/{z}/{x}/{y}.png', 'car', 10, 'distance');
+
+    expect(released).toBe(true);
+    expect(stopCleanup).toHaveBeenCalled();
+    expect(clear).toHaveBeenCalled();
+    expect(cacheEntry.prepared).toBeNull();
+    expect(cacheEntry.graph).toBeNull();
+    expect(cacheEntry.routeSetup).toBeNull();
+    expect(getRouteCacheStats().size).toBe(0);
+  });
+
+  it('clears the shared tile pool port safely when disposed', () => {
+    const { initSharedTilePoolPort, disposeSharedTilePoolPort } = benchmarkRouteWorkerModule;
+    const port = { close: vi.fn(), onmessage: vi.fn(), postMessage: vi.fn(), start: vi.fn() };
+    initSharedTilePoolPort(port);
+    disposeSharedTilePoolPort();
+
+    expect(port.onmessage).toBeNull();
+    expect(port.close).toHaveBeenCalled();
+  });
+});
+
 function createFakeIndexedDB() {
   const databases = new Map();
+
+  // Deep clone helper that preserves ArrayBuffer and TypedArray values
+  function cloneDeepPreserveTypedArrays(value) {
+    if (value === null || value === undefined) return value;
+    if (ArrayBuffer.isView(value)) {
+      const Ctor = value.constructor;
+      return new Ctor(value);
+    }
+    if (value instanceof ArrayBuffer) {
+      return value.slice(0);
+    }
+    if (Array.isArray(value)) return value.map(cloneDeepPreserveTypedArrays);
+    if (value instanceof Date) return new Date(value.getTime());
+    if (typeof value === 'object') {
+      const out = {};
+      for (const k in value) {
+        if (Object.prototype.hasOwnProperty.call(value, k)) {
+          out[k] = cloneDeepPreserveTypedArrays(value[k]);
+        }
+      }
+      return out;
+    }
+    return value;
+  }
 
   class FakeIDBObjectStore {
     constructor(name, options = {}) {
@@ -75,13 +343,48 @@ function createFakeIndexedDB() {
     add(value) {
       const request = {};
       Promise.resolve().then(() => {
-        const cloned = JSON.parse(JSON.stringify(value));
+        const cloned = cloneDeepPreserveTypedArrays(value);
         if (this.autoIncrement) {
           const id = this.records.length + 1;
           cloned.id = id;
         }
         this.records.push(cloned);
         request.result = cloned.id ?? cloned[this.keyPath];
+        if (typeof request.onsuccess === 'function') {
+          request.onsuccess({ target: request });
+        }
+      });
+      return request;
+    }
+
+    put(value) {
+      const request = {};
+      Promise.resolve().then(() => {
+        const cloned = cloneDeepPreserveTypedArrays(value);
+        let key = cloned[this.keyPath];
+        if (key === undefined && this.autoIncrement) {
+          key = this.records.length + 1;
+          cloned.id = key;
+        }
+        const existingIndex = this.records.findIndex((record) => record[this.keyPath] === key);
+        if (existingIndex >= 0) {
+          this.records[existingIndex] = cloned;
+        } else {
+          this.records.push(cloned);
+        }
+        request.result = key;
+        if (typeof request.onsuccess === 'function') {
+          request.onsuccess({ target: request });
+        }
+      });
+      return request;
+    }
+
+    get(key) {
+      const request = {};
+      Promise.resolve().then(() => {
+        const record = this.records.find((record) => record[this.keyPath] === key);
+        request.result = record === undefined ? undefined : cloneDeepPreserveTypedArrays(record);
         if (typeof request.onsuccess === 'function') {
           request.onsuccess({ target: request });
         }
@@ -161,6 +464,28 @@ function createFakeIndexedDB() {
         const cursor =
           filtered.length > 0 ? new FakeIDBCursor(filtered, this.store.records, request) : null;
         request.result = cursor;
+        if (typeof request.onsuccess === 'function') {
+          request.onsuccess({ target: request });
+        }
+      });
+      return request;
+    }
+
+    count(range) {
+      const request = {};
+      Promise.resolve().then(() => {
+        const count = this.store.records.reduce((total, record) => {
+          if (!range) return total + 1;
+          const value = record[this.keyPath];
+          if (range.type === 'only') {
+            return value === range.value ? total + 1 : total;
+          }
+          if (range.type === 'upperBound') {
+            return value <= range.value ? total + 1 : total;
+          }
+          return total + 1;
+        }, 0);
+        request.result = count;
         if (typeof request.onsuccess === 'function') {
           request.onsuccess({ target: request });
         }
@@ -306,26 +631,52 @@ function createFakeIndexedDB() {
         onsuccess: null,
         onerror: null,
         onupgradeneeded: null,
+        // these may be set on upgrade events
+        result: undefined,
+        transaction: undefined,
+        oldVersion: undefined,
+        newVersion: undefined,
       };
 
       Promise.resolve().then(() => {
         const existing = databases.get(name);
         const oldVersion = existing ? existing.version : 0;
         if (!existing || version > oldVersion) {
-          const db = new FakeIDBDatabase(name, version);
-          const event = {
-            target: { result: db, transaction: null, oldVersion, newVersion: version },
-          };
+          // Use existing.db when upgrading so existing object stores are
+          // available during the upgrade transaction; otherwise create a
+          // fresh DB for initial creation.
+          const db = existing ? existing.db : new FakeIDBDatabase(name, version);
+
+          // Create an upgrade transaction that exposes objectStore access
+          // via event.target.transaction during onupgradeneeded.
+          const upgradeStoreNames = Array.from(db.objectStores.keys());
+          const tx = new FakeIDBTransaction(db, upgradeStoreNames, 'versionchange');
+
+          // Attach upgrade context to the request so handlers can access it.
+          request.result = db;
+          request.transaction = tx;
+          request.oldVersion = oldVersion;
+          request.newVersion = version;
+
           if (typeof request.onupgradeneeded === 'function') {
-            request.onupgradeneeded(event);
+            request.onupgradeneeded({ target: request });
           }
+
+          // Persist the (possibly upgraded) DB and version.
           databases.set(name, { version, db });
+
+          // For the onsuccess event, clear the transient upgrade fields and
+          // surface the resulting DB as the request.result.
+          request.transaction = undefined;
+          request.oldVersion = undefined;
+          request.newVersion = undefined;
           if (typeof request.onsuccess === 'function') {
-            request.onsuccess({ target: { result: db } });
+            request.onsuccess({ target: request });
           }
         } else {
+          request.result = existing.db;
           if (typeof request.onsuccess === 'function') {
-            request.onsuccess({ target: { result: existing.db } });
+            request.onsuccess({ target: request });
           }
         }
       });
@@ -379,35 +730,277 @@ describe('Benchmark report artifact generation', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.doUnmock('../benchmark/assets/benchmark.js');
-    vi.doUnmock('chart.js/auto');
   });
 
-  it('persists and retrieves run results from IndexedDB across requests', async () => {
-    global.indexedDB = createFakeIndexedDB();
-    global.IDBKeyRange = {
-      only(value) {
-        return { type: 'only', value, valueKey: 'runId' };
+  it('counts successful routes only once when results include multiple passes for the same route', async () => {
+    vi.resetModules();
+    buildMinimalBenchmarkDOM();
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ tiles: ['https://fake.tiles/{z}/{x}/{y}.pbf'] }) }));
+    const benchmark = await import('../benchmark/assets/index.js');
+
+    benchmark._setBenchmarkRouteWorkerState({
+      totalTasks: 1,
+      totalRoutes: 1,
+      totalPasses: 2,
+      completedTasks: 0,
+      startedTasks: 0,
+      lastStatus: null,
+      successfulRoutes: 0,
+      successfulRouteIndices: new Set(),
+      successThreshold: 2,
+      activeTasks: 0,
+    });
+
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'result',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 0,
+        routeLabel: 'route-0',
+        result: { found: true, error: null },
       },
-      upperBound(value) {
-        return { type: 'upperBound', value, valueKey: 'ts' };
+    });
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'result',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 1,
+        routeLabel: 'route-0',
+        result: { found: true, error: null },
       },
-    };
+    });
 
-    const benchDb = await import('../benchmark/assets/bench-db.js');
-    await benchDb.prepareForRun('run-1', { clearAll: true });
+    const state = benchmark._getBenchmarkRouteWorkerState();
+    expect(state.successfulRoutes).toBe(1);
+    expect(state.successfulRouteIndices.has(0)).toBe(true);
+    expect(state.successfulRouteIndices.size).toBe(1);
+  });
 
-    await benchDb.saveResultToDB('run-1', 1, 1, { id: 'row-a', score: 10 });
-    await benchDb.saveResultToDB('run-1', 0, 2, { id: 'row-b', score: 20 });
-    await benchDb.waitForPendingWrites();
+  it('tracks completed routes instead of completed passes for progress labels', async () => {
+    vi.resetModules();
+    buildMinimalBenchmarkDOM();
+    const benchmark = await import('../benchmark/assets/index.js');
 
-    const rows = await benchDb.getRecordsForRun('run-1');
-    expect(rows.map((row) => row.result.id)).toEqual(['row-b', 'row-a']);
-    expect(rows[0].passIndex).toBe(0);
-    expect(rows[1].passIndex).toBe(1);
+    benchmark._setBenchmarkRouteWorkerState({
+      totalTasks: 1,
+      totalRoutes: 1,
+      totalPasses: 2,
+      completedTasks: 0,
+      completedRoutes: 0,
+      completedRouteIndices: new Set(),
+      startedTasks: 0,
+      lastStatus: null,
+      successfulRoutes: 0,
+      successfulRouteIndices: new Set(),
+      successThreshold: Infinity,
+      activeTasks: 0,
+    });
 
-    await benchDb.deleteRunRecords('run-1');
-    const emptyRows = await benchDb.getRecordsForRun('run-1');
-    expect(emptyRows).toEqual([]);
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'result',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 0,
+        routeLabel: 'route-0',
+        result: { found: true, error: null },
+      },
+    });
+    benchmark._flushBenchmarkUi();
+
+    expect(document.getElementById('progress-text').textContent).toContain('0/1');
+    expect(benchmark._getBenchmarkRouteWorkerState().completedRoutes).toBe(0);
+
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: { type: 'routeCompleted', runId: 'run-1', routeIndex: 0 },
+    });
+    benchmark._flushBenchmarkUi();
+
+    expect(document.getElementById('progress-text').textContent).toContain('1/1');
+    expect(benchmark._getBenchmarkRouteWorkerState().completedRoutes).toBe(1);
+  });
+
+  it('updates progress bar and label against success threshold when set', async () => {
+    buildMinimalBenchmarkDOM();
+    const benchmark = await import('../benchmark/assets/index.js');
+
+    benchmark._setBenchmarkRouteWorkerState({
+      totalTasks: 3,
+      totalRoutes: 3,
+      totalPasses: 1,
+      completedTasks: 0,
+      startedTasks: 0,
+      lastStatus: null,
+      successfulRoutes: 0,
+      successfulRouteIndices: new Set(),
+      successThreshold: 2,
+      activeTasks: 0,
+    });
+
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'status',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 0,
+        routeLabel: 'route-0',
+        status: 'fetching-tiles',
+      },
+    });
+
+    benchmark._flushBenchmarkUi();
+
+    expect(document.getElementById('progress-bar').style.width).toBe('0%');
+    expect(document.getElementById('progress-text').textContent).toContain('0/2');
+
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'result',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 0,
+        routeLabel: 'route-0',
+        result: { found: true, error: null },
+      },
+    });
+
+    benchmark._flushBenchmarkUi();
+
+    expect(document.getElementById('progress-bar').style.width).toBe('50%');
+    expect(document.getElementById('progress-text').textContent).toContain('1/2');
+  });
+
+  it('ignores unsupported memory status updates so progress text does not become "memory unavailable"', async () => {
+    buildMinimalBenchmarkDOM();
+    const benchmark = await import('../benchmark/assets/index.js');
+
+    benchmark._setBenchmarkRouteWorkerState({
+      totalTasks: 2,
+      totalRoutes: 2,
+      totalPasses: 1,
+      completedTasks: 0,
+      startedTasks: 0,
+      lastStatus: null,
+      successfulRoutes: 0,
+      successfulRouteIndices: new Set(),
+      successThreshold: Infinity,
+      activeTasks: 0,
+    });
+
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'status',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 0,
+        routeLabel: 'route-0',
+        status: 'fetching-tiles',
+      },
+    });
+
+    benchmark._flushBenchmarkUi();
+
+    const initialText = document.getElementById('progress-text').textContent;
+    benchmark._handleBenchmarkRouteWorkerMessage({
+      data: {
+        type: 'status',
+        runId: 'run-1',
+        routeIndex: 0,
+        passIndex: 0,
+        routeLabel: 'route-0',
+        status: 'memory',
+      },
+    });
+
+    benchmark._flushBenchmarkUi();
+
+    expect(document.getElementById('progress-text').textContent).toBe(initialText);
+  });
+
+  it('never estimates total runtime shorter than elapsed time', async () => {
+    document.body.innerHTML = `
+      <div id="category-filters"></div>
+      <div id="length-filters"></div>
+      <div id="route-count"></div>
+      <div id="progress-section"></div>
+      <div id="results-section"></div>
+      <div id="results-tbody"></div>
+      <div id="summary-cards"></div>
+      <div id="summary-tbody"></div>
+      <div id="summary-thead"></div>
+      <div id="cost-summary-tbody"></div>
+      <div id="cost-summary-thead"></div>
+      <table id="summary-table"></table>
+      <table id="cost-summary-table"></table>
+      <div id="auto-selector-summary"></div>
+      <div id="auto-selector-cards"></div>
+      <div id="progress-bar"></div>
+      <div id="progress-text"></div>
+      <div id="results-run-context"></div>
+      <div id="benchmark-stopwatch"></div>
+      <div id="scatter"></div>
+      <div id="density"></div>
+      <div id="histogram"></div>
+      <div id="bubble"></div>
+      <input id="url-input" />
+      <div id="pagination-controls"></div>
+      <div id="pagination-info"></div>
+      <button id="pagination-prev"></button>
+      <button id="pagination-next"></button>
+      <table id="results-table"></table>
+      <select id="mode-select"></select>
+      <input id="runs-input" />
+      <input id="pause-input" />
+      <div id="report-panel"></div>
+      <div id="report-type-controls"></div>
+      <select id="report-view-select"></select>
+      <div id="report-status"></div>
+      <div id="report-note"></div>
+      <div id="report-output"></div>
+      <div id="pause-state"></div>
+      <div id="suggestion-wrap"></div>
+      <button id="run-btn"></button>
+      <button id="stop-btn"></button>
+      <button id="download-btn"></button>
+      <button id="pause-btn"></button>
+      <button id="report-btn"></button>
+      <button id="copy-report-btn"></button>
+      <div id="results-table-wrap"></div>
+      <input id="success-routes-input" type="number" value="0" />
+    `;
+
+    const benchmark = await import('../benchmark/assets/index.js');
+
+    const estimated = benchmark.computeBenchmarkEstimatedTotalMs({
+      elapsedMs: 9000,
+      completedRoutes: 10,
+      effectiveTotalRoutes: 5,
+    });
+
+    expect(estimated).toBeGreaterThanOrEqual(9000);
+  });
+
+  it('ignores late result events when benchmark state is not initialized', async () => {
+    buildMinimalBenchmarkDOM();
+    const benchmark = await import('../benchmark/assets/index.js');
+
+    expect(() => {
+      benchmark._handleBenchmarkRouteWorkerMessage({
+        data: {
+          type: 'result',
+          runId: 'run-1',
+          routeIndex: 0,
+          passIndex: 0,
+          routeLabel: 'route-0',
+          result: { found: true, error: null },
+        },
+      });
+    }).not.toThrow();
+
+    expect(document.getElementById('progress-bar').style.width).toBe('');
+    expect(document.getElementById('progress-text').textContent).toBe('');
   });
 
   it('reconstructs _insertedAt metadata when loading DB-only results for report generation', async () => {
@@ -435,6 +1028,97 @@ describe('Benchmark report artifact generation', () => {
     benchmark.setCurrentRunId('run-ts');
     const results = await benchmark.getReportResults();
     expect(results[0]._insertedAt).toBe(rows[0].result._insertedAt);
+  });
+
+  it('strips nested sample arrays and timing rounds before saving results', async () => {
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-strip', { clearAll: true });
+    const result = {
+      id: 'row-strip',
+      results: {
+        'bidirectional-astar': {
+          medianMs: 10,
+          samplesMs: [10, 11],
+          sampleStats: { mean: 10.5 },
+        },
+      },
+      rawDiagnostics: {
+        execution: {
+          timingRounds: [{ engines: {} }],
+          timingSamplesMsByEngine: { 'bidirectional-astar': [10, 11] },
+          timingSampleStatsByEngine: { 'bidirectional-astar': { mean: 10.5 } },
+        },
+      },
+    };
+
+    await benchDb.saveResultToDB('run-strip', 0, 0, result);
+    await benchDb.waitForPendingWrites();
+
+    const rows = await benchDb.getRecordsForRun('run-strip');
+    expect(rows[0].result.results['bidirectional-astar'].samplesMs).toBeUndefined();
+    expect(rows[0].result.results['bidirectional-astar'].sampleStats).toBeUndefined();
+    expect(rows[0].result.rawDiagnostics.execution.timingRounds).toBeUndefined();
+    expect(rows[0].result.rawDiagnostics.execution.timingSamplesMsByEngine['bidirectional-astar']).toEqual([10, 11]);
+  });
+
+  it('repairs missing results.runId index and returns run records', async () => {
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    // Pre-create a DB at the expected version but without the results.runId index.
+    const createReq = indexedDB.open('omp-benchmark-db', 4);
+    await new Promise((resolve, reject) => {
+      createReq.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        db.createObjectStore('results', { autoIncrement: true });
+        const runs = db.createObjectStore('runs', { keyPath: 'runId' });
+        runs.createIndex('completed', 'completed', { unique: false });
+        db.createObjectStore('metrics', { autoIncrement: true });
+      };
+      createReq.onsuccess = (e) => resolve(e.target.result);
+      createReq.onerror = (e) => reject(e.target.error);
+    });
+
+    // Insert a sample result row into the pre-created DB.
+    const dbPre = await new Promise((resolve) => {
+      const r = indexedDB.open('omp-benchmark-db');
+      r.onsuccess = () => resolve(r.result);
+    });
+    const tx = dbPre.transaction('results', 'readwrite');
+    const store = tx.objectStore('results');
+    store.add({ runId: 'run-missing', passIndex: 0, routeIndex: 0, ts: Date.now(), result: { id: 'row1' } });
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    // openDB should detect the missing index and repair the DB schema.
+    const db = await benchDb.openDB();
+    const tx2 = db.transaction('results', 'readonly');
+    const store2 = tx2.objectStore('results');
+    expect(store2.indexNames.contains('runId')).toBe(true);
+
+    const rows = await benchDb.getRecordsForRun('run-missing');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].result.id).toBe('row1');
   });
 
   it('resolves purgeOld when ts index is unavailable', async () => {
@@ -484,6 +1168,226 @@ describe('Benchmark report artifact generation', () => {
     warnSpy.mockRestore();
   });
 
+  it('preserves existing run records when resuming a pending run', async () => {
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun('run-resume', { clearAll: true });
+    await benchDb.saveResultToDB('run-resume', 1, 0, { id: 'resume-row' });
+    await benchDb.waitForPendingWrites();
+
+    await benchDb.prepareForRun('run-resume', { clearAll: false, resume: true });
+    const rows = await benchDb.getRecordsForRun('run-resume');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].result.id).toBe('resume-row');
+  });
+
+  it('saves and retrieves run metadata with completed flag', async () => {
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    const metadata = await benchDb.saveRunMetadata('run-meta', {
+      createdAt: 100,
+      completed: false,
+    });
+    expect(metadata).toMatchObject({ runId: 'run-meta', createdAt: 100, completed: false });
+
+    const loaded = await benchDb.getRunMetadata('run-meta');
+    expect(loaded).toMatchObject({ runId: 'run-meta', createdAt: 100, completed: false });
+
+    const updated = await benchDb.saveRunMetadata('run-meta', {
+      completed: true,
+      completedAt: 200,
+    });
+    expect(updated).toMatchObject({ runId: 'run-meta', completed: true, completedAt: 200 });
+    expect(updated.updatedAt).toBeGreaterThan(metadata.updatedAt);
+  });
+
+  it('persists summary state inside run metadata for resume card rehydration', async () => {
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    const summaryState = {
+      totalRoutes: 4,
+      completedRoutes: 2,
+      routeErrorCount: 1,
+      engineWins: {
+        'bidirectional-astar': 1,
+        'adaptive-barrier': 1,
+      },
+      tieCount: 0,
+      unrecoveredEngineErrorRouteCount: 0,
+      autoSelector: { selected: 0, changed: 0 },
+    };
+
+    await benchDb.saveRunMetadata('run-summary', {
+      createdAt: 50,
+      completed: false,
+      summaryState,
+    });
+
+    const loaded = await benchDb.getRunMetadata('run-summary');
+    expect(loaded).toMatchObject({ runId: 'run-summary', completed: false, summaryState });
+  });
+
+  it('clears both results and run metadata when prepareForRun clearAll is true', async () => {
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.saveRunMetadata('run-clear', { completed: false });
+    await benchDb.saveResultToDB('run-clear', 0, 0, { id: 'keep' });
+    await benchDb.waitForPendingWrites();
+
+    await benchDb.prepareForRun('run-clear', { clearAll: true });
+
+    const runMetadata = await benchDb.getRunMetadata('run-clear');
+    expect(runMetadata).toBeUndefined();
+    const rows = await benchDb.getRecordsForRun('run-clear');
+    expect(rows).toHaveLength(0);
+  });
+
+  it('shows explicit resume/restart controls when a pending DB run exists', async () => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    buildMinimalBenchmarkDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const runId = 'pending-run-123';
+    localStorage.setItem('omp_benchmark_last_run_v1', runId);
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.saveRunMetadata(runId, {
+      createdAt: 1,
+      completed: false,
+      totalRoutes: 1,
+      totalPasses: 1,
+    });
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(document.getElementById('pending-run-prompt').hidden).toBe(false);
+    expect(document.getElementById('run-btn').disabled).toBe(true);
+
+    document.getElementById('resume-run-btn').click();
+    expect(document.getElementById('pending-run-prompt').hidden).toBe(true);
+    expect(document.getElementById('run-btn').disabled).toBe(false);
+
+    // restart should clear the saved run id and re-enable the UI
+    document.getElementById('restart-run-btn').click();
+    expect(localStorage.getItem('omp_benchmark_last_run_v1')).toBeNull();
+    expect(document.getElementById('pending-run-prompt').hidden).toBe(true);
+    expect(document.getElementById('run-btn').disabled).toBe(false);
+  });
+
+  it('loads persisted summary state from run metadata for current run ids', async () => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    buildMinimalBenchmarkDOM();
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const runId = 'resume-summary-run';
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.saveRunMetadata(runId, {
+      createdAt: Date.now(),
+      completed: false,
+      totalRoutes: 1,
+      totalPasses: 1,
+      summaryState: {
+        totalRoutes: 1,
+        engineWins: {
+          'bidirectional-astar': 1,
+          'adaptive-barrier': 0,
+          'delta-stepping': 0,
+          'ultra-dijkstra': 0,
+        },
+        tieCount: 0,
+        routeErrorCount: 0,
+        unrecoveredEngineErrorRouteCount: 0,
+        autoSelector: {
+          exactHits: 1,
+          nearTieHits: 0,
+          misses: 0,
+          coverage: 100,
+        },
+      },
+    });
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setCurrentRunId(runId);
+    benchmark._setBenchmarkSummaryState({
+      totalRoutes: 0,
+      engineWins: {
+        'bidirectional-astar': 0,
+        'adaptive-barrier': 0,
+        'delta-stepping': 0,
+        'ultra-dijkstra': 0,
+      },
+      tieCount: 0,
+      routeErrorCount: 0,
+      unrecoveredEngineErrorRouteCount: 0,
+      autoSelector: {
+        exactHits: 0,
+        nearTieHits: 0,
+        misses: 0,
+        coverage: 0,
+      },
+    });
+
+    await benchmark.showResults([]);
+
+    expect(document.getElementById('auto-selector-summary').hidden).toBe(false);
+    expect(document.getElementById('auto-selector-cards').textContent).toContain('Exact hits');
+  });
+
   it('closes the database and resets internal state without throwing', async () => {
     vi.resetModules();
     global.indexedDB = {
@@ -530,6 +1434,11 @@ describe('Benchmark report artifact generation', () => {
     ]);
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  // Table rendering and DOM-based sorting removed from the simplified benchmark
+  // UI. The previous test validated paged DB sorting via the table UI; with the
+  // table UI gone this behavior is exercised via the DB helpers and paging
+  // logic directly. Omit the DOM-based test to avoid depending on removed UI.
 
   it('saves per-pass artifacts when DB-loaded results have passIndex but no _passIndex', async () => {
     setupFetchAndDOM();
@@ -652,7 +1561,7 @@ describe('Benchmark report artifact generation', () => {
   });
 
   it('loads both pass results from IndexedDB for the current run', async () => {
-    const fetchMock = setupFetchAndDOM();
+    setupFetchAndDOM();
     global.indexedDB = createFakeIndexedDB();
     global.IDBKeyRange = {
       only(value) {
@@ -865,7 +1774,7 @@ describe('Benchmark report artifact generation', () => {
   });
 
   it('clears cached render results when switching to a new current runId', async () => {
-    const fetchMock = setupFetchAndDOM();
+    setupFetchAndDOM();
     global.indexedDB = createFakeIndexedDB();
     global.IDBKeyRange = {
       only(value) {
@@ -943,6 +1852,131 @@ describe('Benchmark report artifact generation', () => {
     ]);
   });
 
+  it('marks a benchmark complete even when stop-path artifact saving fails', async () => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    buildMinimalBenchmarkDOM();
+
+    const fetchMock = setupFetchAndDOM();
+    fetchMock.mockImplementation(async (url) => {
+      if (typeof url === 'string' && url.includes('/__benchmark/save-results')) {
+        return { ok: false, status: 500, text: async () => 'server error' };
+      }
+      return { ok: true, json: async () => ({ tiles: ['https://fake.tiles/{z}/{x}/{y}.pbf'] }) };
+    });
+
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const runId = 'run-stop-failure';
+    localStorage.setItem('omp_benchmark_last_run_v1', runId);
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun(runId, { clearAll: true });
+    await benchDb.saveRunMetadata(runId, {
+      createdAt: 1,
+      completed: false,
+      totalRoutes: 1,
+      totalPasses: 1,
+    });
+    await benchDb.saveResultToDB(runId, 0, 0, { id: 'db-row-0' });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setPassContexts([{ passKey: 'pass-1', description: 'Pass 1' }]);
+    benchmark.setCurrentRunId(runId);
+
+    document.getElementById('stop-btn').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(localStorage.getItem('omp_benchmark_last_run_v1')).toBeNull();
+    expect(document.getElementById('report-status').textContent).toBe('Report ready');
+  });
+
+  it('clears incomplete pending run state when benchmark stop is clicked', async () => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    buildMinimalBenchmarkDOM();
+
+    const fetchMock = setupFetchAndDOM();
+    fetchMock.mockImplementation(async (url) => {
+      if (typeof url === 'string' && url.includes('/__benchmark/save-results')) {
+        return { ok: true, json: async () => ({ path: 'artifact.json' }) };
+      }
+      return { ok: true, json: async () => ({ tiles: ['https://fake.tiles/{z}/{x}/{y}.pbf'] }) };
+    });
+
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const runId = 'run-stop-pending-cleanup';
+    localStorage.setItem('omp_benchmark_last_run_v1', runId);
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun(runId, { clearAll: true });
+    await benchDb.saveRunMetadata(runId, {
+      createdAt: 1,
+      completed: false,
+      totalRoutes: 1,
+      totalPasses: 1,
+    });
+    await benchDb.saveResultToDB(runId, 0, 0, { id: 'db-row-0' });
+    await benchDb.waitForPendingWrites();
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setPassContexts([{ passKey: 'pass-1', description: 'Pass 1' }]);
+    benchmark.setCurrentRunId(runId);
+
+    document.getElementById('stop-btn').click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(localStorage.getItem('omp_benchmark_last_run_v1')).toBeNull();
+    const pending = await benchDb.findIncompleteRunMetadata();
+    expect(pending).toBeNull();
+  });
+
+  it('clears saved run ID when benchmark completes, including early threshold finishes', async () => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    buildMinimalBenchmarkDOM();
+
+    const runId = 'run-complete-clear-saved-id';
+    localStorage.setItem('omp_benchmark_last_run_v1', runId);
+
+    global.indexedDB = createFakeIndexedDB();
+    global.IDBKeyRange = {
+      only(value) {
+        return { type: 'only', value, valueKey: 'runId' };
+      },
+      upperBound(value) {
+        return { type: 'upperBound', value, valueKey: 'ts' };
+      },
+    };
+
+    const benchDb = await import('../benchmark/assets/bench-db.js');
+    await benchDb.prepareForRun(runId, { clearAll: true });
+
+    const benchmark = await import('../benchmark/assets/index.js');
+    benchmark.setCurrentRunId(runId);
+
+    await benchmark.markRunComplete(runId);
+    expect(localStorage.getItem('omp_benchmark_last_run_v1')).toBeNull();
+  });
+
   it('does not duplicate saves when stop is pressed during a running benchmark', async () => {
     const fetchMock = setupFetchAndDOM();
     global.indexedDB = createFakeIndexedDB();
@@ -955,61 +1989,58 @@ describe('Benchmark report artifact generation', () => {
       },
     };
 
-    const runBenchmarkMock = vi.fn((options, progressCallback) => {
-      return new Promise((resolve, reject) => {
-        const result = {
-          id: 'partial-row',
-          route: 'route-0',
-          error: false,
-          _passIndex: 0,
-        };
-
-        const onAbort = () => {
-          reject(Object.assign(new Error('AbortError'), { name: 'AbortError' }));
-        };
-
-        if (options.signal) {
-          options.signal.addEventListener('abort', onAbort, { once: true });
-        }
-
-        setTimeout(() => {
-          progressCallback({ routeName: 'route-0', result, done: true, phase: 'routing' });
-        }, 0);
-
-        setTimeout(() => {
-          if (!options.signal?.aborted) resolve();
-        }, 50);
-      });
-    });
-
-    vi.doMock('../benchmark/assets/benchmark.js', () => ({
-      runBenchmark: runBenchmarkMock,
-      clearBenchmarkCache: vi.fn(),
-      disposeBenchmarkResources: vi.fn(),
-      getSharedPool: vi.fn(() => ({})),
-      downloadCSV: vi.fn(),
-      drawScatter: vi.fn(),
-      drawDensityScatter: vi.fn(),
-      drawFeatureHistogram: vi.fn(),
-      drawTimingBubble: vi.fn(),
-      installTooltip: vi.fn(),
-      generatePerformanceSummary: vi.fn(() => ({})),
-      generateCostSummary: vi.fn(() => ({ groupKeys: [], rows: [], formatValue: (v) => v })),
-      generateCopilotReport: vi.fn(() => ''),
-      sleep: vi.fn(async () => {}),
-    }));
+    const previousSharedArrayBuffer = global.SharedArrayBuffer;
+    global.SharedArrayBuffer = class SharedArrayBuffer {};
+    globalThis.__benchmarkRouteWorkerCtor = class FakeBenchmarkRouteWorker {
+      constructor() {
+        this.onmessage = null;
+        this.onerror = null;
+      }
+      postMessage() {}
+      terminate() {}
+      addEventListener() {}
+      removeEventListener() {}
+      dispatchEvent() {
+        return true;
+      }
+    };
 
     const benchmark = await import('../benchmark/assets/index.js');
-    document.getElementById('url-input').value = 'https://fake.tiles/{z}/{x}/{y}.pbf';
-    document.getElementById('mode-select').innerHTML = '<option value="test">test</option>';
-    document.getElementById('mode-select').value = 'test';
-    document.getElementById('runs-input').value = '1';
-    document.getElementById('pause-input').value = '0';
+    document.querySelectorAll('#category-filters input').forEach((el, idx) => {
+      el.checked = idx === 0;
+    });
+    document.querySelectorAll('#length-filters input').forEach((el, idx) => {
+      el.checked = idx === 0;
+    });
+    benchmark.updateRouteCount();
 
-    document.getElementById('run-btn').click();
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    document.getElementById('stop-btn').click();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    const cleanupSharedArrayBuffer = () => {
+      if (previousSharedArrayBuffer === undefined) {
+        delete global.SharedArrayBuffer;
+      } else {
+        global.SharedArrayBuffer = previousSharedArrayBuffer;
+      }
+    };
+
+    const cleanupWorker = () => {
+      delete globalThis.__benchmarkRouteWorkerCtor;
+    };
+
+    try {
+      document.getElementById('url-input').value = 'https://fake.tiles/{z}/{x}/{y}.pbf';
+      document.getElementById('mode-select').innerHTML = '<option value="test">test</option>';
+      document.getElementById('mode-select').value = 'test';
+      document.getElementById('runs-input').value = '1';
+      document.getElementById('pause-input').value = '0';
+
+      document.getElementById('run-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      document.getElementById('stop-btn').click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    } finally {
+      cleanupSharedArrayBuffer();
+      cleanupWorker();
+    }
 
     const saveCalls = fetchMock.mock.calls.filter(
       (call) => typeof call[0] === 'string' && call[0].includes('/__benchmark/save-results')
@@ -1535,28 +2566,7 @@ describe('Benchmark report artifact generation', () => {
       expect(summary.formatValue(summary.rows[0][summary.groupKeys[0]])).toMatch(/%$/);
     });
 
-    it('exposes feature bubble radius for finite values', async () => {
-      const { bubbleRadiusForFeature } = await import('../benchmark/assets/benchmark.js');
-      expect(bubbleRadiusForFeature(0.5)).toBeGreaterThanOrEqual(4);
-      expect(bubbleRadiusForFeature(Infinity)).toBe(4);
-      expect(bubbleRadiusForFeature(-1)).toBeGreaterThanOrEqual(4);
-    });
-
-    it('exposes size-based bubble radius and helper chart radius utilities', async () => {
-      const {
-        bubbleRadiusForSize,
-        bubbleRadiusForFastestMs,
-        bubbleRadiusForWinnerMarginPct,
-      } = await import('../benchmark/assets/benchmark.js');
-
-      expect(bubbleRadiusForSize(5, { minValue: 5, maxValue: 5 })).toBeGreaterThanOrEqual(4);
-      expect(bubbleRadiusForSize(5, { minValue: 0, maxValue: 10 })).toBeGreaterThan(4);
-      expect(bubbleRadiusForSize(Infinity, { minValue: 0, maxValue: 10 })).toBe(4);
-      expect(bubbleRadiusForFastestMs(Infinity)).toBe(4);
-      expect(bubbleRadiusForFastestMs(25)).toBeGreaterThan(4);
-      expect(bubbleRadiusForWinnerMarginPct(Infinity)).toBe(4);
-      expect(bubbleRadiusForWinnerMarginPct(0.2)).toBeGreaterThan(4);
-    });
+    // chart-related helpers removed — tests for visual helpers omitted
 
     it('normalizes benchmark rows with no finite timings and honors engines_found mapping', async () => {
       buildMinimalBenchmarkDOM();
@@ -1667,28 +2677,7 @@ describe('Benchmark report artifact generation', () => {
       expect(report).toContain('Errors');
       expect(report).toContain('timeout');
     });
-
-    it('converts results to a valid CSV string and escapes special characters', async () => {
-      const { toCSV, downloadCSV } = await import('../benchmark/assets/benchmark.js');
-      const rows = [
-        { id: 1, name: 'A, B', category: 'test', lengthCategory: 'short', safeN: 1, safeE: 2 },
-      ];
-      const csv = toCSV(rows);
-
-      expect(csv).toContain('id,name,category,lengthCategory');
-      expect(csv).toContain('"A, B"');
-      expect(csv.split('\n').length).toBeGreaterThan(1);
-
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:url');
-      const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-
-      const result = downloadCSV(rows, 'test.csv');
-      expect(createObjectURLSpy).toHaveBeenCalled();
-      expect(clickSpy).toHaveBeenCalled();
-      expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:url');
-      expect(result).toBeUndefined();
-    });
+    // CSV export test removed: CSV helpers deleted from benchmark assets.
 
     it('updates report controls and selects a report variant with sharedArrayBuffer contexts', async () => {
       setupFetchAndDOM();
@@ -1702,7 +2691,6 @@ describe('Benchmark report artifact generation', () => {
       const variants = benchmark.createReportVariants([{ _passIndex: 0, route: 'route-a' }, { _passIndex: 1, route: 'route-b' }]);
       expect(variants).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'sab_on' })]));
       benchmark.updateReportTypeControls();
-      expect(document.getElementById('report-view-select').children.length).toBeGreaterThan(0);
 
       const selected = benchmark.getSelectedReportVariant();
       expect(selected).toBeDefined();
@@ -1799,15 +2787,16 @@ describe('Benchmark report artifact generation', () => {
       expect(benchmark.getReportFilename(undefined, 'benchmark')).not.toContain('_combined_');
     });
 
-    it('hides report type controls when there are no report variants', async () => {
+    it('defaults to the combined report variant when no pass contexts are present', async () => {
       setupFetchAndDOM();
       const benchmark = await import('../benchmark/assets/index.js');
 
       benchmark.updateReportTypeControls();
-      expect(document.getElementById('report-type-controls').hidden).toBe(true);
+      const selected = benchmark.getSelectedReportVariant();
+      expect(selected.key).toBe('combined');
     });
 
-    it('falls back to the first report variant when selection is invalid', async () => {
+    it('falls back to the first report variant when no selection is set', async () => {
       setupFetchAndDOM();
       const benchmark = await import('../benchmark/assets/index.js');
       benchmark.setPassContexts([
@@ -1817,39 +2806,33 @@ describe('Benchmark report artifact generation', () => {
 
       benchmark.createReportVariants([{ _passIndex: 0, route: 'route-a' }, { _passIndex: 1, route: 'route-b' }]);
       benchmark.updateReportTypeControls();
-      document.getElementById('report-view-select').value = 'invalid-selection';
 
       const selected = benchmark.getSelectedReportVariant();
       expect(selected).toBeDefined();
-      expect(selected.key).toBe('sab_on');
+      expect(selected.key).toBe('combined');
     });
 
-    it('renders summary and cost summary tables through showResults', async () => {
-      vi.resetModules();
-      const fetchMock = setupFetchAndDOM();
-      const FakeChart = class {
-        constructor(canvas, config) {
-          this.canvas = canvas;
-          this.config = config;
-          this.options = config.options;
-          this.data = config.data || { datasets: [] };
-          this.config.data = this.data;
-          FakeChart.instances.push(this);
-        }
+    // Chart/table test removed — benchmark UI simplified.
 
-        update() {}
-        destroy() {
-          this.destroyed = true;
-        }
+    it('keeps action buttons hidden until benchmark completion during showResults', async () => {
+      setupFetchAndDOM();
+      const wrapper = document.createElement('div');
+      wrapper.className = 'actions';
+      wrapper.hidden = true;
+      wrapper.innerHTML = '<button id="download-btn"></button><button id="report-btn"></button><button id="copy-report-btn"></button>';
+      document.body.appendChild(wrapper);
 
-        static getChart(canvas) {
-          return FakeChart.instances.find((chart) => chart.canvas === canvas) || null;
-        }
+      global.indexedDB = createFakeIndexedDB();
+      global.IDBKeyRange = {
+        only(value) {
+          return { type: 'only', value, valueKey: 'runId' };
+        },
+        upperBound(value) {
+          return { type: 'upperBound', value, valueKey: 'ts' };
+        },
       };
-      FakeChart.instances = [];
-      vi.doMock('chart.js/auto', () => ({ default: FakeChart }));
 
-      const benchmark = await import('../benchmark/assets/index.js');
+      const benchDb = await import('../benchmark/assets/bench-db.js');
       const results = [
         {
           route: 'route-1',
@@ -1874,230 +2857,21 @@ describe('Benchmark report artifact generation', () => {
         },
       ];
 
-      benchmark.showResults(results);
-      expect(document.getElementById('summary-tbody').children.length).toBeGreaterThan(0);
-      expect(document.getElementById('cost-summary-tbody').children.length).toBeGreaterThan(0);
-      expect(document.getElementById('summary-cards').textContent).toContain('Routes run');
-      expect(document.getElementById('summary-tbody').textContent).toContain('—');
-      expect(document.getElementById('cost-summary-tbody').textContent).toContain('—');
-
-      const densityChart = FakeChart.instances.find((chart) => chart.config.type === 'bubble');
-      const timingChart = FakeChart.instances.filter((chart) => chart.config.type === 'bubble')[1];
-      expect(densityChart.options.scales.y.ticks.callback(0.123)).toBe(0.123);
-      expect(densityChart.options.scales.x.ticks.callback(undefined)).toBe('');
-      expect(timingChart.options.scales.y.ticks.callback(12.345)).toBe(12.3);
-      expect(timingChart.options.scales.x.ticks.callback(null)).toBe('');
-
-      expect(fetchMock).toHaveBeenCalled();
-    });
-
-    it('shows route error and unrecovered engine error summary cards and reuses tooltip cleanup', async () => {
-      vi.resetModules();
-      const fetchMock = setupFetchAndDOM();
-      const FakeChart = class {
-        constructor(canvas, config) {
-          this.canvas = canvas;
-          this.config = config;
-          this.options = config.options;
-          this.data = config.data || { datasets: [] };
-          this.config.data = this.data;
-          FakeChart.instances.push(this);
-        }
-
-        update() {}
-        destroy() {
-          this.destroyed = true;
-        }
-
-        static getChart(canvas) {
-          return FakeChart.instances.find((chart) => chart.canvas === canvas) || null;
-        }
-      };
-      FakeChart.instances = [];
-      vi.doMock('chart.js/auto', () => ({ default: FakeChart }));
+      await benchDb.prepareForRun('run-show-results-actions', { clearAll: true });
+      await benchDb.saveResultToDB('run-show-results-actions', 0, 0, results[0]);
+      await benchDb.waitForPendingWrites();
 
       const benchmark = await import('../benchmark/assets/index.js');
-      const results = [
-        {
-          route: 'route-1',
-          routeLabel: 'route 1',
-          passIndex: 0,
-          name: 'route 1',
-          category: 'highway',
-          lengthCategory: 'short',
-          logBeelineKm: 1.0,
-          logCoverageEmptyContrast: 2.0,
-          logGlobalCoverage: 0.4,
-          logEmptyRatio: 0.2,
-          safeE: 1,
-          safeN: 1,
-          safeBeelineKm: 0.5,
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 30,
-          ultra_dijkstra_ms: 40,
-          bidirectional_astar_cost: 10,
-          adaptive_barrier_cost: 12,
-          delta_stepping_cost: 15,
-          ultra_dijkstra_cost: 20,
-          winner: 'bidirectional-astar',
-          routeError: 'failed',
-        },
-        {
-          route: 'route-2',
-          routeLabel: 'route 2',
-          passIndex: 0,
-          name: 'route 2',
-          category: 'road',
-          lengthCategory: 'long',
-          logBeelineKm: 2.0,
-          logCoverageEmptyContrast: 1.5,
-          logGlobalCoverage: 0.5,
-          logEmptyRatio: 0.3,
-          safeE: 2,
-          safeN: 2,
-          safeBeelineKm: 0.8,
-          bidirectional_astar_ms: 11,
-          adaptive_barrier_ms: 12,
-          delta_stepping_ms: 14,
-          ultra_dijkstra_ms: 16,
-          bidirectional_astar_cost: 11,
-          adaptive_barrier_cost: 10,
-          delta_stepping_cost: 13,
-          ultra_dijkstra_cost: 18,
-          winner: 'adaptive-barrier',
-          any_engine_error: true,
-        },
-      ];
-
-      benchmark.showResults(results);
-      expect(document.getElementById('summary-cards').textContent).toContain('Route errors');
-      expect(document.getElementById('summary-cards').textContent).toContain('Routes with unrecovered engine errors');
-
-      benchmark.showResults(results);
-      expect(document.getElementById('summary-cards').textContent).toContain('Routes with unrecovered engine errors');
-      expect(fetchMock).toHaveBeenCalled();
+      benchmark.setCurrentRunId('run-show-results-actions');
+      await benchmark.showResults();
+      expect(document.querySelector('.actions').hidden).toBe(true);
     });
 
-    it('creates UI-safe result rows by stripping diagnostic metadata', async () => {
-      setupFetchAndDOM();
-      const benchmark = await import('../benchmark/assets/index.js');
-      const row = benchmark.createUIResultRow({
-        id: 'row-1',
-        rawDiagnostics: { error: true },
-        samplesMs: [1, 2],
-        sampleStats: { mean: 1.5 },
-        timingRounds: [10, 20],
-        route: 'test-route',
-      });
+    // Chart/table test removed — benchmark UI simplified.
 
-      expect(row).toEqual({ id: 'row-1', route: 'test-route' });
-    });
+    // Chart/table test removed — benchmark UI simplified.
 
-    it('returns no selected routes when no category or length filters are checked', async () => {
-      buildMinimalBenchmarkDOM();
-      const benchmark = await import('../benchmark/assets/index.js');
-
-      document.querySelectorAll('#category-filters input').forEach((input) => {
-        input.checked = false;
-      });
-      document.querySelectorAll('#length-filters input').forEach((input) => {
-        input.checked = false;
-      });
-
-      expect(benchmark.getSelectedRoutes()).toEqual([]);
-    });
-
-    it('builds a performance summary with invalid timings and null groups', async () => {
-      const { generatePerformanceSummary } = await import('../benchmark/assets/benchmark.js');
-      const summary = generatePerformanceSummary([
-        {
-          category: 'test',
-          lengthCategory: 'short',
-          bidirectional_astar_ms: -1,
-          adaptive_barrier_ms: NaN,
-          delta_stepping_ms: Infinity,
-          ultra_dijkstra_ms: -0.5,
-          safeE: 1,
-        },
-      ]);
-
-      expect(summary.groupKeys).toEqual(['short-small']);
-      expect(summary.rows.every((row) => row[summary.groupKeys[0]] === null)).toBe(true);
-      expect(summary.formatValue(null)).toBe('—');
-    });
-
-    it('builds a cost summary with invalid cost values and null groups', async () => {
-      const { generateCostSummary } = await import('../benchmark/assets/benchmark.js');
-      const summary = generateCostSummary([
-        {
-          category: 'test',
-          lengthCategory: 'short',
-          bidirectional_astar_cost: NaN,
-          adaptive_barrier_cost: -1,
-          delta_stepping_cost: null,
-          ultra_dijkstra_cost: undefined,
-          safeE: 1,
-        },
-      ]);
-
-      expect(summary.groupKeys).toEqual(['short-small']);
-      expect(summary.rows.every((row) => row[summary.groupKeys[0]] === null)).toBe(true);
-      expect(summary.formatValue(null)).toBe('—');
-    });
-
-    it('renders summary and cost table colors for 100% and low-percentage values', async () => {
-      buildMinimalBenchmarkDOM();
-      const benchmark = await import('../benchmark/assets/index.js');
-      const results = [
-        {
-          category: 'test',
-          lengthCategory: 'short',
-          route: 'route-1',
-          routeLabel: 'route 1',
-          name: 'route 1',
-          winner: 'bidirectional-astar',
-          costWinner: 'bidirectional-astar',
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 40,
-          ultra_dijkstra_ms: 200,
-          bidirectional_astar_cost: 5,
-          adaptive_barrier_cost: 10,
-          delta_stepping_cost: 20,
-          ultra_dijkstra_cost: 100,
-          logBeelineKm: 1.0,
-          logCoverageEmptyContrast: 1.0,
-          logGlobalCoverage: 0.5,
-          logEmptyRatio: 0.2,
-          safeE: 1,
-          safeN: 1,
-          safeBeelineKm: 0.5,
-          passIndex: 0,
-          auto_matches_winner: 1,
-          auto_engine: 'bidirectional-astar',
-          auto_vs_winner_pct: 0,
-        },
-      ];
-
-      benchmark.showResults(results);
-
-      const summaryRows = Array.from(document.querySelectorAll('#summary-tbody tr'));
-      const summaryFastest = summaryRows.find((row) => row.children[0].textContent === 'A★ (Bidirectional)');
-      const summarySlow = summaryRows.find((row) => row.children[0].textContent === 'Barrier (Adaptive SSP)');
-      expect(summaryFastest.children[2].textContent).toBe('100%');
-      expect(summaryFastest.children[2].style.color).toBe('var(--green)');
-      expect(summarySlow.children[2].textContent).toBe('50%');
-      expect(summarySlow.children[2].style.color).toBe('var(--red)');
-
-      const costRows = Array.from(document.querySelectorAll('#cost-summary-tbody tr'));
-      const costFastest = costRows.find((row) => row.children[0].textContent === 'A★ (Bidirectional)');
-      const costSlow = costRows.find((row) => row.children[0].textContent === 'Barrier (Adaptive SSP)');
-      expect(costFastest.children[2].textContent).toBe('100%');
-      expect(costFastest.children[2].style.color).toBe('var(--green)');
-      expect(costSlow.children[2].textContent).toBe('50%');
-      expect(costSlow.children[2].style.color).toBe('var(--red)');
-    });
+    // Chart/table tests removed — benchmark UI simplified.
 
     it('generates a copilot report with a miss and no errors, and escapes markdown text', async () => {
       const { generateCopilotReport } = await import('../benchmark/assets/benchmark.js');
@@ -2139,309 +2913,5 @@ describe('Benchmark report artifact generation', () => {
       expect(report).toContain('Exact route\\|test A');
     });
   });
-
-  describe('Benchmark chart helpers', () => {
-    let FakeChart;
-
-    beforeEach(() => {
-      vi.resetModules();
-      document.body.innerHTML = '';
-      FakeChart = class {
-        constructor(canvas, config) {
-          this.canvas = canvas;
-          this.config = config;
-          this.data = config.data || { labels: [], datasets: [] };
-          this.options = config.options || { scales: { y: {} } };
-          this.updated = [];
-          this.destroyed = false;
-          FakeChart.instances.push(this);
-        }
-
-        update(mode) {
-          this.updated.push(mode);
-        }
-
-        destroy() {
-          this.destroyed = true;
-        }
-
-        static getChart(canvas) {
-          return FakeChart.instances.find((chart) => chart.canvas === canvas) || null;
-        }
-      };
-      FakeChart.instances = [];
-      vi.doMock('chart.js/auto', () => ({ default: FakeChart }));
-    });
-
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
-
-    it('renders density scatter, histogram, and timing bubble charts', async () => {
-      buildMinimalBenchmarkDOM();
-      const benchmark = await import('../benchmark/assets/benchmark.js');
-      const canvasA = document.createElement('canvas');
-      const canvasB = document.createElement('canvas');
-      const canvasC = document.createElement('canvas');
-      document.body.append(canvasA, canvasB, canvasC);
-
-      const results = [
-        {
-          route: 'route-1',
-          routeLabel: 'route 1',
-          passIndex: 0,
-          name: 'route 1',
-          lengthCategory: 'short',
-          category: 'highway',
-          logGlobalCoverage: 0.5,
-          logEmptyRatio: 0.4,
-          logBeelineKm: 1.0,
-          logCoverageEmptyContrast: 2.0,
-          safeE: 1,
-          safeN: 1,
-          safeBeelineKm: 0.5,
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 30,
-          ultra_dijkstra_ms: 40,
-          winner: 'bidirectional-astar',
-          auto_matches_winner: 1,
-          auto_engine: 'bidirectional-astar',
-          auto_vs_winner_pct: 0,
-        },
-      ];
-
-      const scatterChart = benchmark.drawScatter(canvasA, results, {});
-      expect(scatterChart).toBeInstanceOf(FakeChart);
-      expect(scatterChart.config.type).toBe('scatter');
-
-      const density = benchmark.drawDensityScatter(canvasA, results);
-      expect(density).toBeInstanceOf(FakeChart);
-      expect(density.config.type).toBe('bubble');
-
-      const histogram = benchmark.drawFeatureHistogram(canvasB, results, {});
-      expect(histogram).toBeInstanceOf(FakeChart);
-      expect(histogram.config.type).toBe('bar');
-
-      const timing = benchmark.drawTimingBubble(canvasC, results, {});
-      expect(timing).toBeInstanceOf(FakeChart);
-      expect(timing.config.type).toBe('bubble');
-      expect(typeof scatterChart.options.scales.y.ticks.callback).toBe('function');
-      expect(scatterChart.options.scales.y.ticks.callback(NaN)).toBe('');
-      expect(typeof scatterChart.options.scales.x.ticks.callback).toBe('function');
-      expect(scatterChart.options.scales.x.ticks.callback(1.234)).toBe(1.23);
-      expect(typeof density.options.scales.x.ticks.callback).toBe('function');
-      expect(density.options.scales.x.ticks.callback(undefined)).toBe('');
-      expect(typeof timing.options.scales.x.ticks.callback).toBe('function');
-      expect(timing.options.scales.x.ticks.callback(null)).toBe('');
-      expect(typeof density.options.plugins.tooltip.callbacks.title).toBe('function');
-      expect(density.options.plugins.tooltip.callbacks.title([{ raw: { routeName: 'route 1' } }])).toBe('route 1');
-      expect(density.options.plugins.tooltip.callbacks.label({ raw: null })).toEqual([]);
-      expect(density.options.plugins.tooltip.callbacks.label({
-        raw: {
-          category: 'highway',
-          lengthCategory: 'short',
-          x: 1.234,
-          y: 0.567,
-          radiusLabel: 'radius label',
-          timing: { fastestMs: 500, winnerMarginPct: null },
-        },
-      })).toEqual([
-        'highway · short',
-        'x: 1.23',
-        'y: 0.567',
-        'radius label',
-        'fastest: 500ms',
-        'margin: n/a',
-      ]);
-
-      const timingUpdated = benchmark.drawTimingBubble(canvasC, results, {}, timing);
-      expect(timingUpdated).toBe(timing);
-      expect(timing.updated).toContain('none');
-    });
-
-    it('renders scatter and histogram updates, creates error bubble datasets, and destroys old charts', async () => {
-      buildMinimalBenchmarkDOM();
-      const benchmark = await import('../benchmark/assets/benchmark.js');
-      const canvasScatter = document.createElement('canvas');
-      const canvasHistogram = document.createElement('canvas');
-      const canvasDensity = document.createElement('canvas');
-      document.body.append(canvasScatter, canvasHistogram, canvasDensity);
-
-      const results = [
-        {
-          name: 'route-winner',
-          category: 'test',
-          lengthCategory: 'medium',
-          logBeelineKm: 1.5,
-          logCoverageEmptyContrast: 1.8,
-          logGlobalCoverage: 0.6,
-          logEmptyRatio: 0.5,
-          safeE: 5,
-          safeN: 4,
-          safeBeelineKm: 0.2,
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 30,
-          ultra_dijkstra_ms: 40,
-          winner: 'bidirectional-astar',
-        },
-        {
-          name: 'route-error',
-          category: 'test',
-          lengthCategory: 'short',
-          logBeelineKm: 1.6,
-          logCoverageEmptyContrast: 2.1,
-          logGlobalCoverage: 0.7,
-          logEmptyRatio: 0.4,
-          safeE: 6,
-          safeN: 3,
-          safeBeelineKm: 0.4,
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 30,
-          ultra_dijkstra_ms: 40,
-          winner: null,
-        },
-      ];
-
-      const scatterChart = benchmark.drawScatter(canvasScatter, results);
-      expect(scatterChart).toBeInstanceOf(FakeChart);
-      expect(scatterChart.config.type).toBe('scatter');
-      expect(scatterChart.data.datasets.some((ds) => ds.label === 'Error / N.A.')).toBe(true);
-
-      const updatedScatterChart = benchmark.drawScatter(canvasScatter, results, {}, scatterChart);
-      expect(updatedScatterChart).toBe(scatterChart);
-      expect(scatterChart.updated).toContain('none');
-
-      const histogramChart = benchmark.drawFeatureHistogram(canvasHistogram, results, {});
-      expect(histogramChart).toBeInstanceOf(FakeChart);
-      expect(histogramChart.config.type).toBe('bar');
-
-      const updatedHistogramChart = benchmark.drawFeatureHistogram(canvasHistogram, results, {}, histogramChart);
-      expect(updatedHistogramChart).toBe(histogramChart);
-      expect(histogramChart.updated).toContain('none');
-
-      const destroyedChart = benchmark.drawDensityScatter(canvasDensity, results);
-      expect(destroyedChart).toBeInstanceOf(FakeChart);
-      expect(destroyedChart.config.type).toBe('bubble');
-
-      expect(destroyedChart.destroyed).toBe(false);
-      const nextChart = benchmark.drawDensityScatter(canvasDensity, results);
-      expect(nextChart).toBeInstanceOf(FakeChart);
-      expect(nextChart).not.toBe(destroyedChart);
-      expect(destroyedChart.destroyed).toBe(true);
-    });
-
-    it('renders timing bubbles with no winner and includes an error dataset', async () => {
-      buildMinimalBenchmarkDOM();
-      const benchmark = await import('../benchmark/assets/benchmark.js');
-      const canvas = document.createElement('canvas');
-      document.body.append(canvas);
-
-      const results = [
-        {
-          name: 'route-error',
-          category: 'test',
-          lengthCategory: 'short',
-          logBeelineKm: 1.2,
-          logCoverageEmptyContrast: 1.8,
-          logGlobalCoverage: 0.7,
-          logEmptyRatio: 0.4,
-          safeE: 4,
-          safeN: 3,
-          safeBeelineKm: 0.5,
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 30,
-          ultra_dijkstra_ms: 40,
-          winner: null,
-        },
-      ];
-
-      const chart = benchmark.drawTimingBubble(canvas, results);
-      expect(chart).toBeInstanceOf(FakeChart);
-      expect(chart.config.type).toBe('bubble');
-      expect(chart.data.datasets.some((ds) => ds.label === 'No winner / error')).toBe(true);
-    });
-
-    it('uses chart tooltip callbacks for density and histogram charts', async () => {
-      vi.resetModules();
-      const FakeChart = class {
-        constructor(canvas, config) {
-          this.canvas = canvas;
-          this.config = config;
-          this.options = config.options;
-          this.data = config.data || { datasets: [] };
-          this.config.data = this.data;
-          FakeChart.instances.push(this);
-        }
-
-        update() {}
-        destroy() {
-          this.destroyed = true;
-        }
-
-        static getChart(canvas) {
-          return FakeChart.instances.find((chart) => chart.canvas === canvas) || null;
-        }
-      };
-      FakeChart.instances = [];
-      vi.doMock('chart.js/auto', () => ({ default: FakeChart }));
-
-      const benchmark = await import('../benchmark/assets/benchmark.js');
-      const canvasDensity = document.createElement('canvas');
-      const canvasHistogram = document.createElement('canvas');
-      document.body.append(canvasDensity, canvasHistogram);
-
-      const results = [
-        {
-          name: 'route-A',
-          category: 'test',
-          lengthCategory: 'short',
-          logBeelineKm: 1.2,
-          logCoverageEmptyContrast: 1.8,
-          logGlobalCoverage: 0.7,
-          logEmptyRatio: 0.4,
-          safeE: 4,
-          safeN: 3,
-          safeBeelineKm: 0.5,
-          bidirectional_astar_ms: 10,
-          adaptive_barrier_ms: 20,
-          delta_stepping_ms: 30,
-          ultra_dijkstra_ms: 40,
-          winner: 'bidirectional-astar',
-        },
-      ];
-
-      const densityChart = benchmark.drawDensityScatter(canvasDensity, results);
-      expect(densityChart).toBeInstanceOf(FakeChart);
-      const densityTooltip = densityChart.config.options.plugins.tooltip.callbacks;
-      console.log('DEBUG TOOLTIP CALLBACK KEYS', Object.keys(densityTooltip), densityTooltip.labelColor);
-      expect(densityTooltip.title([{ raw: { routeName: 'route-A' } }])).toBe('route-A');
-      expect(densityTooltip.title([])).toBe('');
-      expect(densityTooltip.label({ raw: { category: 'test', lengthCategory: 'short', x: 1.234, y: 2.345 } })).toEqual([
-        'test · short',
-        'x: 1.23',
-        'y: 2.35',
-      ]);
-      expect(densityTooltip.label({ raw: null })).toEqual([]);
-      expect(densityTooltip.labelColor({ dataset: { borderColor: '#aaa', backgroundColor: '#bbb' } })).toEqual({
-        borderColor: '#aaa',
-        backgroundColor: '#bbb',
-      });
-
-      const histogramChart = benchmark.drawFeatureHistogram(canvasHistogram, results, {});
-      const histogramTooltip = histogramChart.config.options.plugins.tooltip.callbacks;
-      expect(histogramTooltip.label({ dataset: { label: 'Routes' }, parsed: { y: 5 } })).toBe('Routes: 5 routes');
-    });
-
-    it('provides no-op tooltip cleanup and null threshold suggestions', async () => {
-      const benchmark = await import('../benchmark/assets/benchmark.js');
-      const cleanup = benchmark.installTooltip(document.createElement('canvas'), [], document.createElement('div'));
-      expect(typeof cleanup).toBe('function');
-      expect(cleanup()).toBeUndefined();
-      expect(benchmark.suggestThresholds([])).toEqual({ suggestedE: null, suggestedBeelineM: null, stats: {} });
-    });
-  });
+  // Chart and table tests removed — benchmark UI simplified.
 });
