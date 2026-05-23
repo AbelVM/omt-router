@@ -38,7 +38,7 @@ describe('UltraDijkstra routing', () => {
     expect(result.found).toBe(true);
     expect(result.path).toEqual([0, 1, 2]);
     expect(result.cost).toBe(4);
-    expect(result.engine).toBe('ultraDijkstra');
+    expect(result.engine).toBe('ultra-dijkstra');
   });
 
   it('returns no path when the end node is unreachable', async () => {

@@ -287,6 +287,9 @@ export function nodeCentrality(graph, nodeId, mode = '') {
 }
 
 // --- Density Features ---
+/** @type {WeakMap<object, { maxRes: number, sampler: UniversalGraphSampler }>} */
+const _densitySamplerCache = new WeakMap();
+
 /**
  * Returns density features using UniversalGraphSampler.
  * @param {{coordsArr: Array<[number,number]>, N:number}} preparedGraph - Prepared graph from buildCH.
@@ -305,24 +308,19 @@ export function getDensityFeatures(preparedGraph, srcCoords, tgtCoords, opts = {
   const expectedLength = totalNodes * 2;
   const coordsArr = preparedGraph.coordsArr;
 
-  let coords = preparedGraph.coordsFloat32;
-  if (!coords || coords.length !== expectedLength) {
-    coords = new Float32Array(expectedLength);
+  let cached = _densitySamplerCache.get(preparedGraph);
+  if (!cached || cached.maxRes !== maxRes) {
+    const coords = new Float32Array(expectedLength);
     for (let i = 0; i < totalNodes; i++) {
       const c = coordsArr[i];
       coords[i * 2] = c[0];
       coords[i * 2 + 1] = c[1];
     }
-    preparedGraph.coordsFloat32 = coords;
+    cached = { maxRes, sampler: new UniversalGraphSampler(coords, maxRes) };
+    _densitySamplerCache.set(preparedGraph, cached);
   }
 
-  let sampler = preparedGraph._densitySampler;
-  if (!sampler || sampler.maxRes !== maxRes) {
-    sampler = new UniversalGraphSampler(coords, maxRes);
-    preparedGraph._densitySampler = sampler;
-  }
-
-  return sampler.getDensityFeatures(srcCoords[0], srcCoords[1], tgtCoords[0], tgtCoords[1]);
+  return cached.sampler.getDensityFeatures(srcCoords[0], srcCoords[1], tgtCoords[0], tgtCoords[1]);
 }
 
 // --- UniversalGraphSampler (existing, keep as is) ---

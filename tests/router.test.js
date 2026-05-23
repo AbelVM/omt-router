@@ -5,6 +5,7 @@ import {
   prepareGraph,
   computeRoute,
   RouteFailureReason,
+  ensureAdjCostMap,
 } from '../src/engines/router.js';
 
 function createSimpleGraph() {
@@ -37,7 +38,7 @@ describe('router utilities', () => {
     expect(prepared.E).toBe(1);
     expect(Array.from(prepared.adjTo)).toEqual([1]);
     expect(Array.from(prepared.adjCost)).toEqual([100]);
-    expect(prepared.adjCostMap[0]).toEqual([1, 100]);
+    expect(ensureAdjCostMap(prepared)[0]).toEqual([1, 100]);
   });
 
   it('validates missing route results and invalid cost paths', () => {

@@ -19,7 +19,7 @@ describe('DeltaStepping routing', () => {
     expect(result.found).toBe(true);
     expect(result.path).toEqual([0, 1, 2]);
     expect(result.cost).toBe(4);
-    expect(result.engine).toBe('deltaStepping');
+    expect(result.engine).toBe('delta-stepping');
     expect(result.parallelUsed).toBe(false);
   });
 

@@ -388,7 +388,7 @@ export async function adaptiveBarrierSSPRouter(
         path: [],
         cost: Infinity,
         found: false,
-        engine: 'adaptiveBarrier',
+        engine: 'adaptive-barrier',
         parallelUsed: false,
       };
     }
@@ -421,7 +421,7 @@ export async function adaptiveBarrierSSPRouter(
     }
 
     if (cur !== startId) {
-      return { path: [], cost: Infinity, found: false, engine: 'adaptiveBarrier', parallelUsed };
+      return { path: [], cost: Infinity, found: false, engine: 'adaptive-barrier', parallelUsed };
     }
 
     path.reverse();
@@ -429,7 +429,7 @@ export async function adaptiveBarrierSSPRouter(
       path,
       cost: endDistInt / DIST_SCALE,
       found: true,
-      engine: 'adaptiveBarrier',
+      engine: 'adaptive-barrier',
       parallelUsed,
     };
   } finally {

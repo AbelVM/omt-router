@@ -14,6 +14,11 @@ export const LATITUDE_METERS = 111_320;
 export const MIN_COS_LAT = 1e-6;
 export const DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M = 60;
 const SEGMENT_SNAP_EXTRA_M = 250;
+const COORD_KEY_SCALE = 1e6;
+
+function coordKey(lng, lat) {
+  return `${Math.round(lng * COORD_KEY_SCALE)},${Math.round(lat * COORD_KEY_SCALE)}`;
+}
 
 export function safeCosLat(lat) {
   return Math.max(Math.cos(lat * DEG_TO_RAD), MIN_COS_LAT);
@@ -455,9 +460,11 @@ export function createAugmentedGraph(graph, snap) {
     ...graph,
     nodes: augmentedNodes,
     edges: augmentedEdges,
-    nodeIndex: graph.nodeIndex && new Map(graph.nodeIndex),
+    nodeIndex: graph.nodeIndex ? new Map(graph.nodeIndex) : new Map(),
     _lastAddedNodeId: newNodeId,
   };
+  const [snapLng, snapLat] = snap.projectedCoords;
+  augmentedGraph.nodeIndex.set(coordKey(snapLng, snapLat), newNodeId);
   delete augmentedGraph._spatialIndex;
   delete augmentedGraph._incidentEdgeIndex;
   delete augmentedGraph._edgeSpatialIndex;

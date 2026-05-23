@@ -12,6 +12,8 @@ import {
   prepareRoutableGraph,
   selectBestEngine,
   validateRouteResult,
+  releasePrepared,
+  releaseGraph,
 } from '../../src/engines/router.js';
 import { buildGraphAsync } from '../../src/graphs/graphBuilder.js';
 import { getTilesAlongLine } from '../../src/tiles/tilesManager.js';
@@ -402,8 +404,10 @@ function forceReleaseAllPowerCaches() {
 function releaseCachedPreparedRoute(cacheEntry) {
   if (!cacheEntry) return;
   if (cacheEntry.prepared) {
-    disposePowerCache(cacheEntry.prepared._routeCache);
-    cacheEntry.prepared._routeCache = null;
+    releasePrepared(cacheEntry.prepared);
+  }
+  if (cacheEntry.graph) {
+    releaseGraph(cacheEntry.graph);
   }
   cacheEntry.prepared = null;
   cacheEntry.graph = null;

@@ -161,14 +161,14 @@ export function parseTile(buffer, x, y, z, mode) {
     if (feature.type !== 2) continue;
     const { class: rawClass, subclass, access, foot, bicycle, oneway: rawOneway, maxspeed: rawMaxspeed } = feature.properties;
     const normalizedClass = normalizeTagValue(rawClass);
-    const props = {
+    const props = Object.freeze({
       access: normalizeTagValue(access),
       class: normalizedClass,
       subclass: normalizeTagValue(subclass),
       foot: normalizeTagValue(foot),
       bicycle: normalizeTagValue(bicycle),
       maxspeed: normalizeTagValue(rawMaxspeed),
-    };
+    });
     if (!featureAccessible(props)) continue;
     const oneway = effectiveOneway(mode, normalizeOneway(rawOneway ?? 0));
     const speed = getDefaultSpeedKmh(mode, normalizedClass, rawMaxspeed);
@@ -406,9 +406,16 @@ function splitSegmentsAtEndpoints(segments) {
         }
       }
 
-      visitId += 1;
+      if (visitId >= 0xffff_fffe) {
+        visitedSegmentStamps.fill(0);
+        visitId = 1;
+      } else {
+        visitId += 1;
+      }
     }
   }
+
+  segmentBuckets.clear();
 
   const result = [];
   for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
@@ -563,13 +570,13 @@ function createGraphAccumulator(mode) {
           const bucket = row.get(bucketY + dy);
           if (!bucket) continue;
           for (const { coords: existingCoords, id } of bucket) {
-            const dx = existingCoords[0] - lng;
-            const dy = existingCoords[1] - lat;
+            const dLng = existingCoords[0] - lng;
+            const dLat = existingCoords[1] - lat;
             if (
-              dx > BOUNDARY_MATCH_DEG ||
-              dx < -BOUNDARY_MATCH_DEG ||
-              dy > BOUNDARY_MATCH_DEG ||
-              dy < -BOUNDARY_MATCH_DEG
+              dLng > BOUNDARY_MATCH_DEG ||
+              dLng < -BOUNDARY_MATCH_DEG ||
+              dLat > BOUNDARY_MATCH_DEG ||
+              dLat < -BOUNDARY_MATCH_DEG
             ) {
               continue;
             }
@@ -770,6 +777,7 @@ function finalizeGraph(acc) {
 export function mergeSegments(batches, mode) {
   const accumulator = createGraphAccumulator(mode);
   for (const segments of batches) {
+    if (!segments || segments.length === 0) continue;
     const firstSegment = segments[0];
     const normalizedSegments =
       typeof firstSegment === 'object' && firstSegment !== null && 'c1' in firstSegment

@@ -146,7 +146,7 @@ export async function ultraDijkstraRouter(startId, endId, prepared) {
   const prev = solver.prev;
 
   if (distances[endId] === Infinity) {
-    return { path: [], cost: Infinity, found: false, engine: 'ultraDijkstra' };
+    return { path: [], cost: Infinity, found: false, engine: 'ultra-dijkstra' };
   }
 
   // Reconstruct path backward from endId to startId using predecessors.
@@ -162,7 +162,7 @@ export async function ultraDijkstraRouter(startId, endId, prepared) {
   }
 
   if (cur !== startId) {
-    return { path: [], cost: Infinity, found: false, engine: 'ultraDijkstra' };
+    return { path: [], cost: Infinity, found: false, engine: 'ultra-dijkstra' };
   }
 
   path.reverse();
@@ -170,6 +170,6 @@ export async function ultraDijkstraRouter(startId, endId, prepared) {
     path,
     cost: distances[endId],
     found: true,
-    engine: 'ultraDijkstra',
+    engine: 'ultra-dijkstra',
   };
 }

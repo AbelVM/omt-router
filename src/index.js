@@ -26,6 +26,8 @@ import {
   onEngineWorkerStatusChange,
   cancelRunningEngine,
   shutdownEngineWorker,
+  releaseGraph,
+  ensureAdjCostMap,
 } from './engines/router.js';
 import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
 
@@ -73,6 +75,8 @@ export {
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
+  releaseGraph,
+  ensureAdjCostMap,
   MapLibreRoutingControl,
   buildTileURL,
 };
@@ -152,6 +156,9 @@ export function dispose() {
     // Best-effort cleanup.
   }
 
+  for (const graph of _graphCache.values?.() ?? []) {
+    releaseGraph(graph);
+  }
   _tileCache.clear();
   _graphCache.clear();
   disposeSharedTilePool();
@@ -295,6 +302,10 @@ const sortedTileIdsByRadius = new Map();
       // Partial graphs may still be useful for the current route attempt,
       // but they must not be reused later as if they were complete.
       if (graphKey && !graph?.hasMissingTiles) {
+        const previous = _graphCache.get(graphKey);
+        if (previous && previous !== graph) {
+          releaseGraph(previous);
+        }
         _graphCache.set(graphKey, graph);
       }
     }
@@ -395,24 +406,7 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
   const scheduleNext = async () => {
     const index = nextIndex;
     nextIndex += 1;
-    const request = requests[index];
-
-    if (!request || typeof request !== 'object') {
-      throw new Error(
-        `routeBatch request at index ${index} must be an object with start, end, and mode`
-      );
-    }
-
-    const { start, end, mode, costField } = request;
-    validateRouteCoordinates(start, `requests[${index}].start`);
-    validateRouteCoordinates(end, `requests[${index}].end`);
-    if (typeof mode !== 'string' || mode.length === 0) {
-      throw new Error(`routeBatch request at index ${index} must include a valid mode`);
-    }
-    if (costField !== undefined) {
-      validateCostField(costField);
-    }
-
+    const { start, end, mode, costField } = requests[index];
     results[index] = await route(start, end, mode, urlTemplate, { ...options, costField });
   };
 
@@ -475,6 +469,10 @@ export async function buildGraphForTiles(
   if (!graph) {
     graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });
     if (graphKey && !graph?.hasMissingTiles) {
+      const previous = _graphCache.get(graphKey);
+      if (previous && previous !== graph) {
+        releaseGraph(previous);
+      }
       _graphCache.set(graphKey, graph);
     }
   }

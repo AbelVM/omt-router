@@ -62,10 +62,8 @@ function getTile(lng, lat, zoom, schema = 'zxy') {
  * @param {'zxy'|'tms'} [schema='zxy'] Tile schema.
  * @returns {Array<{z:number,x:number,y:number}>} Unique tiles crossing the line.
  */
-export function getTilesAlongLine(point0, point1, zoom, radius = 0, schema = 'zxy') {
-  // Tile selection should always use a fixed zoom for consistent
-  // neighborhood coverage (avoid depending on caller-provided zoom).
-  zoom = 14;
+export function getTilesAlongLine(point0, point1, zoom = 14, radius = 0, schema = 'zxy') {
+  zoom = Math.max(0, Math.min(22, Math.floor(Number(zoom) || 14)));
   const canonicalSchema = String(schema).toLowerCase();
   const tile0 = getTile(point0[0], point0[1], zoom, canonicalSchema);
   const tile1 = getTile(point1[0], point1[1], zoom, canonicalSchema);
@@ -129,10 +127,8 @@ export function getTilesAlongLine(point0, point1, zoom, radius = 0, schema = 'zx
  * @param {'zxy'|'tms'} [schema='zxy'] Tile schema.
  * @returns {Array<{z:number,x:number,y:number}>} Tiles that intersect the circular search area.
  */
-export function getTilesWithinRadius(lng, lat, zoom, radiusMeters, schema = 'zxy') {
-  // Force a fixed zoom (14) for tiles used by isolines and other
-  // neighborhood-based operations so tile coverage is stable.
-  zoom = 14;
+export function getTilesWithinRadius(lng, lat, zoom = 14, radiusMeters, schema = 'zxy') {
+  zoom = Math.max(0, Math.min(22, Math.floor(Number(zoom) || 14)));
   const canonicalSchema = String(schema).toLowerCase();
   const n = 2 ** zoom;
   const isTMS = canonicalSchema === 'tms';

@@ -125,6 +125,8 @@ class DeltaSteppingSSSP {
     this.pool = enableParallelWorkers ? getSharedPool(workerCount) : null;
 
     this.buckets = new Map();
+    this._settledReuse = new Set();
+    this._bucketFrontierReuse = new Set();
     this.head.fill(-1);
     this.edgeIdx = 0;
     this.lastParallelUsed = false;
@@ -196,19 +198,22 @@ class DeltaSteppingSSSP {
 
       let S = this.buckets.get(b);
       this.buckets.delete(b);
-      const settledInBucket = new Set();
+      const settledInBucket = this._settledReuse;
+      settledInBucket.clear();
 
       while (S && S.size > 0) {
         for (const v of S) settledInBucket.add(v);
         const next = await this.relaxFrontier(S, 'light');
 
-        S = new Set();
+        const nextFrontier = this._bucketFrontierReuse;
+        nextFrontier.clear();
         for (let i = 0; i < next.length; i++) {
           const v = next[i];
           const vBucket = Math.floor(this.dist[v] / this.delta);
-          if (vBucket === b) S.add(v);
+          if (vBucket === b) nextFrontier.add(v);
           else this.addToBucket(vBucket, v);
         }
+        S = nextFrontier;
       }
 
       const heavyUpdates = await this.relaxFrontier(settledInBucket, 'heavy');
@@ -381,7 +386,7 @@ export async function deltaSteppingRouter(
     const parallelUsed = solver.lastParallelUsed;
 
     if (endDistInt >= INF_DISTANCE) {
-      return { path: [], cost: Infinity, found: false, engine: 'deltaStepping', parallelUsed };
+      return { path: [], cost: Infinity, found: false, engine: 'delta-stepping', parallelUsed };
     }
 
     // Reconstruct path backward from endId to startId using predecessors.
@@ -397,7 +402,7 @@ export async function deltaSteppingRouter(
     }
 
     if (cur !== startId) {
-      return { path: [], cost: Infinity, found: false, engine: 'deltaStepping', parallelUsed };
+      return { path: [], cost: Infinity, found: false, engine: 'delta-stepping', parallelUsed };
     }
 
     path.reverse();
@@ -405,7 +410,7 @@ export async function deltaSteppingRouter(
       path,
       cost: endDistInt / DIST_SCALE,
       found: true,
-      engine: 'deltaStepping',
+      engine: 'delta-stepping',
       parallelUsed,
     };
   } finally {

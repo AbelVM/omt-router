@@ -20,7 +20,10 @@ import {
   getEngineWorkerStatus,
   onEngineWorkerStatusChange,
   cancelRunningEngine,
+  shutdownEngineWorker,
+  releasePrepared,
 } from '../../src/engines/router.js';
+import { dispose as disposeRouterModule } from '../../src/index.js';
 import { buildGraphAsync, parseTile } from '../../src/graphs/graphBuilder.js';
 import { classifySelectorFeatures, getSelectorBins } from './benchmark-selector-features.js';
 import { savePreparedMetricsToDB } from './bench-db.js';
@@ -162,6 +165,18 @@ export function clearBenchmarkCache() {
 }
 
 export function disposeBenchmarkResources() {
+  try {
+    shutdownEngineWorker();
+  } catch (err) {
+    console.warn('[benchmark] Failed to shutdown engine worker:', err);
+  }
+
+  try {
+    disposeRouterModule();
+  } catch (err) {
+    console.warn('[benchmark] Failed to dispose router module caches:', err);
+  }
+
   if (_pool) {
     try {
       _pool.shutdown();
@@ -390,8 +405,8 @@ async function runEngineQuery(
     useCache: false,
     allowFallback,
     forceSerialRouting,
-    useWorkerPool: true,
-    engineWorkerPoolSize: ENGINE_WORKER_POOL_DEFAULT_SIZE,
+    useWorkerPool: false,
+    useEngineWorker: false,
     engineWorkerFallbackToMainThread: false,
   });
 
@@ -884,7 +899,10 @@ async function benchmarkSingleRoute(
   // Allow GC of large typed arrays attached to `prepared.metrics` now that
   // metrics have been persisted.
   try {
-    if (prepared) prepared.metrics = null;
+    if (prepared) {
+      prepared.metrics = null;
+      releasePrepared(prepared);
+    }
   } catch (_e) {
     /* ignore */
   }

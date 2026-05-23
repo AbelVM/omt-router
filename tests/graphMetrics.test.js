@@ -75,7 +75,7 @@ describe('graphMetrics utilities', () => {
     expect(secondResult).toEqual(firstResult);
   });
 
-  it('reuses the same density sampler for identical maxRes and rebuilds for a new maxRes', () => {
+  it('reuses cached density features for identical maxRes and recomputes for a new maxRes', () => {
     const preparedGraph = {
       N: 2,
       coordsArr: [
@@ -83,16 +83,14 @@ describe('graphMetrics utilities', () => {
         [1, 1],
       ],
     };
-    const firstSampler = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
-    const firstInstance = preparedGraph._densitySampler;
+    const firstResult = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
 
     const secondResult = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
-    expect(preparedGraph._densitySampler).toBe(firstInstance);
-    expect(secondResult).toEqual(firstSampler);
+    expect(secondResult).toEqual(firstResult);
 
-    getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 32 });
-    expect(preparedGraph._densitySampler).not.toBe(firstInstance);
-    expect(preparedGraph._densitySampler.maxRes).toBe(32);
+    const higherResResult = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 32 });
+    expect(higherResResult).toHaveProperty('emptyRatio');
+    expect(preparedGraph._densitySampler).toBeUndefined();
   });
 
   it('computes all graph metrics and executes centrality logic for car mode', () => {

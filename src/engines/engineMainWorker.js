@@ -115,6 +115,11 @@ self.onmessage = async (event) => {
       _workerPrepared = prepared;
       _workerPreparedId = prepared.preparedId;
     }
+    self.postMessage({
+      type: 'status',
+      state: 'idle',
+      preparedId: prepared?.preparedId ?? null,
+    });
     return;
   }
 

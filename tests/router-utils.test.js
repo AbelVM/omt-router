@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildCH, validateRouteResult, queryRoute } from '../src/engines/router.js';
+import {
+  buildCH,
+  validateRouteResult,
+  queryRoute,
+  ensureAdjCostMap,
+} from '../src/engines/router.js';
 
 describe('router utilities', () => {
   it('buildCH computes optimal travel time costs and builds a map lookup for multi-edge nodes', () => {
@@ -45,9 +50,10 @@ describe('router utilities', () => {
 
     expect(prepared.N).toBe(3);
     expect(prepared.E).toBeGreaterThan(0);
-    expect(Array.isArray(prepared.adjCostMap[0])).toBe(true);
-    expect(prepared.adjCostMap[1]).toBeInstanceOf(Map);
-    expect(prepared.adjCostMap[1].get(0)).toBeGreaterThan(0);
+    const adjCostMap = ensureAdjCostMap(prepared);
+    expect(Array.isArray(adjCostMap[0])).toBe(true);
+    expect(adjCostMap[1]).toBeInstanceOf(Map);
+    expect(adjCostMap[1].get(0)).toBeGreaterThan(0);
   });
 
   it('validates route results and returns endpoint mismatch when endpoints are wrong', () => {
@@ -113,7 +119,7 @@ describe('router utilities', () => {
     expect(mismatchResult.reason).toBe('cost_mismatch');
   });
 
-  it('computes cost using both array and Map adjCostMap lookup branches', () => {
+  it('detects cost mismatch via CSR edge scan when reported cost is wrong', () => {
     const nodes = new Map([
       [0, { id: 0, coords: [0, 0] }],
       [1, { id: 1, coords: [1, 0] }],
@@ -153,11 +159,6 @@ describe('router utilities', () => {
     ];
 
     const prepared = buildCH({ nodes, edges, mode: 'car' }, 'optimal');
-    expect(prepared.adjCostMap[0]).toEqual([1, expect.any(Number)]);
-    expect(prepared.adjCostMap[1]).toBeInstanceOf(Map);
-
-    // Force fallback to scan adjacency arrays for node 0.
-    prepared.adjCostMap[0] = [999, 1];
     const resultCost = validateRouteResult({ found: true, path: [0, 1, 2], cost: 3 }, prepared);
     expect(resultCost.valid).toBe(false);
     expect(resultCost.reason).toBe('cost_mismatch');

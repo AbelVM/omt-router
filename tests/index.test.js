@@ -22,6 +22,7 @@ import {
   selectBestEngine,
   validateRouteResult,
   buildCH,
+  ensureAdjCostMap,
 } from '../src/engines/router.js';
 import { getTilesAlongLine } from '../src/tiles/tilesManager.js';
 import { interpolate, haversineDistance, isWithinDistanceMeters } from '../src/utils/misc.js';
@@ -278,14 +279,15 @@ describe('prepareGraph', () => {
       },
     ];
     const prepared = buildCH({ nodes, edges }, 'distance');
+    const adjCostMap = ensureAdjCostMap(prepared);
 
-    expect(prepared.adjCostMap).toBeInstanceOf(Array);
-    expect(prepared.adjCostMap[0]).toBeInstanceOf(Array);
-    expect(prepared.adjCostMap[0][0]).toBe(1);
-    expect(prepared.adjCostMap[0][1]).toBe(100 * 10);
-    expect(prepared.adjCostMap[1]).toBeInstanceOf(Array);
-    expect(prepared.adjCostMap[1][0]).toBe(2);
-    expect(prepared.adjCostMap[1][1]).toBe(200 * 10);
+    expect(adjCostMap).toBeInstanceOf(Array);
+    expect(adjCostMap[0]).toBeInstanceOf(Array);
+    expect(adjCostMap[0][0]).toBe(1);
+    expect(adjCostMap[0][1]).toBe(100 * 10);
+    expect(adjCostMap[1]).toBeInstanceOf(Array);
+    expect(adjCostMap[1][0]).toBe(2);
+    expect(adjCostMap[1][1]).toBe(200 * 10);
 
     const validation = validateRouteResult({ found: true, path: [0, 1, 2], cost: 300 }, prepared);
     expect(validation).toEqual({ valid: true, actualCost: 300, reason: null });
@@ -372,9 +374,7 @@ describe('graphMetrics', () => {
     const second = getDensityFeatures(preparedGraph, [0, 0], [1, 1], { maxRes: 16 });
 
     expect(first).toEqual(second);
-    expect(preparedGraph._densitySampler).toBeDefined();
-    expect(preparedGraph._densitySampler.maxRes).toBe(16);
-    expect(preparedGraph._densitySampler).toBe(preparedGraph._densitySampler);
+    expect(preparedGraph._densitySampler).toBeUndefined();
   });
 });
 

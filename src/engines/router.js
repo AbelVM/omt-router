@@ -82,7 +82,7 @@ import {
   hasParallelRoutingRuntime,
   selectBestEngine,
 } from '../tuning/tuning.js';
-import { bidirectionalAStar } from './BidirectionalAStar/index.js';
+import { bidirectionalAStar, releasePreparedWorkspace } from './BidirectionalAStar/index.js';
 import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
 import { deltaSteppingRouter } from './DeltaStepping/index.js';
 import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
@@ -150,6 +150,83 @@ function disposeRouteCache(routeCache) {
     // Ignore cleanup failures.
   }
 }
+
+/**
+ * Build adjCostMap on demand (validation / tests). O(E) when first called.
+ * @param {object} prepared
+ * @returns {Array<Array<number>|Map<number, number>|undefined>}
+ */
+export function ensureAdjCostMap(prepared) {
+  if (!prepared || prepared.adjCostMap) return prepared?.adjCostMap;
+  const { adjPtr, adjTo, adjCost, N } = prepared;
+  if (!adjPtr || !adjTo || !adjCost || !N) return undefined;
+
+  const adjCostMap = new Array(N);
+  for (let u = 0; u < N; u++) {
+    const start = adjPtr[u];
+    const end = adjPtr[u + 1];
+    const degree = end - start;
+    if (degree === 0) continue;
+
+    if (degree === 1) {
+      adjCostMap[u] = [adjTo[start], adjCost[start]];
+      continue;
+    }
+
+    const lookup = new Map();
+    for (let k = start; k < end; k++) {
+      lookup.set(adjTo[k], adjCost[k]);
+    }
+    adjCostMap[u] = lookup;
+  }
+
+  prepared.adjCostMap = adjCostMap;
+  return adjCostMap;
+}
+
+/**
+ * Release heavy structures held on a prepared graph (caches, backups, metrics).
+ * @param {object|null|undefined} prepared
+ */
+export function releasePrepared(prepared) {
+  if (!prepared || typeof prepared !== 'object') return;
+
+  disposeRouteCache(prepared._routeCache);
+  prepared._routeCache = null;
+
+  releasePreparedWorkspace(prepared);
+
+  prepared._engineWorkerBackup = null;
+  prepared._engineWorkerPreparedId = null;
+  prepared.metrics = null;
+  prepared.coordsFloat32 = null;
+  prepared._densitySampler = null;
+  prepared.adjCostMap = null;
+  prepared._isoAdjPedestrian = null;
+}
+
+/**
+ * Release prepared variants and spatial indexes on a raw routing graph.
+ * @param {object|null|undefined} graph
+ */
+export function releaseGraph(graph) {
+  if (!graph || typeof graph !== 'object') return;
+
+  const preparedGroup = graph._prepared;
+  if (preparedGroup && typeof preparedGroup === 'object') {
+    for (const costFieldGroup of Object.values(preparedGroup)) {
+      if (!costFieldGroup || typeof costFieldGroup !== 'object') continue;
+      for (const prepared of Object.values(costFieldGroup)) {
+        releasePrepared(prepared);
+      }
+    }
+    delete graph._prepared;
+  }
+
+  delete graph._spatialIndex;
+  delete graph._incidentEdgeIndex;
+  delete graph._edgeSpatialIndex;
+}
 const ENGINE_WORKER_STATES = Object.freeze({
   IDLE: 'idle',
   RUNNING: 'running',
@@ -169,6 +246,8 @@ const ENGINE_WORKER_POOL_MAX_SIZE = Math.max(1, _hwConcurrency - 1);
 const ENGINE_WORKER_POOL_DEFAULT_SIZE = Math.min(8, ENGINE_WORKER_POOL_MAX_SIZE);
 let _engineWorkerPool = null;
 let _engineWorkerPoolSize = 0;
+/** @type {Set<string>} Prepared graphs already transferred to the worker pool (size-1 pools only). */
+const _poolPreparedIds = new Set();
 
 export const RouteFailureReason = Object.freeze({
   MISSING_RESULT: 'missing_result',
@@ -788,22 +867,47 @@ async function runEngineInWorkerPool(
     );
 
   const requestId = `request-${++_engineWorkerRequestId}`;
-  const serializedPrepared = clonePreparedForEngineWorker(prepared);
-  const transferables = getPreparedWorkerTransferables(serializedPrepared);
-  const response = await pool.postMessage(
-    {
-      type: 'prepareAndRun',
-      requestId,
-      engineId: selectedEngine,
-      startId,
-      endId,
-      prepared: serializedPrepared,
-      forceSerialRouting,
-      parallelPolicy,
-    },
-    transferables,
-    { awaitResponse: true, zeroCopy: true }
-  );
+  const preparedId = getEngineWorkerPreparedId(prepared);
+  const poolCanReusePrepared =
+    _engineWorkerPoolSize <= 1 && _poolPreparedIds.has(preparedId);
+
+  let response;
+  if (poolCanReusePrepared) {
+    response = await pool.postMessage(
+      {
+        type: 'run',
+        requestId,
+        engineId: selectedEngine,
+        startId,
+        endId,
+        preparedId,
+        forceSerialRouting,
+        parallelPolicy,
+      },
+      undefined,
+      { awaitResponse: true, zeroCopy: true }
+    );
+  } else {
+    const serializedPrepared = clonePreparedForEngineWorker(prepared);
+    const transferables = getPreparedWorkerTransferables(serializedPrepared);
+    response = await pool.postMessage(
+      {
+        type: 'prepareAndRun',
+        requestId,
+        engineId: selectedEngine,
+        startId,
+        endId,
+        prepared: serializedPrepared,
+        forceSerialRouting,
+        parallelPolicy,
+      },
+      transferables,
+      { awaitResponse: true, zeroCopy: true }
+    );
+    if (_engineWorkerPoolSize <= 1) {
+      _poolPreparedIds.add(preparedId);
+    }
+  }
 
   if (!response || response.ok !== true) {
     throw makeEngineError(
@@ -839,6 +943,7 @@ export function cancelRunningEngine(reason = 'cancelled') {
   });
 
   terminateEngineWorker();
+  disposeEngineWorkerPool();
   rejectAllEngineJobs(
     makeEngineError(`routing cancelled: ${reason}`, EngineErrorCode.ENGINE_CANCELLED)
   );
@@ -863,6 +968,7 @@ function disposeEngineWorkerPool() {
   } finally {
     _engineWorkerPool = null;
     _engineWorkerPoolSize = 0;
+    _poolPreparedIds.clear();
   }
 }
 
@@ -925,7 +1031,7 @@ function hasMeaningfulCostMismatch(left, right) {
 
 function calculatePathCost(path, prepared) {
   if (!Array.isArray(path) || path.length === 0) return null;
-  const { adjPtr, adjTo, adjCost, adjCostMap } = prepared;
+  const { adjPtr, adjTo, adjCost } = prepared;
   let totalCostInt = 0;
   const pathLen = path.length;
 
@@ -934,28 +1040,12 @@ function calculatePathCost(path, prepared) {
     const to = path[i];
     let edgeCostInt = -1;
 
-    if (adjCostMap) {
-      const lookup = adjCostMap[from];
-      if (Array.isArray(lookup)) {
-        if (lookup[0] === to) {
-          edgeCostInt = lookup[1];
-        }
-      } else if (lookup instanceof Map) {
-        const cost = lookup.get(to);
-        if (cost !== undefined) {
-          edgeCostInt = cost;
-        }
-      }
-    }
-
-    if (edgeCostInt < 0) {
-      const start = adjPtr[from];
-      const end = adjPtr[from + 1];
-      for (let k = start; k < end; k++) {
-        if (adjTo[k] === to) {
-          edgeCostInt = adjCost[k];
-          break;
-        }
+    const start = adjPtr[from];
+    const end = adjPtr[from + 1];
+    for (let k = start; k < end; k++) {
+      if (adjTo[k] === to) {
+        edgeCostInt = adjCost[k];
+        break;
       }
     }
 
@@ -1162,26 +1252,6 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   const coordsArr = new Array(N);
   for (let id = 0; id < N; id++) coordsArr[id] = nodes.get(id).coords;
 
-  // Fast lookup for route validation: avoids scanning outgoing edge lists repeatedly.
-  const adjCostMap = new Array(N);
-  for (let u = 0; u < N; u++) {
-    const start = adjPtr[u];
-    const end = adjPtr[u + 1];
-    const degree = end - start;
-    if (degree === 0) continue;
-
-    if (degree === 1) {
-      adjCostMap[u] = [adjTo[start], adjCost[start]];
-      continue;
-    }
-
-    const lookup = new Map();
-    for (let k = start; k < end; k++) {
-      lookup.set(adjTo[k], adjCost[k]);
-    }
-    adjCostMap[u] = lookup;
-  }
-
   // Prepare CH edge lists. For pedestrian mode collapse opposite-directed
   // edges into a single undirected pair using the minimum cost between them.
   let chEdgeSrc = edgeSrcView;
@@ -1221,13 +1291,12 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
     adjPtr,
     adjTo,
     adjCost,
-    adjCostMap,
+    adjCostMap: null,
     revAdjPtr,
     revAdjFrom,
     revAdjCost,
     N,
     E,
-    nodes,
     coordsArr,
     costField,
     penalties: normalizedPenalties,
@@ -1667,9 +1736,9 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       path: [],
       coordinates: [],
       cost: Infinity,
-      costField,
+      costField: normalizedCostField,
       found: false,
-      reason: 'no_node',
+      reason: RouteFailureReason.NO_NODE,
     };
   }
 
@@ -1681,17 +1750,6 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     if (startId !== -1 && endId !== -1) break;
   }
   logger.log(() => `nearestNode: start=${startId}, end=${endId}, snap=${usedSnapDistance} m`);
-
-  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
-    return {
-      path: [],
-      coordinates: [],
-      cost: Infinity,
-      costField,
-      found: false,
-      reason: RouteFailureReason.NO_NODE,
-    };
-  }
 
   if (startId === -1 || endId === -1) {
     logger.warn(() => `No node found within ${usedSnapDistance} m of start or end coordinates`);

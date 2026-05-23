@@ -21,6 +21,29 @@ const RESIZABLE_ARRAY_BUFFER_SUPPORTED = (() => {
 })();
 
 const WORKSPACE = Symbol('BidirectionalAStarWorkspace');
+const DEG_TO_RAD = Math.PI / 180;
+const EARTH_RADIUS_M = 6_371_000;
+
+function heuristicMeters(a, b) {
+  const lat1 = a[1] * DEG_TO_RAD;
+  const lat2 = b[1] * DEG_TO_RAD;
+  const dLat = lat2 - lat1;
+  const dLng = (b[0] - a[0]) * DEG_TO_RAD;
+  const meanLat = (lat1 + lat2) * 0.5;
+  const x = dLng * Math.cos(meanLat);
+  const y = dLat;
+  return Math.hypot(x, y) * EARTH_RADIUS_M;
+}
+
+/**
+ * Drop bidirectional A* scratch buffers held on a prepared graph.
+ * @param {object} prepared
+ */
+export function releasePreparedWorkspace(prepared) {
+  if (prepared?.[WORKSPACE]) {
+    prepared[WORKSPACE] = undefined;
+  }
+}
 
 function ensureWorkspace(prepared, N) {
   let ws = prepared[WORKSPACE];
@@ -177,11 +200,13 @@ export function bidirectionalAStar(startId, endId, prepared) {
   const endCoords = coordsArr[endId];
 
   const useHeuristic = costField !== 'travelTime';
+  const useFastHeuristic = prepared.coordsAreGeographic !== false;
+  const distanceHeuristic = useFastHeuristic ? heuristicMeters : haversine;
   const hFwd = useHeuristic
-    ? (id) => Math.round(haversine(coordsArr[id], endCoords) * DIST_SCALE)
+    ? (id) => Math.round(distanceHeuristic(coordsArr[id], endCoords) * DIST_SCALE)
     : () => 0;
   const hBwd = useHeuristic
-    ? (id) => Math.round(haversine(coordsArr[id], startCoords) * DIST_SCALE)
+    ? (id) => Math.round(distanceHeuristic(coordsArr[id], startCoords) * DIST_SCALE)
     : () => 0;
 
   const { distFwd, distBwd, prevFwd, nextBwd, settled, heapFwd: pqFwd, heapBwd: pqBwd } =
@@ -268,7 +293,7 @@ export function bidirectionalAStar(startId, endId, prepared) {
   }
 
   if (meetNode === -1 || bestCost >= INF_I32) {
-    return { path: [], cost: Infinity, found: false, engine: 'cpu' };
+    return { path: [], cost: Infinity, found: false, engine: 'bidirectional-astar' };
   }
 
   const fwdHalf = [meetNode];
@@ -276,11 +301,15 @@ export function bidirectionalAStar(startId, endId, prepared) {
   let safety = N;
   while (cur !== startId && safety-- > 0) {
     const parent = prevFwd[cur];
-    if (parent === -1) return { path: [], cost: Infinity, found: false, engine: 'cpu' };
+    if (parent === -1) {
+      return { path: [], cost: Infinity, found: false, engine: 'bidirectional-astar' };
+    }
     fwdHalf.push(parent);
     cur = parent;
   }
-  if (cur !== startId) return { path: [], cost: Infinity, found: false, engine: 'cpu' };
+  if (cur !== startId) {
+    return { path: [], cost: Infinity, found: false, engine: 'bidirectional-astar' };
+  }
   fwdHalf.reverse();
 
   const bwdHalf = [];
@@ -288,12 +317,16 @@ export function bidirectionalAStar(startId, endId, prepared) {
   safety = N;
   while (cur !== endId && safety-- > 0) {
     const next = nextBwd[cur];
-    if (next === -1) return { path: [], cost: Infinity, found: false, engine: 'cpu' };
+    if (next === -1) {
+      return { path: [], cost: Infinity, found: false, engine: 'bidirectional-astar' };
+    }
     bwdHalf.push(next);
     cur = next;
   }
-  if (cur !== endId) return { path: [], cost: Infinity, found: false, engine: 'cpu' };
+  if (cur !== endId) {
+    return { path: [], cost: Infinity, found: false, engine: 'bidirectional-astar' };
+  }
 
   const path = [...fwdHalf, ...bwdHalf];
-  return { path, cost: bestCost / DIST_SCALE, found: true, engine: 'cpu' };
+  return { path, cost: bestCost / DIST_SCALE, found: true, engine: 'bidirectional-astar' };
 }

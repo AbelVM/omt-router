@@ -21,7 +21,7 @@ describe('AdaptiveBarrierSSSP wrapper', () => {
     expect(res.path).toEqual([0, 1, 2]);
     // cost = (100 + 200) / DIST_SCALE(10) = 30
     expect(res.cost).toBeCloseTo(30);
-    expect(res.engine).toBe('adaptiveBarrier');
+    expect(res.engine).toBe('adaptive-barrier');
   });
 
   it('returns not found when destination unreachable', async () => {
