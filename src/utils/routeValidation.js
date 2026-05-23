@@ -2,6 +2,8 @@
  * Route option validation helpers for public API inputs.
  * @module src/utils/routeValidation
  */
+import { isKnownEngineId } from '../engines/constants.js';
+
 const VALID_ROUTE_MODES = new Set(['car', 'bicycle', 'pedestrian']);
 const VALID_TILE_SCHEMAS = new Set(['zxy', 'tms']);
 const VALID_COST_FIELDS = new Set(['distance', 'travelTime', 'optimal']);
@@ -106,9 +108,9 @@ export function validateMaxAcceptableSnapDistance(maxAcceptableSnapDistanceM) {
 }
 
 /**
- * Validate a positive integer radius value.
- * @param {*} radius Radius input.
- * @returns {number} Normalized positive integer radius.
+ * Validate routing cost field.
+ * @param {*} costField Cost field input.
+ * @returns {'distance'|'travelTime'|'optimal'} Normalized cost field.
  */
 export function validateCostField(costField) {
   if (typeof costField !== 'string' || !VALID_COST_FIELDS.has(costField)) {
@@ -116,6 +118,19 @@ export function validateCostField(costField) {
   }
 
   return costField;
+}
+
+/**
+ * Validate a positive integer tile corridor radius.
+ * @param {*} radius Radius input.
+ * @returns {number} Normalized positive integer radius.
+ */
+export function validateRadius(radius) {
+  if (!Number.isFinite(radius) || !Number.isInteger(radius) || radius < 1) {
+    throw new Error('Invalid radius: expected a positive integer.');
+  }
+
+  return Math.floor(radius);
 }
 
 export function validateEngineId(engineId) {
@@ -127,7 +142,14 @@ export function validateEngineId(engineId) {
     throw new Error('Invalid engineId: expected a non-empty string or "auto".');
   }
 
-  return engineId;
+  const trimmed = engineId.trim();
+  if (!isKnownEngineId(trimmed)) {
+    throw new Error(
+      `Unknown engineId "${trimmed}". Expected "auto" or one of: bidirectional-astar, adaptive-barrier, delta-stepping, ultra-dijkstra.`
+    );
+  }
+
+  return trimmed;
 }
 
 export function validateTileUrlTransform(tileUrlTransform) {
@@ -140,14 +162,6 @@ export function validateTileProxyTemplate(tileProxyTemplate) {
   if (tileProxyTemplate !== undefined && typeof tileProxyTemplate !== 'string') {
     throw new Error('Invalid tileProxyTemplate: expected a string.');
   }
-}
-
-export function validateRadius(radius) {
-  if (!Number.isFinite(radius) || !Number.isInteger(radius) || radius < 1) {
-    throw new Error('Invalid radius: expected a positive integer.');
-  }
-
-  return Math.floor(radius);
 }
 
 /**

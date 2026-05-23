@@ -868,21 +868,28 @@ function isFatalTileError(error) {
   );
 }
 
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw new DOMException('Graph build aborted', 'AbortError');
+  }
+}
+
 export async function buildGraphAsync(
   tiles,
   mode,
-  { pool, cache, ttl = 300_000, maxConcurrentTiles } = {}
+  { pool, cache, ttl = 300_000, maxConcurrentTiles, signal } = {}
 ) {
   if (!ways[mode]) {
     throw new Error(`Unknown transport mode "${mode}". Valid values: car, pedestrian, bicycle.`);
   }
 
   const cacheVersion = 'v2';
+  const poolMaxSize = typeof pool?.maxSize === 'number' ? pool.maxSize : 6;
   const tileBatchSize = Math.max(
     1,
     typeof maxConcurrentTiles === 'number' && maxConcurrentTiles > 0
       ? Math.min(maxConcurrentTiles, tiles.length)
-      : Math.min(6, tiles.length, typeof pool?.maxSize === 'number' ? pool.maxSize : 6)
+      : Math.min(6, tiles.length, poolMaxSize)
   );
 
   const buildTileSegment = ({ url, x, y, z }) =>
@@ -891,10 +898,11 @@ export async function buildGraphAsync(
       // (Different providers can serve different tiles for identical coordinates.)
       `graph:${cacheVersion}:${mode}:${z}/${x}/${y}:${url}`,
       async () => {
+        throwIfAborted(signal);
         const response = await pool.postMessage(
           { op: 'parse-tile', url, x, y, z, mode },
           undefined,
-          { awaitResponse: true, timeout: 10_000 }
+          { awaitResponse: true, timeout: 10_000, signal }
         );
 
         if (response?.fetchFailed) {
@@ -923,6 +931,7 @@ export async function buildGraphAsync(
   const missingTileErrors = [];
 
   for (let i = 0; i < tiles.length; i += tileBatchSize) {
+    throwIfAborted(signal);
     const batch = tiles.slice(i, i + tileBatchSize).map((tile) => buildTileSegment(tile));
     const settled = await Promise.allSettled(batch);
 

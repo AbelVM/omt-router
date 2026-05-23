@@ -8,6 +8,7 @@
 import KDBush from 'kdbush';
 import RBush from 'rbush';
 import { haversineDistance as haversine } from '../utils/misc.js';
+import { isRoutableNodeCollection } from './graphValidation.js';
 
 export const DEG_TO_RAD = Math.PI / 180;
 export const LATITUDE_METERS = 111_320;
@@ -261,7 +262,8 @@ export function findClosestSegmentProjection(
 ) {
   const nodeIds = getNearbyNodeIds(graph, coords, maxDistM + SEGMENT_SNAP_EXTRA_M);
   const incident = buildIncidentEdgeIndex(graph);
-  const candidateEdges = new Set();
+  const candidateEdges = graph._segmentSnapCandidateReuse ?? (graph._segmentSnapCandidateReuse = new Set());
+  candidateEdges.clear();
 
   for (const nodeId of nodeIds) {
     const edges = incident.get(nodeId);
@@ -323,45 +325,20 @@ export function findClosestSegmentProjection(
 }
 
 /**
- * Create a view of graph nodes with an extra snapped node.
- * @param {Map<number, object>} baseNodes
- * @param {number} newNodeId
- * @param {[number, number]} projectedCoords
- * @returns {{ size: number, get: function(number): object }}
- * @private
+ * Copy any routable node collection into a real Map.
+ * @param {object} baseNodes
+ * @returns {Map<number, object>}
  */
-function createAugmentedNodes(baseNodes, newNodeId, projectedCoords) {
-  const newNode = { id: newNodeId, coords: projectedCoords };
-  return {
-    size: baseNodes.size + 1,
-    get(id) {
-      return id === newNodeId ? newNode : baseNodes.get(id);
-    },
-    has(id) {
-      return id === newNodeId || baseNodes.has(id);
-    },
-    keys() {
-      return (function* () {
-        for (const id of baseNodes.keys()) yield id;
-        yield newNodeId;
-      })();
-    },
-    values() {
-      return (function* () {
-        for (const node of baseNodes.values()) yield node;
-        yield newNode;
-      })();
-    },
-    entries() {
-      return (function* () {
-        for (const entry of baseNodes.entries()) yield entry;
-        yield [newNodeId, newNode];
-      })();
-    },
-    [Symbol.iterator]() {
-      return this.entries();
-    },
-  };
+function copyNodesToMap(baseNodes) {
+  const nodes = new Map();
+  if (baseNodes instanceof Map) {
+    for (const [id, node] of baseNodes) nodes.set(id, node);
+    return nodes;
+  }
+  if (isRoutableNodeCollection(baseNodes)) {
+    for (const id of baseNodes.keys()) nodes.set(id, baseNodes.get(id));
+  }
+  return nodes;
 }
 
 /**
@@ -408,7 +385,8 @@ function getNextNodeId(graph) {
 
 export function createAugmentedGraph(graph, snap) {
   const newNodeId = getNextNodeId(graph);
-  const augmentedNodes = createAugmentedNodes(graph.nodes, newNodeId, snap.projectedCoords);
+  const augmentedNodes = copyNodesToMap(graph.nodes);
+  augmentedNodes.set(newNodeId, { id: newNodeId, coords: snap.projectedCoords });
 
   const sourceCoords = graph.nodes.get(snap.edge.source).coords;
   const targetCoords = graph.nodes.get(snap.edge.target).coords;
@@ -588,5 +566,183 @@ export function tryAddSegmentSnap(
     graph: augmentedGraph,
     nodeId: augmentedGraph._lastAddedNodeId ?? augmentedGraph.nodes.size - 1,
     snapDistanceM: snap.distanceM,
+  };
+}
+
+/**
+ * Resolve snapped endpoints for a coordinate pair over a routable graph.
+ * Shared by computeRoute() and prepareRoutableGraph().
+ *
+ * @param {object} graph
+ * @param {[number, number]} startCoords
+ * @param {[number, number]} endCoords
+ * @param {object} [options]
+ * @param {number[]} [options.snapDistancesM]
+ * @param {number} [options.maxAcceptableSnapDistanceM]
+ * @returns {object}
+ */
+export function resolveRouteEndpoints(
+  graph,
+  startCoords,
+  endCoords,
+  {
+    snapDistancesM,
+    maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
+  } = {}
+) {
+  const distances =
+    Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];
+
+  const baseGraph = graph;
+  let workingGraph = graph;
+  let startId = -1;
+  let endId = -1;
+  let usedSnapDistance = distances[distances.length - 1];
+
+  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
+    return {
+      workingGraph,
+      baseGraph,
+      startId,
+      endId,
+      startSnapDistanceM: Infinity,
+      endSnapDistanceM: Infinity,
+      startSnapApplied: false,
+      endSnapApplied: false,
+      startSegmentSnap: null,
+      endSegmentSnap: null,
+      baseStartId: -1,
+      baseEndId: -1,
+      originalStartSnapDistanceM: Infinity,
+      originalEndSnapDistanceM: Infinity,
+      usedSnapDistance,
+      reason: 'no_node',
+    };
+  }
+
+  for (const maxDistM of distances) {
+    startId = nearestNode(startCoords, workingGraph, maxDistM);
+    endId = nearestNode(endCoords, workingGraph, maxDistM);
+    usedSnapDistance = maxDistM;
+    if (startId !== -1 && endId !== -1) break;
+  }
+
+  let startSnapDistanceM =
+    startId === -1 ? Infinity : haversine(startCoords, workingGraph.nodes.get(startId).coords);
+  let endSnapDistanceM =
+    endId === -1 ? Infinity : haversine(endCoords, workingGraph.nodes.get(endId).coords);
+  const originalStartSnapDistanceM = startSnapDistanceM;
+  const originalEndSnapDistanceM = endSnapDistanceM;
+  const baseStartId = startId;
+  const baseEndId = endId;
+
+  let startCandidate = findEndpointCandidate(
+    startCoords,
+    workingGraph,
+    distances,
+    maxAcceptableSnapDistanceM
+  );
+  let endCandidate = findEndpointCandidate(
+    endCoords,
+    workingGraph,
+    distances,
+    maxAcceptableSnapDistanceM
+  );
+  let startSegmentSnap = startCandidate.segmentSnap;
+  let endSegmentSnap = endCandidate.segmentSnap;
+  let startSnapApplied = false;
+  let endSnapApplied = false;
+
+  if (startCandidate.type === 'segment') {
+    workingGraph = createAugmentedGraph(workingGraph, startCandidate.segmentSnap);
+    startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+    startSnapDistanceM = startCandidate.snapDistanceM;
+    startSnapApplied = true;
+
+    endCandidate = findEndpointCandidate(
+      endCoords,
+      workingGraph,
+      distances,
+      maxAcceptableSnapDistanceM
+    );
+    endSegmentSnap = endCandidate.segmentSnap;
+    endSnapDistanceM = endCandidate.snapDistanceM;
+  } else if (startCandidate.type === 'node') {
+    startId = startCandidate.nodeId;
+    startSnapDistanceM = startCandidate.snapDistanceM;
+  }
+
+  if (endCandidate.type === 'segment') {
+    workingGraph = createAugmentedGraph(workingGraph, endCandidate.segmentSnap);
+    endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
+    endSnapDistanceM = endCandidate.snapDistanceM;
+    endSnapApplied = true;
+  } else if (endCandidate.type === 'node') {
+    endId = endCandidate.nodeId;
+    endSnapDistanceM = endCandidate.snapDistanceM;
+  }
+
+  if (startId === -1 || endId === -1) {
+    return {
+      workingGraph,
+      baseGraph,
+      startId,
+      endId,
+      startSnapDistanceM,
+      endSnapDistanceM,
+      startSnapApplied,
+      endSnapApplied,
+      startSegmentSnap,
+      endSegmentSnap,
+      baseStartId,
+      baseEndId,
+      originalStartSnapDistanceM,
+      originalEndSnapDistanceM,
+      usedSnapDistance,
+      reason: 'no_node',
+    };
+  }
+
+  if (
+    startSnapDistanceM > maxAcceptableSnapDistanceM ||
+    endSnapDistanceM > maxAcceptableSnapDistanceM
+  ) {
+    return {
+      workingGraph,
+      baseGraph,
+      startId,
+      endId,
+      startSnapDistanceM,
+      endSnapDistanceM,
+      startSnapApplied,
+      endSnapApplied,
+      startSegmentSnap,
+      endSegmentSnap,
+      baseStartId,
+      baseEndId,
+      originalStartSnapDistanceM,
+      originalEndSnapDistanceM,
+      usedSnapDistance,
+      reason: 'poor_snap',
+    };
+  }
+
+  return {
+    workingGraph,
+    baseGraph,
+    startId,
+    endId,
+    startSnapDistanceM,
+    endSnapDistanceM,
+    startSnapApplied,
+    endSnapApplied,
+    startSegmentSnap,
+    endSegmentSnap,
+    baseStartId,
+    baseEndId,
+    originalStartSnapDistanceM,
+    originalEndSnapDistanceM,
+    usedSnapDistance,
+    reason: null,
   };
 }

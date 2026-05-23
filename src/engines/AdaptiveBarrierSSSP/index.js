@@ -343,6 +343,54 @@ export class AdaptiveBarrierSSSP {
   }
 }
 
+const WORKSPACE = Symbol('AdaptiveBarrierWorkspace');
+
+function ensureAdaptiveSolver(
+  prepared,
+  { forceSerialRouting = false, minNodesForParallel, minFrontierForParallel } = {}
+) {
+  const { adjPtr, adjTo, adjCost, N } = prepared;
+  const edgeCount = adjCost.length;
+  let ws = prepared[WORKSPACE];
+  if (
+    !ws ||
+    ws.N !== N ||
+    ws.edgeCount !== edgeCount ||
+    ws.forceSerialRouting !== forceSerialRouting
+  ) {
+    const solver = new AdaptiveBarrierSSSP(N, edgeCount, {
+      forceSerialRouting,
+      minNodesForParallel,
+      minFrontierForParallel,
+    });
+    for (let u = 0; u < N; u++) {
+      for (let k = adjPtr[u]; k < adjPtr[u + 1]; k++) {
+        solver.loadGraph(u, adjTo[k], adjCost[k]);
+      }
+    }
+    ws = {
+      solver,
+      N,
+      edgeCount,
+      forceSerialRouting,
+      visited: new Uint8Array(N),
+    };
+    prepared[WORKSPACE] = ws;
+  }
+  return ws;
+}
+
+/**
+ * @param {object} prepared
+ */
+export function releasePreparedWorkspace(prepared) {
+  const ws = prepared?.[WORKSPACE];
+  if (ws?.solver) {
+    ws.solver.terminate();
+    prepared[WORKSPACE] = undefined;
+  }
+}
+
 /**
  * Wrapper export: Adaptive Barrier SSSP with point-to-point routing.
  * Reconstructs path from distances and tracks parallel execution.
@@ -358,26 +406,16 @@ export async function adaptiveBarrierSSPRouter(
   prepared,
   { forceSerialRouting = false, minNodesForParallel, minFrontierForParallel } = {}
 ) {
-  const { adjPtr, adjTo, adjCost, revAdjPtr, revAdjFrom, revAdjCost, N } = prepared;
+  const { revAdjPtr, revAdjFrom, revAdjCost, N } = prepared;
   const DIST_SCALE = 10;
-
-  const solver = new AdaptiveBarrierSSSP(N, adjCost.length, {
+  const ws = ensureAdaptiveSolver(prepared, {
     forceSerialRouting,
     minNodesForParallel,
     minFrontierForParallel,
   });
-
-  // Load graph into solver
-  for (let u = 0; u < N; u++) {
-    for (let k = adjPtr[u]; k < adjPtr[u + 1]; k++) {
-      const v = adjTo[k];
-      const cost = adjCost[k];
-      solver.loadGraph(u, v, cost);
-    }
-  }
+  const solver = ws.solver;
 
   try {
-    // Run SSSP from start
     await solver.solve(startId, endId);
     const distances = solver.dist;
     const endDistInt = distances[endId];
@@ -399,7 +437,8 @@ export async function adaptiveBarrierSSPRouter(
     const path = [endId];
     let cur = endId;
     let safety = N;
-    const visited = new Uint8Array(N);
+    const visited = ws.visited;
+    visited.fill(0);
     visited[cur] = 1;
 
     while (cur !== startId && safety-- > 0) {
@@ -432,7 +471,8 @@ export async function adaptiveBarrierSSPRouter(
       engine: 'adaptive-barrier',
       parallelUsed,
     };
-  } finally {
-    solver.terminate();
+  } catch (error) {
+    releasePreparedWorkspace(prepared);
+    throw error;
   }
 }

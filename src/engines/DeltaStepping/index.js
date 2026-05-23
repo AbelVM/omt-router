@@ -349,6 +349,46 @@ class DeltaSteppingSSSP {
   }
 }
 
+const WORKSPACE = Symbol('DeltaSteppingWorkspace');
+
+function ensureDeltaSolver(prepared, { forceSerialRouting = false, minFrontierForParallel } = {}) {
+  const { adjPtr, adjTo, adjCost, N } = prepared;
+  const delta = prepared.costField === 'travelTime' ? 300 : 200;
+  const edgeCount = adjCost.length;
+  let ws = prepared[WORKSPACE];
+  if (
+    !ws ||
+    ws.N !== N ||
+    ws.edgeCount !== edgeCount ||
+    ws.delta !== delta ||
+    ws.forceSerialRouting !== forceSerialRouting
+  ) {
+    const solver = new DeltaSteppingSSSP(N, edgeCount, delta, {
+      forceSerialRouting,
+      minFrontierForParallel,
+    });
+    for (let u = 0; u < N; u++) {
+      for (let k = adjPtr[u]; k < adjPtr[u + 1]; k++) {
+        solver.addEdge(u, adjTo[k], adjCost[k]);
+      }
+    }
+    ws = { solver, N, edgeCount, delta, forceSerialRouting };
+    prepared[WORKSPACE] = ws;
+  }
+  return ws.solver;
+}
+
+/**
+ * @param {object} prepared
+ */
+export function releasePreparedWorkspace(prepared) {
+  const ws = prepared?.[WORKSPACE];
+  if (ws?.solver) {
+    ws.solver.terminate();
+    prepared[WORKSPACE] = undefined;
+  }
+}
+
 /**
  * Wrapper export: Delta Stepping SSSP with point-to-point routing.
  * Reconstructs path from distances and reports whether worker parallelism ran.
@@ -364,21 +404,9 @@ export async function deltaSteppingRouter(
   prepared,
   { forceSerialRouting = false, minFrontierForParallel } = {}
 ) {
-  const { adjPtr, adjTo, adjCost, N } = prepared;
+  const { N } = prepared;
   const DIST_SCALE = 10;
-
-  // Tune bucket width in scaled integer cost units.
-  const delta = prepared.costField === 'travelTime' ? 300 : 200;
-  const solver = new DeltaSteppingSSSP(N, adjCost.length, delta, {
-    forceSerialRouting,
-    minFrontierForParallel,
-  });
-
-  for (let u = 0; u < N; u++) {
-    for (let k = adjPtr[u]; k < adjPtr[u + 1]; k++) {
-      solver.addEdge(u, adjTo[k], adjCost[k]);
-    }
-  }
+  const solver = ensureDeltaSolver(prepared, { forceSerialRouting, minFrontierForParallel });
 
   try {
     await solver.solve(startId);
@@ -413,7 +441,8 @@ export async function deltaSteppingRouter(
       engine: 'delta-stepping',
       parallelUsed,
     };
-  } finally {
-    solver.terminate();
+  } catch (error) {
+    releasePreparedWorkspace(prepared);
+    throw error;
   }
 }

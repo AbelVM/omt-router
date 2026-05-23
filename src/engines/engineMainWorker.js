@@ -11,22 +11,10 @@ import { bidirectionalAStar } from './BidirectionalAStar/index.js';
 import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
 import { deltaSteppingRouter } from './DeltaStepping/index.js';
 import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
-
-const ENGINE_ID_ALIASES = Object.freeze({
-  cpu: 'bidirectional-astar',
-  bidirectionalAStar: 'bidirectional-astar',
-  adaptiveBarrier: 'adaptive-barrier',
-  deltaStepping: 'delta-stepping',
-  ultraDijkstra: 'ultra-dijkstra',
-});
+import { DEFAULT_ENGINE_ID, normalizeEngineId } from './constants.js';
 
 let _workerPrepared = null;
 let _workerPreparedId = null;
-
-function normalizeEngineId(engineId, fallback = 'bidirectional-astar') {
-  if (typeof engineId !== 'string' || !engineId) return fallback;
-  return ENGINE_ID_ALIASES[engineId] ?? engineId;
-}
 
 /**
  * Restore runtime-only graph data after transferring a prepared graph across
@@ -72,7 +60,7 @@ async function runEngine(
   prepared,
   { forceSerialRouting = false, parallelPolicy = null } = {}
 ) {
-  switch (normalizeEngineId(engineId, 'ultra-dijkstra')) {
+  switch (normalizeEngineId(engineId, DEFAULT_ENGINE_ID)) {
     case 'bidirectional-astar':
       return bidirectionalAStar(startId, endId, prepared);
     case 'adaptive-barrier':
@@ -89,7 +77,7 @@ async function runEngine(
     case 'ultra-dijkstra':
       return await ultraDijkstraRouter(startId, endId, prepared);
     default:
-      return await ultraDijkstraRouter(startId, endId, prepared);
+      return bidirectionalAStar(startId, endId, prepared);
   }
 }
 

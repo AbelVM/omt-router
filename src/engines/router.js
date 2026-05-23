@@ -19,73 +19,41 @@ import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerCache } from 'performance-helpers/powerCache';
 import { PowerPool } from 'performance-helpers/powerPool';
 import { haversineDistance as haversine } from '../utils/misc.js';
-
-// Work around a PowerPool worker-wrapper bug where plain-object messages
-// with `awaitResponse: true` and `zeroCopy: true` are re-encoded by the
-// wrapper, which loses transferred typed arrays.
-if (typeof PowerPool !== 'undefined' && PowerPool.prototype?._postToWorkerObj) {
-  const _originalPostToWorkerObj = PowerPool.prototype._postToWorkerObj;
-  PowerPool.prototype._postToWorkerObj = function (
-    obj,
-    prepared,
-    startTime,
-    wantResponse,
-    correlationKey,
-    pendingPromise
-  ) {
-    const canBypassWrapper =
-      prepared &&
-      prepared.message &&
-      typeof prepared.message === 'object' &&
-      prepared.message !== null &&
-      !ArrayBuffer.isView(prepared.message) &&
-      !(prepared.message instanceof ArrayBuffer) &&
-      Array.isArray(prepared.transfer) &&
-      prepared.transfer.length > 0 &&
-      obj?.worker?.['_underlying']?.postMessage;
-
-    if (canBypassWrapper) {
-      try {
-        obj.worker._underlying.postMessage(prepared.message, prepared.transfer);
-        if (typeof obj._startTimes?.push === 'function') obj._startTimes.push(startTime);
-        obj.tasks++;
-        this._activeTasks++;
-        obj.lastActive = startTime;
-        if (this._isIdle) this._updateIdleState();
-        return wantResponse ? pendingPromise : true;
-      } catch {
-        // Fallback to the original behavior if direct postMessage fails.
-      }
-    }
-
-    return _originalPostToWorkerObj.call(
-      this,
-      obj,
-      prepared,
-      startTime,
-      wantResponse,
-      correlationKey,
-      pendingPromise
-    );
-  };
-}
+import { installPowerPoolTransferFix } from './powerPoolTransferFix.js';
+import {
+  DEFAULT_ENGINE_ID,
+  ENGINE_ID_ALIASES,
+  normalizeEngineId,
+} from './constants.js';
+import { isRoutableGraph } from '../graphs/graphValidation.js';
 import {
   DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
-  chooseEndpointCandidate,
   createAugmentedGraph,
-  findEndpointCandidate,
-  isValidCoords,
-  nearestNode,
+  resolveRouteEndpoints,
 } from '../graphs/snapper.js';
+
+installPowerPoolTransferFix();
 import {
   getParallelPolicyForEngine,
   hasParallelRoutingRuntime,
   selectBestEngine,
 } from '../tuning/tuning.js';
-import { bidirectionalAStar, releasePreparedWorkspace } from './BidirectionalAStar/index.js';
-import { adaptiveBarrierSSPRouter } from './AdaptiveBarrierSSSP/index.js';
-import { deltaSteppingRouter } from './DeltaStepping/index.js';
-import { ultraDijkstraRouter } from './UltraDijkstra/index.js';
+import {
+  bidirectionalAStar,
+  releasePreparedWorkspace as releaseBidirectionalAStarWorkspace,
+} from './BidirectionalAStar/index.js';
+import {
+  adaptiveBarrierSSPRouter,
+  releasePreparedWorkspace as releaseAdaptiveBarrierWorkspace,
+} from './AdaptiveBarrierSSSP/index.js';
+import {
+  deltaSteppingRouter,
+  releasePreparedWorkspace as releaseDeltaSteppingWorkspace,
+} from './DeltaStepping/index.js';
+import {
+  ultraDijkstraRouter,
+  releasePreparedWorkspace as releaseUltraDijkstraWorkspace,
+} from './UltraDijkstra/index.js';
 import { WAY_PRIORITIES } from '../utils/ways_defaults.js';
 import {
   normalizePenalties,
@@ -124,7 +92,8 @@ import { getAllGraphMetrics } from '../graphs/graphMetrics.js';
  * @property {number} [startSnapDistanceM]
  * @property {number} [endSnapDistanceM]
  */
-export { selectBestEngine, nearestNode };
+export { selectBestEngine } from '../tuning/tuning.js';
+export { nearestNode } from '../graphs/snapper.js';
 
 const logger = new PowerLogger(0, { name: 'omt-router' });
 
@@ -194,7 +163,10 @@ export function releasePrepared(prepared) {
   disposeRouteCache(prepared._routeCache);
   prepared._routeCache = null;
 
-  releasePreparedWorkspace(prepared);
+  releaseBidirectionalAStarWorkspace(prepared);
+  releaseDeltaSteppingWorkspace(prepared);
+  releaseAdaptiveBarrierWorkspace(prepared);
+  releaseUltraDijkstraWorkspace(prepared);
 
   prepared._engineWorkerBackup = null;
   prepared._engineWorkerPreparedId = null;
@@ -233,13 +205,7 @@ const ENGINE_WORKER_STATES = Object.freeze({
   CANCELLING: 'cancelling',
   ERROR: 'error',
 });
-const ENGINE_ID_ALIASES = Object.freeze({
-  cpu: 'bidirectional-astar',
-  bidirectionalAStar: 'bidirectional-astar',
-  adaptiveBarrier: 'adaptive-barrier',
-  deltaStepping: 'delta-stepping',
-  ultraDijkstra: 'ultra-dijkstra',
-});
+export { ENGINE_ID_ALIASES, normalizeEngineId };
 
 const _hwConcurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
 const ENGINE_WORKER_POOL_MAX_SIZE = Math.max(1, _hwConcurrency - 1);
@@ -272,11 +238,6 @@ export const EngineErrorCode = Object.freeze({
   ENGINE_SHUTDOWN: 'engine_shutdown',
   ENGINE_WORKER_BUSY: 'engine_worker_busy',
 });
-
-function normalizeEngineId(engineId, fallback = 'bidirectional-astar') {
-  if (typeof engineId !== 'string' || !engineId) return fallback;
-  return ENGINE_ID_ALIASES[engineId] ?? engineId;
-}
 
 const OPTIMAL_PRIORITY_ALPHA = 0.7;
 
@@ -333,7 +294,10 @@ function getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targe
     prepared = buildCH(graph, costField, normalizedPenalties);
     costFieldGroup[penaltyKey] = prepared;
   }
-  prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
+  prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, {
+    ...opts,
+    mode: graph.mode ?? opts.mode,
+  });
   return prepared;
 }
 
@@ -695,8 +659,10 @@ async function runEngineDirect(
       return ultraDijkstraRouter(startId, endId, prepared);
 
     default:
-      logger.warn(`unknown selectedEngine: ${selectedEngine}, falling back to ultra-dijkstra`);
-      return ultraDijkstraRouter(startId, endId, prepared);
+      logger.warn(
+        `unknown selectedEngine: ${selectedEngine}, falling back to ${DEFAULT_ENGINE_ID}`
+      );
+      return bidirectionalAStar(startId, endId, prepared);
   }
 }
 
@@ -1029,26 +995,39 @@ function hasMeaningfulCostMismatch(left, right) {
   return Math.abs(left - right) > getCostTolerance(left, right);
 }
 
+function lookupEdgeCostInt(from, to, prepared) {
+  const { adjPtr, adjTo, adjCost } = prepared;
+  const start = adjPtr[from];
+  const end = adjPtr[from + 1];
+  const degree = end - start;
+  if (degree === 0) return -1;
+  if (degree === 1) {
+    return adjTo[start] === to ? adjCost[start] : -1;
+  }
+
+  let map = prepared.adjCostMap?.[from];
+  if (!map) {
+    for (let k = start; k < end; k++) {
+      if (adjTo[k] === to) return adjCost[k];
+    }
+    return -1;
+  }
+
+  if (Array.isArray(map)) {
+    return map[0] === to ? map[1] : -1;
+  }
+
+  const cost = map.get(to);
+  return cost === undefined ? -1 : cost;
+}
+
 function calculatePathCost(path, prepared) {
   if (!Array.isArray(path) || path.length === 0) return null;
-  const { adjPtr, adjTo, adjCost } = prepared;
   let totalCostInt = 0;
   const pathLen = path.length;
 
   for (let i = 1; i < pathLen; i++) {
-    const from = path[i - 1];
-    const to = path[i];
-    let edgeCostInt = -1;
-
-    const start = adjPtr[from];
-    const end = adjPtr[from + 1];
-    for (let k = start; k < end; k++) {
-      if (adjTo[k] === to) {
-        edgeCostInt = adjCost[k];
-        break;
-      }
-    }
-
+    const edgeCostInt = lookupEdgeCostInt(path[i - 1], path[i], prepared);
     if (edgeCostInt < 0) return null;
     totalCostInt += edgeCostInt;
   }
@@ -1259,24 +1238,25 @@ export function buildCH(graph, costField = 'distance', penalties = {}) {
   let chEdgeCostInt = edgeCostIntView;
   if (graph.mode === 'pedestrian') {
     const pairMap = new Map();
+    const pairKeyStride = N + 1;
     for (let i = 0; i < edgeSrcView.length; i++) {
       const u = edgeSrcView[i];
       const v = edgeTgtView[i];
       const a = u < v ? u : v;
       const b = u < v ? v : u;
-      const key = a + ':' + b;
+      const key = a * pairKeyStride + b;
       const cost = edgeCostIntView[i];
       const prev = pairMap.get(key);
       if (prev === undefined || cost < prev) pairMap.set(key, cost);
     }
-    const pairs = Array.from(pairMap.entries());
-    const M = pairs.length;
+    const M = pairMap.size;
     const srcArr = new Int32Array(M);
     const tgtArr = new Int32Array(M);
     const costArr = new Int32Array(M);
     let idx = 0;
-    for (const [key, cost] of pairs) {
-      const [a, b] = key.split(':').map(Number);
+    for (const [key, cost] of pairMap) {
+      const a = Math.floor(key / pairKeyStride);
+      const b = key % pairKeyStride;
       srcArr[idx] = a;
       tgtArr[idx] = b;
       costArr[idx] = cost;
@@ -1359,8 +1339,8 @@ export async function queryRoute(
 
   // ── Route cache ────────────────────────────────────────────────────────────
   // Benchmarks can disable cache to measure pure engine runtime.
-  if (useCache) {
-    prepared._routeCache ??= new PowerCache({
+  if (useCache && !prepared._routeCache) {
+    prepared._routeCache = new PowerCache({
       maxEntries: ROUTE_CACHE_MAX,
       defaultTTL: ROUTE_CACHE_TTL,
     });
@@ -1565,116 +1545,27 @@ export async function queryRoute(
   return result;
 }
 
+/**
+ * Snap endpoints onto a graph without running a route query.
+ * Uses the same snapping rules as {@link computeRoute}.
+ */
 export function prepareRoutableGraph(
   graph,
   startCoords,
   endCoords,
   { snapDistancesM, maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M } = {}
 ) {
-  const distances =
-    Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];
-
-  let workingGraph = graph;
-  let startId = -1;
-  let endId = -1;
-  let usedSnapDistanceM = distances[distances.length - 1];
-
-  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
-    return {
-      graph: workingGraph,
-      startId,
-      endId,
-      startSnapDistanceM: Infinity,
-      endSnapDistanceM: Infinity,
-      usedSnapDistanceM,
-    };
-  }
-
-  let startCandidate = { type: 'none' };
-  let endCandidate = { type: 'none' };
-
-  for (const maxDistM of distances) {
-    startCandidate = chooseEndpointCandidate(
-      startCoords,
-      workingGraph,
-      maxDistM,
-      maxAcceptableSnapDistanceM
-    );
-    endCandidate = chooseEndpointCandidate(
-      endCoords,
-      workingGraph,
-      maxDistM,
-      maxAcceptableSnapDistanceM
-    );
-    usedSnapDistanceM = maxDistM;
-    if (startCandidate.type !== 'none' && endCandidate.type !== 'none') break;
-  }
-
-  let startSnapDistanceM = startCandidate.snapDistanceM ?? Infinity;
-  let endSnapDistanceM = endCandidate.snapDistanceM ?? Infinity;
-  let startSnapApplied = false;
-
-  if (startCandidate.type === 'none' || endCandidate.type === 'none') {
-    return {
-      graph: workingGraph,
-      startId: -1,
-      endId: -1,
-      startSnapDistanceM,
-      endSnapDistanceM,
-      usedSnapDistanceM,
-    };
-  }
-
-  if (
-    startCandidate.type === 'segment' &&
-    startCandidate.snapDistanceM <= maxAcceptableSnapDistanceM
-  ) {
-    const snapResult = createAugmentedGraph(workingGraph, startCandidate.segmentSnap);
-    workingGraph = snapResult;
-    startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
-    startSnapDistanceM = startCandidate.snapDistanceM;
-    startSnapApplied = true;
-  } else if (startCandidate.type === 'node') {
-    startId = startCandidate.nodeId;
-  }
-
-  if (startSnapApplied) {
-    endCandidate = findEndpointCandidate(
-      endCoords,
-      workingGraph,
-      distances,
-      maxAcceptableSnapDistanceM
-    );
-    endSnapDistanceM = endCandidate.snapDistanceM;
-  }
-
-  if (endCandidate.type === 'segment' && endCandidate.snapDistanceM <= maxAcceptableSnapDistanceM) {
-    const snapResult = createAugmentedGraph(workingGraph, endCandidate.segmentSnap);
-    workingGraph = snapResult;
-    endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
-    endSnapDistanceM = endCandidate.snapDistanceM;
-  } else if (endCandidate.type === 'node') {
-    endId = endCandidate.nodeId;
-  }
-
-  if (startId === -1 || endId === -1) {
-    return {
-      graph: workingGraph,
-      startId,
-      endId,
-      startSnapDistanceM,
-      endSnapDistanceM,
-      usedSnapDistanceM,
-    };
-  }
-
+  const snap = resolveRouteEndpoints(graph, startCoords, endCoords, {
+    snapDistancesM,
+    maxAcceptableSnapDistanceM,
+  });
   return {
-    graph: workingGraph,
-    startId,
-    endId,
-    startSnapDistanceM,
-    endSnapDistanceM,
-    usedSnapDistanceM,
+    graph: snap.workingGraph,
+    startId: snap.startId,
+    endId: snap.endId,
+    startSnapDistanceM: snap.startSnapDistanceM,
+    endSnapDistanceM: snap.endSnapDistanceM,
+    usedSnapDistanceM: snap.usedSnapDistance,
   };
 }
 
@@ -1694,13 +1585,8 @@ export function prepareRoutableGraph(
  * @throws {Error} When input coordinates or the graph are invalid.
  */
 export async function computeRoute(startCoords, endCoords, graph, options = {}) {
-  if (
-    !graph ||
-    typeof graph !== 'object' ||
-    !(graph.nodes instanceof Map) ||
-    !Array.isArray(graph.edges)
-  ) {
-    throw new Error('Invalid graph: expected object with nodes Map and edges array.');
+  if (!isRoutableGraph(graph)) {
+    throw new Error('Invalid graph: expected object with routable nodes and edges array.');
   }
 
   const {
@@ -1714,7 +1600,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     engineWorkerMaxPoolSize = null,
   } = options;
   const normalizedCostField = validateCostField(costField);
-  validateEngineId(engineId);
+  const normalizedEngineId = validateEngineId(engineId);
   const normalizedPenalties = normalizePenalties(penalties);
   if (isTravelTimeCostField(normalizedCostField) && normalizedPenalties.turnPenaltySec > 0) {
     logger.warn('turn penalties are currently ignored; using standard engine routing');
@@ -1724,14 +1610,17 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     () => `computeRoute: graph has ${graph.nodes.size} nodes, ${graph.edges.length} edges`
   );
 
-  const distances =
-    Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];
+  const snap = resolveRouteEndpoints(graph, startCoords, endCoords, {
+    snapDistancesM,
+    maxAcceptableSnapDistanceM,
+  });
 
-  let startId = -1;
-  let endId = -1;
-  let usedSnapDistance = distances[distances.length - 1];
-
-  if (!isValidCoords(startCoords) || !isValidCoords(endCoords)) {
+  if (snap.reason === 'no_node') {
+    if (snap.startId === -1 || snap.endId === -1) {
+      logger.warn(
+        () => `No node found within ${snap.usedSnapDistance} m of start or end coordinates`
+      );
+    }
     return {
       path: [],
       coordinates: [],
@@ -1742,107 +1631,39 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     };
   }
 
-  let workingGraph = graph;
-  for (const maxDistM of distances) {
-    startId = nearestNode(startCoords, workingGraph, maxDistM);
-    endId = nearestNode(endCoords, workingGraph, maxDistM);
-    usedSnapDistance = maxDistM;
-    if (startId !== -1 && endId !== -1) break;
-  }
-  logger.log(() => `nearestNode: start=${startId}, end=${endId}, snap=${usedSnapDistance} m`);
-
-  if (startId === -1 || endId === -1) {
-    logger.warn(() => `No node found within ${usedSnapDistance} m of start or end coordinates`);
-  }
-
-  let startSnapDistanceM =
-    startId === -1 ? Infinity : haversine(startCoords, workingGraph.nodes.get(startId).coords);
-  let endSnapDistanceM =
-    endId === -1 ? Infinity : haversine(endCoords, workingGraph.nodes.get(endId).coords);
-
-  let startCandidate = findEndpointCandidate(
-    startCoords,
-    workingGraph,
-    distances,
-    maxAcceptableSnapDistanceM
-  );
-  let endCandidate = findEndpointCandidate(
-    endCoords,
-    workingGraph,
-    distances,
-    maxAcceptableSnapDistanceM
-  );
-  let startSegmentSnap = startCandidate.segmentSnap;
-  let endSegmentSnap = endCandidate.segmentSnap;
-  let startSnapApplied = false;
-  let endSnapApplied = false;
-  const baseGraph = workingGraph;
-  const baseStartId = startId;
-  const baseEndId = endId;
-  const originalStartSnapDistanceM = startSnapDistanceM;
-  const originalEndSnapDistanceM = endSnapDistanceM;
-
-  if (startCandidate.type === 'segment') {
-    const snapResult = createAugmentedGraph(workingGraph, startCandidate.segmentSnap);
-    workingGraph = snapResult;
-    startId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
-    startSnapDistanceM = startCandidate.snapDistanceM;
-    startSnapApplied = true;
-
-    endCandidate = findEndpointCandidate(
-      endCoords,
-      workingGraph,
-      distances,
-      maxAcceptableSnapDistanceM
-    );
-    endSegmentSnap = endCandidate.segmentSnap;
-    endSnapDistanceM = endCandidate.snapDistanceM;
-  } else if (startCandidate.type === 'node') {
-    startId = startCandidate.nodeId;
-    startSnapDistanceM = startCandidate.snapDistanceM;
-  }
-
-  if (endCandidate.type === 'segment') {
-    const snapResult = createAugmentedGraph(workingGraph, endCandidate.segmentSnap);
-    workingGraph = snapResult;
-    endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
-    endSnapDistanceM = endCandidate.snapDistanceM;
-    endSnapApplied = true;
-  } else if (endCandidate.type === 'node') {
-    endId = endCandidate.nodeId;
-    endSnapDistanceM = endCandidate.snapDistanceM;
-  }
-
-  if (startId === -1 || endId === -1) {
-    return {
-      path: [],
-      coordinates: [],
-      cost: Infinity,
-      costField,
-      found: false,
-      reason: RouteFailureReason.NO_NODE,
-    };
-  }
-
-  if (
-    startSnapDistanceM > maxAcceptableSnapDistanceM ||
-    endSnapDistanceM > maxAcceptableSnapDistanceM
-  ) {
+  if (snap.reason === 'poor_snap') {
     logger.warn(
       () =>
-        `Poor snap quality: start=${startSnapDistanceM.toFixed(0)} m, end=${endSnapDistanceM.toFixed(0)} m`
+        `Poor snap quality: start=${snap.startSnapDistanceM.toFixed(0)} m, end=${snap.endSnapDistanceM.toFixed(0)} m`
     );
     return {
       path: [],
       coordinates: [],
       cost: Infinity,
-      costField,
+      costField: normalizedCostField,
       found: false,
       reason: RouteFailureReason.POOR_SNAP,
-      startSnapDistanceM,
-      endSnapDistanceM,
+      startSnapDistanceM: snap.startSnapDistanceM,
+      endSnapDistanceM: snap.endSnapDistanceM,
     };
   }
+
+  let {
+    workingGraph,
+    startId,
+    endId,
+    startSnapDistanceM,
+    endSnapDistanceM,
+    startSnapApplied,
+    endSnapApplied,
+    startSegmentSnap,
+    endSegmentSnap,
+    baseGraph,
+    baseStartId,
+    baseEndId,
+    originalStartSnapDistanceM,
+    originalEndSnapDistanceM,
+  } = snap;
 
   if (startId === endId) {
     const coords = workingGraph.nodes.get(startId).coords;
@@ -1850,21 +1671,27 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       path: [startId],
       coordinates: [coords],
       cost: 0,
-      costField,
+      costField: normalizedCostField,
       found: true,
-      engine: 'bidirectional-astar',
+      engine: DEFAULT_ENGINE_ID,
       startSnapDistanceM,
       endSnapDistanceM,
     };
   }
 
-  const prepared = getPreparedGraph(workingGraph, costField, normalizedPenalties, startId, endId);
+  const prepared = getPreparedGraph(
+    workingGraph,
+    normalizedCostField,
+    normalizedPenalties,
+    startId,
+    endId
+  );
 
   logger.log('dispatching route query...');
   const result = await queryRoute(startId, endId, prepared, {
-    engineId,
+    engineId: normalizedEngineId,
     graphCategory,
-    costField,
+    costField: normalizedCostField,
     useWorkerPool: options.useWorkerPool,
     engineWorkerPoolSize: engineWorkerPoolSize ?? engineWorkerMaxPoolSize,
   });
@@ -1901,14 +1728,14 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       if (fallbackGraph !== workingGraph) {
         const fallbackPrepared = getPreparedGraph(
           fallbackGraph,
-          costField,
+          normalizedCostField,
           normalizedPenalties,
           fallbackStartId,
           fallbackEndId
         );
         const fallbackResult = await queryRoute(fallbackStartId, fallbackEndId, fallbackPrepared, {
           graphCategory,
-          costField,
+          costField: normalizedCostField,
         });
         if (fallbackResult.found) {
           const fallbackCoordinates = fallbackResult.path.map(
@@ -1917,8 +1744,8 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
           return {
             ...fallbackResult,
             coordinates: fallbackCoordinates,
-            costField,
-            engine: normalizeEngineId(fallbackResult.engine, 'bidirectional-astar'),
+            costField: normalizedCostField,
+            engine: normalizeEngineId(fallbackResult.engine, DEFAULT_ENGINE_ID),
             startSnapDistanceM,
             endSnapDistanceM,
           };
@@ -1933,29 +1760,34 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     ) {
       const basePrepared = getPreparedGraph(
         baseGraph,
-        costField,
+        normalizedCostField,
         normalizedPenalties,
         baseStartId,
         baseEndId
       );
       const baseResult = await queryRoute(baseStartId, baseEndId, basePrepared, {
         graphCategory,
-        costField,
+        costField: normalizedCostField,
       });
       if (baseResult.found) {
         const baseCoordinates = baseResult.path.map((id) => baseGraph.nodes.get(id).coords);
         return {
           ...baseResult,
           coordinates: baseCoordinates,
-          costField,
-          engine: normalizeEngineId(baseResult.engine, 'bidirectional-astar'),
+          costField: normalizedCostField,
+          engine: normalizeEngineId(baseResult.engine, DEFAULT_ENGINE_ID),
           startSnapDistanceM: originalStartSnapDistanceM,
           endSnapDistanceM: originalEndSnapDistanceM,
         };
       }
     }
 
-    return { ...result, coordinates: [], costField, reason: RouteFailureReason.NO_PATH };
+    return {
+      ...result,
+      coordinates: [],
+      costField: normalizedCostField,
+      reason: RouteFailureReason.NO_PATH,
+    };
   }
 
   // Never silently drop missing nodes. If an engine returns an incomplete path,
@@ -1971,7 +1803,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
         path: [],
         coordinates: [],
         cost: Infinity,
-        costField,
+        costField: normalizedCostField,
         found: false,
         reason: RouteFailureReason.INCOMPLETE_PATH,
         startSnapDistanceM,
@@ -1987,7 +1819,7 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
       path: [],
       coordinates: [],
       cost: Infinity,
-      costField,
+      costField: normalizedCostField,
       found: false,
       reason: RouteFailureReason.INCOMPLETE_PATH,
       startSnapDistanceM,
@@ -1995,8 +1827,15 @@ export async function computeRoute(startCoords, endCoords, graph, options = {}) 
     };
   }
 
-  const engine = normalizeEngineId(result.engine, 'bidirectional-astar');
-  return { ...result, coordinates, costField, engine, startSnapDistanceM, endSnapDistanceM };
+  const engine = normalizeEngineId(result.engine, DEFAULT_ENGINE_ID);
+  return {
+    ...result,
+    coordinates,
+    costField: normalizedCostField,
+    engine,
+    startSnapDistanceM,
+    endSnapDistanceM,
+  };
 }
 
 export function prepareGraph(

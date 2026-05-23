@@ -7,6 +7,7 @@
 
 import isoPHAST from './isoPHAST.js';
 import { buildCH } from '../engines/router.js';
+import { isRoutableGraph } from '../graphs/graphValidation.js';
 import { findEndpointCandidate, createAugmentedGraph } from '../graphs/snapper.js';
 import isobandsToFeatures from './tricontour-adapter.js';
 import { prettyBreaks } from '../utils/misc.js';
@@ -60,8 +61,8 @@ export async function isoline({
   snapMaxDistM = 800,
   penalties = {},
 } = {}) {
-  if (!graph || !(graph.nodes instanceof Map) || !Array.isArray(graph.edges)) {
-    throw new Error('Invalid graph: expected object with nodes Map and edges array.');
+  if (!isRoutableGraph(graph)) {
+    throw new Error('Invalid graph: expected object with routable nodes and edges array.');
   }
   if (!Array.isArray(point) || point.length !== 2) {
     throw new Error('Invalid point: expected [lng, lat]');

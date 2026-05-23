@@ -200,7 +200,7 @@ export function bidirectionalAStar(startId, endId, prepared) {
   const endCoords = coordsArr[endId];
 
   const useHeuristic = costField !== 'travelTime';
-  const useFastHeuristic = prepared.coordsAreGeographic !== false;
+  const useFastHeuristic = prepared.coordsAreGeographic === true;
   const distanceHeuristic = useFastHeuristic ? heuristicMeters : haversine;
   const hFwd = useHeuristic
     ? (id) => Math.round(distanceHeuristic(coordsArr[id], endCoords) * DIST_SCALE)
@@ -327,6 +327,8 @@ export function bidirectionalAStar(startId, endId, prepared) {
     return { path: [], cost: Infinity, found: false, engine: 'bidirectional-astar' };
   }
 
-  const path = [...fwdHalf, ...bwdHalf];
+  const path = new Array(fwdHalf.length + bwdHalf.length);
+  for (let i = 0; i < fwdHalf.length; i++) path[i] = fwdHalf[i];
+  for (let i = 0; i < bwdHalf.length; i++) path[fwdHalf.length + i] = bwdHalf[i];
   return { path, cost: bestCost / DIST_SCALE, found: true, engine: 'bidirectional-astar' };
 }

@@ -3,23 +3,9 @@ import QuadHeap from './heap.js';
 /**
  * @module src/engines/UltraDijkstra/index
  * @description Ultra-fast 4-ary Dijkstra routing implementation for road graphs.
- *
- * 4-ary Dijkstra Solver
- * Designed for ultra-fast single-source shortest path queries on large, sparse graphs.
- * Uses a custom 4-ary heap for O(1) lookups and O(log4 N) updates, and an
- * adjacency list representation optimized for cache locality.
- * Suitable for routing on road networks with millions of nodes and edges.
- * Does not support negative edge weights (but that's not needed for road networks).
- * Returns either the distance to a target node or the full distance array.
- * Can be used for both point-to-point and point-to-all routing.
- * See heap.js for the QuadHeap implementation.
- * See index.js for how this solver is integrated into the overall routing logic.
- * The graph is represented as an adjacency list using three parallel arrays:
- *   - head[node] gives the index of the first outgoing edge for that node
- *   - next[edge] gives the index of the next edge from the same source node
- *   - to[edge] and weight[edge] give the target node and edge weight
- * This structure allows for efficient iteration over outgoing edges of a node.
  */
+const WORKSPACE = Symbol('UltraDijkstraWorkspace');
+
 class UltraDijkstra {
   /**
    * @param {number} n
@@ -120,28 +106,45 @@ class UltraDijkstra {
 
 export { UltraDijkstra };
 
+function ensureSolver(prepared) {
+  const { adjPtr, adjTo, adjCost, N } = prepared;
+  let ws = prepared[WORKSPACE];
+  if (!ws || ws.N !== N || ws.edgeCount !== adjCost.length) {
+    ws = {
+      N,
+      edgeCount: adjCost.length,
+      solver: new UltraDijkstra(N, adjCost.length, {
+        adjPtr,
+        adjTo,
+        adjCost,
+        distScale: prepared.distScale ?? 10,
+      }),
+    };
+    prepared[WORKSPACE] = ws;
+  }
+  return ws.solver;
+}
+
 /**
- * Wrapper export: Ultra Dijkstra with point-to-point routing.
- * Reconstructs path from distances using reverse adjacency.
- *
+ * @param {object} prepared
+ */
+export function releasePreparedWorkspace(prepared) {
+  if (prepared?.[WORKSPACE]) {
+    prepared[WORKSPACE] = undefined;
+  }
+}
+
+/**
  * @param {number} startId
  * @param {number} endId
  * @param {object} prepared result of buildCH()
  * @returns {Promise<{ path: number[], cost: number, found: boolean, engine: string }>}
  */
 export async function ultraDijkstraRouter(startId, endId, prepared) {
-  const { adjPtr, adjTo, adjCost, N } = prepared;
-  const DIST_SCALE = 10;
+  const { N } = prepared;
+  const solver = ensureSolver(prepared);
 
-  const solver = new UltraDijkstra(N, adjCost.length, {
-    adjPtr,
-    adjTo,
-    adjCost,
-    distScale: DIST_SCALE,
-  });
-
-  // Run Dijkstra from start
-  solver.solve(startId);
+  solver.solve(startId, endId);
   const distances = solver.dists;
   const prev = solver.prev;
 
@@ -149,7 +152,6 @@ export async function ultraDijkstraRouter(startId, endId, prepared) {
     return { path: [], cost: Infinity, found: false, engine: 'ultra-dijkstra' };
   }
 
-  // Reconstruct path backward from endId to startId using predecessors.
   const path = [endId];
   let cur = endId;
   let safety = N;

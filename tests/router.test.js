@@ -98,7 +98,7 @@ describe('router utilities', () => {
 
   it('throws when computeRoute receives an invalid graph object', async () => {
     await expect(computeRoute([0, 0], [1, 1], null)).rejects.toThrow(
-      'Invalid graph: expected object with nodes Map and edges array.'
+      'Invalid graph: expected object with routable nodes and edges array.'
     );
   });
 

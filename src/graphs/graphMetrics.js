@@ -87,7 +87,7 @@ import { haversineDistance } from '../utils/misc.js';
  * @returns {GraphMetrics}
  */
 export function getAllGraphMetrics(preparedGraph, rawGraph, sourceId, targetId, opts = {}) {
-  const { mode = 'distance', densityOpts = {} } = opts;
+  const { mode = rawGraph?.mode ?? 'car', densityOpts = {} } = opts;
   const nodeCount = preparedGraph.N ?? preparedGraph.coordsArr?.length ?? 0;
   const edgeCount = preparedGraph.E ?? preparedGraph.edges?.length ?? 0;
   const src = preparedGraph.coordsArr?.[sourceId];
@@ -327,12 +327,12 @@ export function getDensityFeatures(preparedGraph, srcCoords, tgtCoords, opts = {
 class UniversalGraphSampler {
   /**
    * @param {Float32Array} nodeCoords - [x1, y1, x2, y2, ...]
-   * @param {number} maxRes - Resolución máxima del lado más largo (ej. 512)
+   * @param {number} maxRes - Maximum resolution along the longest bounding-box side (e.g. 512)
    */
   constructor(nodeCoords, maxRes = 512) {
     this.maxRes = maxRes;
 
-    // 1. Calcular AABB Global
+    // 1. Compute global axis-aligned bounding box
     const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     for (let i = 0; i < nodeCoords.length; i += 2) {
       const x = nodeCoords[i];
@@ -347,8 +347,7 @@ class UniversalGraphSampler {
     const width = bounds.maxX - bounds.minX;
     const height = bounds.maxY - bounds.minY;
 
-    // 2. Ajustar dimensiones del grid para grafos "gusano"
-    // Mantenemos la resolución en el eje más largo para no perder detalle
+    // 2. Fit grid dimensions for elongated ("worm") graphs; keep resolution on the long axis
     if (width >= height) {
       this.resX = maxRes;
       this.resY = Math.max(1, Math.floor(maxRes * (height / width)));
@@ -380,7 +379,7 @@ class UniversalGraphSampler {
       sat[gy * resX + gx] = 1;
     }
 
-    // Construcción de la Summed-Area Table (SAT) in-place
+    // Build summed-area table (SAT) in-place
     for (let y = 0; y < resY; y++) {
       let rowSum = 0;
       const rowOffset = y * resX;
@@ -392,14 +391,14 @@ class UniversalGraphSampler {
       }
     }
 
-    // Guardamos la ocupación total para el índice global
+    // Total occupied cells for global density normalization
     this.totalOccupiedCells = sat[this.totalCells - 1];
     this.invTotalOccupiedCells = 1 / (this.totalOccupiedCells || 1);
     this.globalAreaScale = this.totalCells * this.invTotalOccupiedCells;
   }
 
   /**
-   * Devuelve las características de densidad para la inferencia
+   * Return density features for engine-selection inference.
    */
   getDensityFeatures(x1, y1, x2, y2) {
     const { minX, minY } = this.bounds;

@@ -3,6 +3,7 @@ import { getTilesAlongLine } from './tiles/tilesManager.js';
 import { buildGraphAsync } from './graphs/graphBuilder.js';
 import { getSharedTilePool, disposeSharedTilePool } from './tiles/tilePool.js';
 import { interpolate, haversineDistance } from './utils/misc.js';
+import { buildGraphCacheKey } from './utils/cacheKeys.js';
 import {
   validateRouteCoordinates,
   normalizeRouteMode,
@@ -65,6 +66,7 @@ import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
  * @property {(rawURL: string, tile: object) => string} [tileUrlTransform]
  * @property {string} [tileProxyTemplate]
  * @property {boolean} [includeGraph]
+ * @property {AbortSignal} [signal]
  */
 
 export {
@@ -95,20 +97,26 @@ _tileCache.startCleanup?.({ interval: 60_000, maxCleanupPerTick: 64 });
 // Keep the cache focused on short-lived reuse patterns: repeated queries in
 // the same corridor, mode toggles, UI graph/isolines over the same tile set,
 // and overlapping route batches.
-const _graphCache = new PowerCache({ maxEntries: 8, defaultTTL: 90_000 });
+const _graphCache = new PowerCache({
+  maxEntries: 8,
+  defaultTTL: 90_000,
+  onEvict: (_key, graph) => {
+    releaseGraph(graph);
+  },
+  onExpire: (_key, graph) => {
+    releaseGraph(graph);
+  },
+});
 _graphCache.startCleanup?.({ interval: 90_000, maxCleanupPerTick: 32 });
 const DEG_TO_RAD = Math.PI / 180;
 
-function fnv1aHash(tileIds) {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < tileIds.length; i++) {
-    const str = tileIds[i];
-    for (let j = 0; j < str.length; j++) {
-      hash ^= str.charCodeAt(j);
-      hash = (hash * 0x01000193) >>> 0;
-    }
+/** @type {AbortController} Aborts in-flight route() tile work on dispose(). */
+let _lifecycleAbort = new AbortController();
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw new DOMException('Route request aborted', 'AbortError');
   }
-  return hash.toString(16);
 }
 
 function buildPartialGraphStatus(graph) {
@@ -150,6 +158,13 @@ function getMissingTileError(graph, code) {
 }
 
 export function dispose() {
+  try {
+    _lifecycleAbort.abort();
+  } catch {
+    // Best-effort cleanup.
+  }
+  _lifecycleAbort = new AbortController();
+
   try {
     shutdownEngineWorker();
   } catch {
@@ -227,8 +242,11 @@ export const route = async (
     tileUrlTransform,
     tileProxyTemplate,
     includeGraph = false,
+    signal,
   } = {}
 ) => {
+  const effectiveSignal = signal ?? _lifecycleAbort.signal;
+  throwIfAborted(effectiveSignal);
   validateRouteCoordinates(start, 'start');
   validateRouteCoordinates(end, 'end');
   mode = normalizeRouteMode(mode);
@@ -271,9 +289,10 @@ export const route = async (
   let lastGraph = null;
   // Cache sorted tileIds per radius to avoid repeated sorting in the retry loop
 
-const sortedTileIdsByRadius = new Map();
+  const sortedTileIdsByRadius = new Map();
 
   for (let r = initialRadius; r <= maxRadius; r++) {
+    throwIfAborted(effectiveSignal);
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
     const tiles = candidateTiles.map((tile) => ({
       ...tile,
@@ -288,15 +307,24 @@ const sortedTileIdsByRadius = new Map();
       sortedTileIdsByRadius.set(r, tileIds);
     }
 
-    // Use a fast rolling hash of tileIds for the cache key
-    const tileIdsHash = fnv1aHash(tileIds);
     const canUseGraphCache = typeof tileUrlTransform !== 'function';
     const graphKey = canUseGraphCache
-      ? `v3:${mode}:${zoom}:${schema}:${urlTemplate}:${tileProxyTemplate ?? ''}:${tileIdsHash}`
+      ? buildGraphCacheKey({
+          mode,
+          zoom,
+          schema,
+          urlTemplate,
+          tileProxyTemplate: tileProxyTemplate ?? '',
+          tileIds,
+        })
       : null;
     let graph = graphKey ? _graphCache.get(graphKey) : null;
     if (!graph) {
-      graph = await buildGraphAsync(tiles, mode, { pool, cache: _tileCache });
+      graph = await buildGraphAsync(tiles, mode, {
+        pool,
+        cache: _tileCache,
+        signal: effectiveSignal,
+      });
       // Only cache complete graphs; partial graphs from failed tile fetches
       // would otherwise poison future route attempts in the same area.
       // Partial graphs may still be useful for the current route attempt,
@@ -376,6 +404,12 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
   }
 
   const tilePool = getSharedTilePool();
+  if (
+    options.maxConcurrentRoutes !== undefined &&
+    (!Number.isFinite(options.maxConcurrentRoutes) || options.maxConcurrentRoutes < 1)
+  ) {
+    throw new Error('routeBatch maxConcurrentRoutes must be a finite number >= 1');
+  }
   const maxConcurrentRoutes = Number.isFinite(options.maxConcurrentRoutes)
     ? Math.max(1, Math.floor(options.maxConcurrentRoutes))
     : Math.max(1, Math.min(requests.length, tilePool?.maxSize ?? requests.length));
@@ -401,28 +435,17 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
 
   const results = new Array(requests.length);
   let nextIndex = 0;
-  const active = new Set();
 
-  const scheduleNext = async () => {
-    const index = nextIndex;
-    nextIndex += 1;
-    const { start, end, mode, costField } = requests[index];
-    results[index] = await route(start, end, mode, urlTemplate, { ...options, costField });
-  };
-
-  while (nextIndex < requests.length || active.size > 0) {
-    while (active.size < maxConcurrentRoutes && nextIndex < requests.length) {
-      const task = Promise.resolve().then(() => scheduleNext()).catch((error) => {
-        throw error;
-      });
-      task.catch(() => {});
-      active.add(task);
-      task.finally(() => active.delete(task));
+  const workers = Array.from({ length: Math.min(maxConcurrentRoutes, requests.length) }, async () => {
+    while (nextIndex < requests.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const { start, end, mode, costField } = requests[index];
+      results[index] = await route(start, end, mode, urlTemplate, { ...options, costField });
     }
-    if (active.size === 0) break;
-    await Promise.race(active);
-  }
+  });
 
+  await Promise.all(workers);
   return results;
 }
 
@@ -455,14 +478,26 @@ export async function buildGraphForTiles(
   } = {}
 ) {
   if (!Array.isArray(tiles)) throw new Error('tiles must be an array');
+  mode = normalizeRouteMode(mode);
+  validateZoom(zoom);
+  schema = normalizeTileSchema(schema);
+  if (urlTemplate) validateUrlTemplate(urlTemplate);
+  validateTileUrlTransform(tileUrlTransform);
+  validateTileProxyTemplate(tileProxyTemplate);
 
   const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
   tileIds.sort();
-  const tileIdsHash = fnv1aHash(tileIds);
 
   const canUseGraphCache = typeof tileUrlTransform !== 'function';
   const graphKey = canUseGraphCache
-    ? `v3:${mode}:${zoom}:${schema}:${urlTemplate}:${tileProxyTemplate ?? ''}:${tileIdsHash}`
+    ? buildGraphCacheKey({
+        mode,
+        zoom,
+        schema,
+        urlTemplate,
+        tileProxyTemplate: tileProxyTemplate ?? '',
+        tileIds,
+      })
     : null;
 
   let graph = graphKey ? _graphCache.get(graphKey) : null;
