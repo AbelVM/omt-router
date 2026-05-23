@@ -1,11 +1,11 @@
-# OpenMapTiles Router Engine
+# OMT Router — All included OpenMapTiles Router Engine
 
 [![npm](https://img.shields.io/npm/v/omt-router)](https://www.npmjs.com/package/omt-router)
 [![license](https://img.shields.io/npm/l/omt-router)](./LICENSE)
 
-Client-side routing library for [OpenMapTiles](https://openmaptiles.org/) vector tiles. Computes optimal routes for pedestrian, car, and bicycle travel entirely client-side — no routing backend or third-party service required.
+Client-side routing library for [OpenMapTiles](https://openmaptiles.org/) vector tiles. Computes optimal routes and isolines for pedestrian, car, and bicycle travel entirely client-side — no routing backend or third-party service required.
 
-This project is provider-agnostic for OpenMapTiles-compatible vector tiles, so **the same tiles your map is using as basemap can be used for routing!**
+This project is provider-agnostic for OpenMapTiles-compatible vector tiles, so **the same tiles your map is using as basemap can be used for routing!**, reducing network overhead
 
 Check the live example at [https://abelvm.github.io/omt-router/example](https://abelvm.github.io/omt-router/example)
 
@@ -16,8 +16,9 @@ Check the live example at [https://abelvm.github.io/omt-router/example](https://
 ## Features
 
 - **Zero backend, zero-provider** — No need for a routing backend or relying on a 3rd party API provider, `omt-router` builds the routing graph on-the-fly from **OpenMapTiles** formatted vector tiles
+- **Routing and isolines** — optimal routes or catchment areas
 - **Multi-engine routing** — bidirectional A\*, Adaptive Barrier SSSP, Delta-Stepping, and Ultra Dijkstra
-- **Automatic best engine selection** — runtime engine chooser uses benchmark-derived models and a generated selector module in `src/tuning/tuning.js`
+- **Automatic best engine selection** — runtime engine chooser uses benchmark-derived models and a generated selector module
 - **Three transport modes** — `car`, `pedestrian`, `bicycle`; respects OpenMapTiles access tags and road class hierarchy
 - **Two optimization strategies** — route length or travel time
 - **Endpoint snapping with quality guard** — nearest-node lookup plus segment-projection snap, with `maxAcceptableSnapDistanceM` limiting distant off-road snaps
@@ -26,43 +27,32 @@ Check the live example at [https://abelvm.github.io/omt-router/example](https://
 
 ---
 
-## Documentation
-
-- Isolines / isoPHAST: [src/isolines/README.md](src/isolines/README.md)
-
 ## Available routing engines
 
 The library includes multiple engines and selects among them at runtime when `engineId: 'auto'` is used.
 
 | Engine ID             | Algorithm                                                                                                                    | Parallel ready | Best fit                                                                  |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | :------------: | ------------------------------------------------------------------------- |
-| `bidirectional-astar` | [Bidirectional A\* with geographic heuristic](https://en.wikipedia.org/wiki/Bidirectional_search)                            |                | Reliable baseline and fallback engine                                     |
+| `bidirectional-astar` | [Bidirectional A\* with geographic heuristic](https://en.wikipedia.org/wiki/Bidirectional_search)                            |                | Stable performance on sparse or long-route cases                                     |
 | `adaptive-barrier`    | [Adaptive Barrier SSSP](https://doi.org/10.48550/arXiv.2504.17033)                                                           |       ✓        | Dense and medium/large graphs, especially with parallel runtime available |
 | `delta-stepping`      | [Delta-Stepping SSSP](https://en.wikipedia.org/wiki/Parallel_single-source_shortest_path_algorithm#Delta_stepping_algorithm) |       ✓        | Large frontiers and bursty relax phases                                   |
-| `ultra-dijkstra`      | [Optimized Dijkstra with 4-ary heap](https://doi.org/10.48550/arXiv.1505.05033)                                              |                | Stable performance on sparse or long-route cases                          |
+| `ultra-dijkstra`      | [Optimized Dijkstra with 4-ary heap](https://doi.org/10.48550/arXiv.1505.05033)                                              |                |                        Reliable baseline and fallback engine   |
 
 Notes:
 
 - `queryRoute()` can force a specific engine with `engineId`.
 - When an engine returns an invalid/no-path result, the router can fall back to `bidirectional-astar` for correctness.
 
-## ML-based engine selector
+## Engine Selector — Intelligent Routing, Faster Results
 
-Engine selection is data-driven and can be regenerated from benchmark results. `src/tuning/tuning.js` is built from the benchmark pipeline, and `src/tuning/model.js` is the compact runtime model artifact produced by `benchmark/train_engine_selector_ml.py`.
+- **What it is:** An ML-powered selector that chooses the best routing engine per request to maximize speed and reliability.  
+- **Proven performance:** Picks the optimal engine in ~91% of validation cases and selects a “good-enough” engine ~92% of the time, averaging within ~6–7% of optimal runtime.  
+- **Safe by default:** Conservative decision thresholds with `ultra-dijkstra` as a reliable fallback keep risk low while decisions are validated.  
+- **Scalable:** Trained on 16,646 samples; coverage and aggressiveness can be tuned to trade off more automatic picks for controlled risk.  
+- **Important note:** Prioritize fixing engine error rates (~12%) and label mismatches (~48%) before full rollout; small threshold adjustments enable a safe staged deployment.  
+- **Next step:** Run a quick threshold sweep and canary rollout to increase automated coverage while monitoring real-world runtimes.
 
-At runtime, the selector evaluates route and graph features such as:
-
-- edge count (`E`) and node count (`N`)
-- beeline distance between endpoints
-- derived density/branch indicators (`edgesPerKm`, average out-degree)
-- discrete feature bands such as `sizeBand`, `beelineBand`, `densityBand`, and `branchBand`
-
-Selector flow:
-
-1. Build the route/graph feature vector from the corridor graph and query endpoints.
-2. Detect runtime capability (`SharedArrayBuffer`, Worker, cross-origin isolation) to choose `sabOn` vs `sabOff` rules.
-3. Evaluate the generated selector in `src/tuning/tuning.js`, which uses the compact `src/tuning/model.js` artifact when available.
-4. Select the recommended engine and apply per-engine parallelization/correctness fallback logic.
+Engine selection is data-driven and can be regenerated from benchmark results. `src/tuning/model.js` is the compact runtime model artifact produced by `benchmark/train_engine_selector_ml.py` and `src/tuning/tuning.js` is the inference engine.
 
 Why this exists:
 
@@ -71,13 +61,27 @@ Why this exists:
 - The training workflow supports both serial (`sabOff`) and parallel (`sabOn`) profiles.
 - The model pipeline includes `runtime-linear`, `xgboost`, and a compact 2-layer `mlp` option.
 
+At runtime, the selector evaluates route and graph features such as:
+
+- beeline distance between endpoints
+- graph characteristics as 
+  - edge count (`E`) and node count (`N`)
+  - derived density/branch indicators (`edgesPerKm`, average out-degree, centrality, empty ratio, etc.)
+
+Selector flow:
+
+1. Build the route/graph feature vector from the corridor graph and query endpoints.
+2. Detect runtime capability (`SharedArrayBuffer`, Worker, cross-origin isolation) to choose `sabOn` vs `sabOff` rules.
+3. Evaluate the generated selector in `src/tuning/tuning.js`, which uses the compact `src/tuning/model.js` artifact when available.
+4. Select the recommended engine and apply per-engine parallelization/correctness fallback logic.
+
 See [benchmark/README.md](benchmark/README.md) for the current benchmark and selector training workflow.
 
 ---
 
 ## OpenMapTiles data model and tile providers
 
-The routing graph is built from the OpenMapTiles `transportation` layer and mode-specific access tags. In short:
+The routing graph is built from the OpenMapTiles `transportation` layer and mode-specific access tags. In short:https://maplibre.org/projects/gl-js/
 
 - [OpenStreetMap](https://osm.org) is the source data.
 - [OpenMapTiles](https://openmaptiles.org/) defines the vector-tile schema used for classes, subclasses, one-way flags, and mode access tags.
@@ -91,7 +95,7 @@ You can use tiles providers, or download a tiles dataset ([OpenFreeMap](https://
 
 ### OpenFreeMap usage (used by this repository demo)
 
-The demo in `example/` discovers tile URLs from OpenFreeMap metadata:
+The demo in `example/` discovers the most recent tile URLs from OpenFreeMap metadata:
 
 ```js
 const metadata = await fetch('https://tiles.openfreemap.org/planet').then((r) => r.json());
@@ -103,11 +107,11 @@ OpenFreeMap links:
 - Project: [https://openfreemap.org/](https://openfreemap.org/)
 - Tile metadata endpoint used in demo: [https://tiles.openfreemap.org/planet](https://tiles.openfreemap.org/planet)
 
-You can also use other OpenMapTiles-compatible providers (for example MapTiler) as long as URL template and CORS requirements are satisfied.
+You can also use other OpenMapTiles-compatible providers (for example MapTiler) or serve your own as long as URL template and CORS requirements are satisfied.
 
-### MapLibre control usage
+### MapLibre control for OMT Router
 
-The library exports `MapLibreRoutingControl` for MapLibre GL JS demos and integrations.
+In order to ease the use of the OMT Router engine, library provides a `MapLibreRoutingControl` for [MapLibre GL JS](https://maplibre.org/projects/gl-js/) integrations.
 
 ```js
 import {
@@ -127,12 +131,6 @@ const control = new MapLibreRoutingControl({
   maplibre: maplibregl,
 });
 map.addControl(control, 'top-left');
-
-map.on('click', (e) => control.setOriginFromMap(e.lngLat));
-map.on('contextmenu', (e) => {
-  e.originalEvent.preventDefault();
-  control.setDestFromMap(e.lngLat);
-});
 ```
 
 ### `MapLibreRoutingControl` constructor options
@@ -350,7 +348,7 @@ The returned object:
 
 ---
 
-## API
+## Engine API
 
 ### `route(start, end, mode, urlTemplate, options?)`
 

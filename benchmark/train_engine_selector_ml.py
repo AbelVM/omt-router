@@ -906,7 +906,33 @@ def is_training_candidate(item: dict) -> bool:
     row = item["row"]
     if bool(row.get("any_engine_error")):
         return False
-    if not bool(row.get("all_engines_found")) or not bool(row.get("all_engines_timed")):
+    # Some benchmark JSONs have inconsistent boolean flags (all_engines_found /
+    # all_engines_timed) despite per-engine fields being present. Be permissive
+    # and infer completeness from per-engine counts or fields when flags lie.
+    total_engines = len(ENGINE_IDS)
+
+    all_found = bool(row.get("all_engines_found"))
+    if not all_found:
+        # Accept if the counted found engines equals expected engine count
+        if get_int(row, "n_engines_found", 0) >= total_engines:
+            all_found = True
+        else:
+            ef = row.get("engines_found")
+            if isinstance(ef, dict):
+                # engines_found uses underscored keys
+                if all(bool(ef.get(e.replace('-', '_'))) for e in ENGINE_IDS):
+                    all_found = True
+
+    all_timed = bool(row.get("all_engines_timed"))
+    if not all_timed:
+        if get_int(row, "n_engines_timed", 0) >= total_engines:
+            all_timed = True
+        else:
+            # Check per-engine time fields
+            if all(isinstance(row.get(ENGINE_TIME_FIELDS[e]), (int, float)) for e in ENGINE_IDS):
+                all_timed = True
+
+    if not all_found or not all_timed:
         return False
     return True
 
