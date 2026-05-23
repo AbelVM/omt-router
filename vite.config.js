@@ -57,13 +57,11 @@ export default defineConfig({
   server: {
     watch: null,
   },
-  resolve: {
-    alias: [
-      {
-        find: 'fs',
-        replacement: resolve(__dirname, 'src/shims/fs-browser.js'),
-      },
-    ],
+  define: {
+    'import.meta.env.PROD': 'true',
+    'import.meta.env.DEV': 'false',
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    'import.meta.url': '""' 
   },
   build: {
     target: 'es2020',
@@ -73,28 +71,33 @@ export default defineConfig({
       fileName: 'omt-router',
       formats: ['es', 'cjs'],
     },
-    // minify: 'terser',
-    // sourcemap: false,
-    // terserOptions: {
-    //   ecma: 2020,
-    //   compress: {
-    //     passes: 3,
-    //     drop_console: true,
-    //     drop_debugger: true,
-    //     pure_funcs: ['console.log', 'assert'],
-    //   },
-    //   mangle: true,
-    //   format: {
-    //     comments: false,
-    //   },
-    // },
+    sourcemap: false,
     rollupOptions: {
       external: ['perf_hooks', 'crypto', 'fs'],
-      transform: {
-        define: {
-          'import.meta': '{}',
+      output: {
+        globals: {
+          fs: '{}',
+          crypto: '{}',
+          perf_hooks: '{}'
         },
+        codeSplitting: false,
       },
-    },
+      treeshake: {
+        annotations: true,
+        moduleSideEffects: false,
+        propertyReadSideEffects: false,
+      },
+    }
   },
+  worker: {
+    format: 'iife',
+    rollupOptions: {
+      external: ['perf_hooks', 'crypto', 'fs'],
+      treeshake: {
+        annotations: true,
+        moduleSideEffects: false,
+        propertyReadSideEffects: false,
+      }
+    }
+  }
 });

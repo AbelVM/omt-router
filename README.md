@@ -170,7 +170,7 @@ The routing control supports theme selection and custom panel styling via `theme
 | `isolineSourceId`            | `string`   | `omtr-isoline-source`                                  | Map source ID for isoline GeoJSON polygons.                                                                                                                                                                                                                                                                                                                                |
 | `isolineFillLayerId`         | `string`   | `omtr-isoline-fill`                                    | Map layer ID for isoline fill polygon.                                                                                                                                                                                                                                                                                                                                     |
 | `isolineOutlineLayerId`      | `string`   | `omtr-isoline-outline`                                 | Map layer ID for isoline outline.                                                                                                                                                                                                                                                                                                                                          |
-| `isolineMaxCost`             | `number`   | `100 (m) / 900 (s)`                                    | Default isoline max cost (interpreted as metres when `costField === 'distance'`, or seconds when `costField === 'travelTime'` or `costField === 'optimal'`). By default the control uses `100` metres for distance-based isolines and `900` seconds (15 minutes) for time-based isolines. The control UI displays minutes automatically for travel-time based cost fields. |
+| `isolineMaxCost`             | `number`   | `1000 (m) / 900 (s)`                                   | Default isoline max cost (interpreted as metres when `costField === 'distance'`, or seconds when `costField === 'travelTime'` or `costField === 'optimal'`). By default the control uses `1000` metres for distance-based isolines and `900` seconds (15 minutes) for time-based isolines. The control UI displays minutes automatically for travel-time based cost fields. |
 
 All unspecified text fields in `locale_override` are filled from the selected built-in locale, and unsupported override keys are ignored.
 
@@ -198,7 +198,7 @@ When `map.removeControl(control)` is called, the control automatically shuts dow
 - Isolines are written to the `isolineSourceId` as a GeoJSON `FeatureCollection`. Each feature receives a `properties.color` value (the control then paints fills/outlines using that property). The control's default fill opacity is 0.3.
 - The control shows an inline spinner while isoline calculations run, and will auto-fit the map to isoline results when geometry is returned.
 - Concurrency and fallback behavior: isoline calculations use a monotonic calculation id to avoid stale results and call the provided `cancelRunningEngine` hook (reason: `'isoline_cancelled'`) before starting new work. When the worker/pool environment is unavailable the control falls back to invoking the configured `routeFunction` with `includeGraph: true` and computes isolines from the returned graph (this preserves behavior in tests and non-worker environments).
-- Defaults: isoline direction is `from`. If `isolineMaxCost` is not provided the control defaults to `100` metres for distance-based isolines, or `900` seconds (15 minutes) for travel-time/optimal isolines.
+- Defaults: isoline direction is `from`. If `isolineMaxCost` is not provided the control defaults to `1000` metres for distance-based isolines, or `900` seconds (15 minutes) for travel-time/optimal isolines.
 
 Example: enabling isolines and programmatic usage
 
@@ -211,7 +211,7 @@ const control = new MapLibreRoutingControl({
   cancelRunningEngine,
   tileJsonUrl: 'https://tiles.openfreemap.org/planet',
   features: 'both', // 'routing' | 'isolines' | 'both'
-  isolineMaxCost: 100, // metres or seconds depending on costField; default is 100m (distance) or 900s (15min) for travelTime/optimal
+  isolineMaxCost: 1000, // metres or seconds depending on costField; default is 1000m (distance) or 900s (15min) for travelTime/optimal
 });
 map.addControl(control, 'top-left');
 
@@ -631,6 +631,8 @@ npm run format     # Prettier
 ```
 
 The `example/` directory contains a full MapLibre GL JS demo with a routing panel control. Serve it via `npm run dev` and open `http://localhost:5173/example/`.
+
+**Training note:** `npm run train` regenerates the engine selector model by invoking `.venv/bin/python benchmark/train_engine_selector_ml.py`. Ensure a Python virtual environment named `.venv` with the required dependencies exists (for example `python3 -m venv .venv`), or adjust the `train` script to use your python interpreter.
 
 ---
 
