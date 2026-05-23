@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getDefaultSpeedKmh } from '../src/utils/ways_defaults.js';
+import { getDefaultSpeedKmh, parseMaxspeedKmh } from '../src/utils/ways_defaults.js';
 
 describe('utils/ways_defaults', () => {
   it('returns class speed for car and default for unknown class', () => {
@@ -13,6 +13,17 @@ describe('utils/ways_defaults', () => {
     expect(getDefaultSpeedKmh('car', 'motorway', '50 mph')).toBeCloseTo(80.4672, 4);
     expect(getDefaultSpeedKmh('car', 'motorway', 65)).toBe(65);
     expect(getDefaultSpeedKmh('car', 'motorway', 'none')).toBe(130);
+  });
+
+  it('parses maxspeed tags and falls back to defaults for invalid values', () => {
+    expect(parseMaxspeedKmh(undefined)).toBeNull();
+    expect(parseMaxspeedKmh(null)).toBeNull();
+    expect(parseMaxspeedKmh({})).toBeNull();
+    expect(parseMaxspeedKmh('walk')).toBeNull();
+    expect(parseMaxspeedKmh('0')).toBeNull();
+    expect(parseMaxspeedKmh('-10')).toBeNull();
+    expect(parseMaxspeedKmh('30 kph')).toBe(30);
+    expect(getDefaultSpeedKmh('car', 'residential', 'unknown')).toBe(50);
   });
 
   it('returns mode base speeds for pedestrian and bicycle', () => {

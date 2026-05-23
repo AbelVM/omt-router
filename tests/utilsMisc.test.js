@@ -32,11 +32,21 @@ describe('utils/misc helpers', () => {
     expect(isWithinDistanceMetersCoords(0, 0, 0, 0.001, 200)).toBe(true);
   });
 
+  it('handles exact distance thresholds correctly with coordinates and helper variants', () => {
+    const threshold = haversineDistanceCoords(0, 0, 0, 0.001);
+    expect(isWithinDistanceMetersCoords(0, 0, 0, 0.001, threshold)).toBe(true);
+    expect(isWithinDistanceMetersCoords(0, 0, 0, 0.001, threshold - 1)).toBe(false);
+  });
+
   it('returns a single break when min and max are equal and reverses breaks when min is larger', () => {
     expect(prettyBreaks(5, 5)).toEqual([5]);
     const breaks = prettyBreaks(100, 0, 4);
     expect(breaks[0]).toBe(100);
     expect(breaks[breaks.length - 1]).toBe(0);
+  });
+
+  it('generates well-rounded pretty breaks for small numeric ranges', () => {
+    expect(prettyBreaks(0.1, 0.5, 4)).toEqual([0.1, 0.2, 0.3, 0.4, 0.5]);
   });
 
   it('calculates signed polygon area with orientation awareness', () => {

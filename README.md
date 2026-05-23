@@ -376,6 +376,60 @@ High-level convenience function. Fetches the necessary tiles, builds the graph, 
 
 The route result also includes runtime metadata fields such as `engine`, optional `fallback`, `startSnapDistanceM`, `endSnapDistanceM`, and diagnostic fields `partialGraph`, `hasMissingTiles`, and `missingTileErrors`. `partialGraph` is `true` whenever the route was calculated against a graph with missing tiles. On failure the result includes a `reason` (for example `no_path`, `no_node`, `poor_snap`, `incomplete_path`, `tile_cors`).
 
+### `buildTileURL(urlTemplate, tile, options?)`
+
+Helper that formats a tile URL for a `{z}/{x}/{y}` template and supports proxy rewriting.
+
+| Parameter                | Type                           | Default | Description                                                                                         |
+| ------------------------ | ------------------------------ | ------- | --------------------------------------------------------------------------------------------------- |
+| `urlTemplate`           | `string`                       | —       | Tile URL template with `{z}`, `{x}`, `{y}` placeholders                                             |
+| `tile`                  | `{ z: number, x: number, y: number }` | —       | Tile coordinate                                                                                      |
+| `options.tileProxyTemplate` | `string`                  | —       | Optional same-origin proxy template, supports `{url}`, `{z}`, `{x}`, `{y}`                          |
+| `options.tileUrlTransform` | `(rawUrl, tile) => string`   | —       | Optional rewrite hook. Must return a string; otherwise an error is thrown.                         |
+
+Example:
+
+```js
+const tileUrl = buildTileURL('https://example.com/{z}/{x}/{y}.pbf', { z: 14, x: 4827, y: 6372 }, {
+  tileProxyTemplate: '/api/tile?url={url}',
+});
+```
+
+### `buildGraphForTiles(tiles, mode, options?)`
+
+Builds a prepared routing graph for an explicit tile set without running full route resolution. Useful for preloading graph data or reusing the same graph across multiple route computations.
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `tiles` | `Array<{z:number,x:number,y:number}>` | — | Tile coordinates to include in the graph |
+| `mode` | `string` | — | `'car'`, `'pedestrian'`, or `'bicycle'` |
+| `options` | `object` | — | Same route options as `route()`, including `zoom`, `schema`, `engineId`, `penalties`, and proxy/transform hooks |
+
+Returns a promise resolving to the prepared graph object.
+
+Example:
+
+```js
+const tiles = [
+  { z: 14, x: 4827, y: 6372 },
+  { z: 14, x: 4828, y: 6372 },
+];
+const graph = await buildGraphForTiles(tiles, 'car', { urlTemplate });
+console.log(graph);
+```
+
+### `dispose()` / `shutdown()`
+
+Frees internal worker pools and caches. Call this when your app no longer needs routing functions or when removing a `MapLibreRoutingControl` instance.
+
+Example:
+
+```js
+dispose();
+// or
+shutdown();
+```
+
 ### `routeBatch(requests, urlTemplate, options?)`
 
 Batch routing helper that runs multiple `route()` requests in parallel. Useful when you need to compute many independent routes in the same session while reusing the shared tile cache and worker pool.

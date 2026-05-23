@@ -37,6 +37,7 @@ vi.mock('../src/engines/router.js', async () => {
 let route;
 let routeBatch;
 let buildTileURL;
+let buildGraphForTiles;
 let disposeFn;
 let shutdownFn;
 
@@ -48,6 +49,7 @@ beforeEach(async () => {
   route = module.route;
   routeBatch = module.routeBatch;
   buildTileURL = module.buildTileURL;
+  buildGraphForTiles = module.buildGraphForTiles;
   disposeFn = module.dispose;
   shutdownFn = module.shutdown;
 });
@@ -68,6 +70,22 @@ describe('index module route and tile URL helpers', () => {
     const result = buildTileURL(raw, { z: 14, x: 1, y: 2 }, { tileProxyTemplate: template });
 
     expect(result).toBe('https://proxy/?target=https%3A%2F%2Fexample.com%2F14%2F1%2F2.pbf');
+  });
+
+  it('returns the interpolated URL when no transform or proxy is provided', () => {
+    const raw = 'https://example.com/{z}/{x}/{y}.pbf';
+    const result = buildTileURL(raw, { z: 14, x: 1, y: 2 });
+
+    expect(result).toBe('https://example.com/14/1/2.pbf');
+  });
+
+  it('uses tileUrlTransform when it returns a valid string', () => {
+    const raw = 'https://example.com/{z}/{x}/{y}.pbf';
+    const result = buildTileURL(raw, { z: 14, x: 1, y: 2 }, {
+      tileUrlTransform: (url, tile) => `${url}?source=${tile.x},${tile.y}`,
+    });
+
+    expect(result).toBe('https://example.com/14/1/2.pbf?source=1,2');
   });
 
   it('throws when tileUrlTransform returns a non-string value', () => {
@@ -248,6 +266,52 @@ describe('index module route and tile URL helpers', () => {
     expect(mockComputeRoute).toHaveBeenCalledTimes(1);
     const computeRouteOptions = mockComputeRoute.mock.calls[0][3];
     expect(computeRouteOptions.engineWorkerPoolSize).toBe(3);
+  });
+
+  it('throws when routeBatch is called with an empty request list', async () => {
+    await expect(routeBatch([], 'https://example.com/{z}/{x}/{y}.pbf')).rejects.toThrow(
+      /routeBatch requires a non-empty array of requests/
+    );
+  });
+
+  it('throws when routeBatch is called with an invalid urlTemplate', async () => {
+    await expect(
+      routeBatch([{ start: [0, 0], end: [0.001, 0], mode: 'car' }], '')
+    ).rejects.toThrow(/routeBatch requires a valid urlTemplate string/);
+  });
+
+  it('throws when a routeBatch request is not an object', async () => {
+    await expect(routeBatch([null], 'https://example.com/{z}/{x}/{y}.pbf')).rejects.toThrow(
+      /routeBatch request at index 0 must be an object with start, end, and mode/
+    );
+  });
+
+  it('uses tilePool.maxSize to limit concurrent route tasks when maxConcurrentRoutes is not provided', async () => {
+    mockGetSharedTilePool.mockReturnValue({ maxSize: 1 });
+    mockBuildGraphAsync.mockResolvedValue({ hasMissingTiles: false, missingTileErrors: [] });
+    mockComputeRoute
+      .mockResolvedValueOnce({ found: true, cost: 10, path: [0], coordinates: [[0, 0]] })
+      .mockResolvedValueOnce({ found: true, cost: 20, path: [1], coordinates: [[1, 1]] });
+
+    const requests = [
+      { start: [0, 0], end: [0.001, 0], mode: 'car' },
+      { start: [0.002, 0], end: [0.003, 0], mode: 'car' },
+    ];
+
+    const results = await routeBatch(requests, 'https://example.com/{z}/{x}/{y}.pbf');
+
+    expect(results).toHaveLength(2);
+    expect(mockComputeRoute).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws when a routeBatch request is missing a valid mode', async () => {
+    await expect(
+      routeBatch([{ start: [0, 0], end: [0.001, 0], mode: '' }], 'https://example.com/{z}/{x}/{y}.pbf')
+    ).rejects.toThrow(/must include a valid mode/);
+  });
+
+  it('throws when buildGraphForTiles receives a non-array tiles argument', async () => {
+    await expect(buildGraphForTiles(null, 'car')).rejects.toThrow(/tiles must be an array/);
   });
 });
 

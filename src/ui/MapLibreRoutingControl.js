@@ -188,8 +188,10 @@ export class MapLibreRoutingControl {
     this._isolineDirectionButtons = null;
     this._isolinePointIconEl = null;
     this._swapBtn = null;
+    this._collapseBtn = null;
     this._tabRoutingBtn = null;
     this._tabIsolineBtn = null;
+    this._collapsed = false;
     this._markers = { origin: null, dest: null, isoline: null };
     this._calcId = 0;
     this._suppressNextMapPointerSet = false;
@@ -263,6 +265,7 @@ export class MapLibreRoutingControl {
     this._isolineThresholdUnitEl = this._panel.querySelector('#rp-isoline-threshold-unit');
     this._isolinePanel = this._panel.querySelector('#rp-isoline-panel');
     this._routingPanel = this._panel.querySelector('#rp-routing-panel');
+    this._collapseBtn = this._panel.querySelector('#rp-collapse-btn');
     this._modeButtons = this._routingPanel ? Array.from(this._routingPanel.querySelectorAll('.rp-mode-btn')) : [];
     this._costButtons = this._routingPanel ? Array.from(this._routingPanel.querySelectorAll('.rp-cost-btn')) : [];
     this._isolineModeButtons = Array.from(this._isolinePanel?.querySelectorAll('.rp-mode-btn') || []);
@@ -272,11 +275,18 @@ export class MapLibreRoutingControl {
     this._swapBtn = this._panel.querySelector('#rp-swap-btn');
     this._tabRoutingBtn = this._panel.querySelector('#rp-tab-routing');
     this._tabIsolineBtn = this._panel.querySelector('#rp-tab-isoline');
+    this._removeBtn = this._panel.querySelector('#rp-remove-btn');
 
     this._bindPanelEvents();
     // Ensure mode/cost UI and threshold UI are synced on mount
     UI.syncModeAndCostUI(this);
     this._setupRouteSource();
+    // Initialize remove button visibility based on current markers
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
 
     this._mapClickHandler = (e) => {
       if (this._activeTab === 'isoline') return this.setIsolineFromMap(e.lngLat);
@@ -300,8 +310,7 @@ export class MapLibreRoutingControl {
     }
 
     if (this._tileJsonUrl && !this._urlTemplate) {
-      this._loadTileTemplate().catch((err) => {
-        console.error('[omt-router] tile metadata load failed:', err);
+      this._loadTileTemplate().catch(() => {
         this._setStatus(this._text.status.tileMetadata, 'error');
       });
     }
@@ -349,7 +358,7 @@ export class MapLibreRoutingControl {
     // Clean up any isoline worker and pending requests when the control is removed.
     try {
       if (this._isolinePendingRequests) {
-        for (const [_id, p] of this._isolinePendingRequests) {
+        for (const [, p] of this._isolinePendingRequests) {
           try {
             p.reject(new Error('control removed'));
           } catch (_e) {
@@ -378,6 +387,11 @@ export class MapLibreRoutingControl {
     } catch (_e) {
       void _e;
     }
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
     defaultDispose();
   }
 
@@ -390,6 +404,11 @@ export class MapLibreRoutingControl {
     this._originInput.value = lngLatToStr(lngLat);
     this._placeMarker('origin', this._origin);
     this._tryRoute();
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
   }
 
   /**
@@ -401,6 +420,11 @@ export class MapLibreRoutingControl {
     this._destInput.value = lngLatToStr(lngLat);
     this._placeMarker('dest', this._dest);
     this._tryRoute();
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
   }
 
   setOriginFromMap(lngLat) {
@@ -422,6 +446,11 @@ export class MapLibreRoutingControl {
     if (this._isolinePointInput) this._isolinePointInput.value = lngLatToStr(lngLat);
     this._placeIsolineMarker(this._isoline.point);
     this._tryIsoline();
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
   }
 
   setIsolineFromMap(lngLat) {
@@ -446,8 +475,7 @@ export class MapLibreRoutingControl {
     this._tileJsonUrl = url;
     this._urlTemplate = null;
     this._tileTemplatePromise = null;
-    this._loadTileTemplate().catch((err) => {
-      console.error('[omt-router] tile metadata load failed:', err);
+    this._loadTileTemplate().catch(() => {
       this._setStatus(this._text.status.tileMetadata, 'error');
     });
   }
@@ -483,6 +511,25 @@ export class MapLibreRoutingControl {
 
   _buildPanelMarkup() {
     return UI.buildPanelMarkup(this);
+  }
+
+  _togglePanelCollapse() {
+    this._collapsed = !this._collapsed;
+    if (!this._panel) return;
+    this._panel.classList.toggle('routing-panel--collapsed', this._collapsed);
+    if (!this._collapseBtn) return;
+    const label = this._collapsed
+      ? this._text.expandPanel || 'Expand routing controls'
+      : this._text.collapsePanel || 'Collapse routing controls';
+    this._collapseBtn.setAttribute('aria-expanded', String(!this._collapsed));
+    this._collapseBtn.setAttribute('aria-label', label);
+    this._collapseBtn.setAttribute('title', label);
+
+    const iconEl = this._collapseBtn.querySelector('.rp-collapse-icon');
+    if (iconEl) {
+      iconEl.textContent = this._collapsed ? '╬' : '«';
+      iconEl.classList.toggle('rp-collapse-icon--rotated', this._collapsed);
+    }
   }
 
   /**
@@ -572,6 +619,63 @@ export class MapLibreRoutingControl {
       });
     }
 
+    const collapseBtn = this._collapseBtn || this._panel.querySelector('#rp-collapse-btn');
+    if (collapseBtn) {
+      collapseBtn.addEventListener('click', () => {
+        this._togglePanelCollapse();
+      });
+    }
+
+    // Remove FAB: remove route/isoline and associated markers
+    const removeBtn = this._removeBtn || this._panel.querySelector('#rp-remove-btn');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        try {
+          if (this._markers && this._markers.isoline) {
+            MapModule.clearIsoline(this);
+          } else {
+            MapModule.clearRoute(this);
+            MapModule.clearGraph(this);
+            MapModule.removeRouteLayers(this);
+            try {
+              if (this._markers && this._markers.origin) {
+                this._markers.origin.remove();
+                this._markers.origin = null;
+              }
+            } catch (_e) {
+              void _e;
+            }
+            try {
+              if (this._markers && this._markers.dest) {
+                this._markers.dest.remove();
+                this._markers.dest = null;
+              }
+            } catch (_e) {
+              void _e;
+            }
+          }
+        } catch (_e) {
+          void _e;
+        }
+        try {
+          if (this._statsEl) this._statsEl.hidden = true;
+        } catch (_e) {
+          void _e;
+        }
+        try {
+          if (this._engineBadgeEl) this._engineBadgeEl.hidden = true;
+        } catch (_e) {
+          void _e;
+        }
+        this._setStatus('', '');
+        try {
+          this.updateRemoveBtnVisibility?.();
+        } catch (_e) {
+          void _e;
+        }
+      });
+    }
+
     this._panel.addEventListener('mousedown', (e) => e.stopPropagation());
     this._panel.addEventListener('wheel', (e) => e.stopPropagation());
     this._panel.addEventListener('contextmenu', (e) => e.stopPropagation());
@@ -591,6 +695,11 @@ export class MapLibreRoutingControl {
         this._clearIsoline();
         UI.syncModeAndCostUI(this);
         UI.resetOtherUI(this, 'routing');
+        try {
+          this.updateRemoveBtnVisibility?.();
+        } catch (_e) {
+          void _e;
+        }
       });
       tabIsolineBtn.addEventListener('click', () => {
         tabIsolineBtn.classList.add('active');
@@ -619,6 +728,11 @@ export class MapLibreRoutingControl {
         }
         UI.syncModeAndCostUI(this);
         UI.resetOtherUI(this, 'isoline');
+        try {
+          this.updateRemoveBtnVisibility?.();
+        } catch (_e) {
+          void _e;
+        }
       });
     }
 
@@ -759,7 +873,38 @@ export class MapLibreRoutingControl {
   }
 
   _clearIsoline() {
-    return MapModule.clearIsoline(this);
+    try {
+      MapModule.clearIsoline(this);
+    } catch (_e) {
+      void _e;
+    }
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
+  }
+
+  updateRemoveBtnVisibility() {
+    if (!this._removeBtn) return;
+    try {
+      const hasIsoline = Boolean(this._markers && this._markers.isoline);
+      const hasRoute = Boolean(this._markers && this._markers.origin && this._markers.dest);
+      const show = hasIsoline || hasRoute;
+      this._removeBtn.hidden = !show;
+      if (show) {
+        // Prefer isoline label when an isoline exists (click handler clears isoline first)
+        if (hasIsoline) {
+          this._removeBtn.setAttribute('aria-label', this._text.removeIsoline || this._text.removeRoute);
+          this._removeBtn.setAttribute('title', this._text.removeIsolineTooltip || this._text.removeRouteTooltip || '');
+        } else {
+          this._removeBtn.setAttribute('aria-label', this._text.removeRoute || this._text.removeIsoline);
+          this._removeBtn.setAttribute('title', this._text.removeRouteTooltip || this._text.removeIsolineTooltip || '');
+        }
+      }
+    } catch (_e) {
+      void _e;
+    }
   }
 
   /**
@@ -767,7 +912,15 @@ export class MapLibreRoutingControl {
    * @returns {Promise<void>}
    */
   async _tryIsoline() {
-    return Core.tryIsoline(this);
+    try {
+      return await Core.tryIsoline(this);
+    } finally {
+      try {
+        this.updateRemoveBtnVisibility?.();
+      } catch (_e) {
+        void _e;
+      }
+    }
   }
 
   _consumeMapPointerSuppression() {
@@ -846,11 +999,29 @@ export class MapLibreRoutingControl {
   }
 
   _clearRoute() {
-    return MapModule.clearRoute(this);
+    try {
+      MapModule.clearRoute(this);
+    } catch (_e) {
+      void _e;
+    }
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
   }
 
   _clearGraph() {
-    return MapModule.clearGraph(this);
+    try {
+      MapModule.clearGraph(this);
+    } catch (_e) {
+      void _e;
+    }
+    try {
+      this.updateRemoveBtnVisibility?.();
+    } catch (_e) {
+      void _e;
+    }
   }
 
   /**
@@ -858,7 +1029,15 @@ export class MapLibreRoutingControl {
    * @returns {Promise<void>}
    */
   async _tryRoute() {
-    return Core.tryRoute(this);
+    try {
+      return await Core.tryRoute(this);
+    } finally {
+      try {
+        this.updateRemoveBtnVisibility?.();
+      } catch (_e) {
+        void _e;
+      }
+    }
   }
 
   _handleRouteFailure(result) {
@@ -876,14 +1055,6 @@ export class MapLibreRoutingControl {
    * @returns {Promise<void>|undefined}
    */
   _centerMapOnSource(sourceId, fitOptions = { padding: 100, maxZoom: 16, duration: 600 }) {
-    try {
-      console.log('[dbg] _centerMapOnSource delegator called', {
-        sourceId,
-        mapPresent: !!this._map,
-      });
-    } catch (_e) {
-      void _e;
-    }
     return MapModule.centerMapOnSource(this, sourceId, fitOptions);
   }
 }

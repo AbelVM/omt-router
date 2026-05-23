@@ -53,7 +53,7 @@ if (typeof PowerPool !== 'undefined' && PowerPool.prototype?._postToWorkerObj) {
         obj.lastActive = startTime;
         if (this._isIdle) this._updateIdleState();
         return wantResponse ? pendingPromise : true;
-      } catch (_err) {
+      } catch {
         // Fallback to the original behavior if direct postMessage fails.
       }
     }
@@ -146,7 +146,7 @@ function disposeRouteCache(routeCache) {
   try {
     routeCache.stopCleanup?.();
     routeCache.clear?.();
-  } catch (_err) {
+  } catch {
     // Ignore cleanup failures.
   }
 }
@@ -254,19 +254,7 @@ function getPreparedGraph(graph, costField, normalizedPenalties, sourceId, targe
     prepared = buildCH(graph, costField, normalizedPenalties);
     costFieldGroup[penaltyKey] = prepared;
   }
-  try {
-    prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
-    try {
-      if (typeof console !== 'undefined' && typeof console.debug === 'function') {
-        const mk = prepared.metrics && typeof prepared.metrics === 'object' ? Object.keys(prepared.metrics).slice(0, 10) : null;
-        console.debug('[router] prepared.metrics set', { sourceId, targetId, preparedN: prepared?.N ?? null, preparedE: prepared?.E ?? null, metricKeys: mk });
-      }
-    } catch (_e) {}
-  } catch (e) {
-    // Preserve original error behaviour but include a compact debug hint.
-    try { console.warn('[router] getAllGraphMetrics() threw', { sourceId, targetId, err: e && e.message ? e.message : String(e) }); } catch (_e) {}
-    throw e;
-  }
+  prepared.metrics = getAllGraphMetrics(prepared, graph, sourceId, targetId, opts);
   return prepared;
 }
 
@@ -1556,7 +1544,6 @@ export function prepareRoutableGraph(
   let startSnapDistanceM = startCandidate.snapDistanceM ?? Infinity;
   let endSnapDistanceM = endCandidate.snapDistanceM ?? Infinity;
   let startSnapApplied = false;
-  let _endSnapApplied = false;
 
   if (startCandidate.type === 'none' || endCandidate.type === 'none') {
     return {
@@ -1597,7 +1584,6 @@ export function prepareRoutableGraph(
     workingGraph = snapResult;
     endId = workingGraph._lastAddedNodeId ?? workingGraph.nodes.size - 1;
     endSnapDistanceM = endCandidate.snapDistanceM;
-    _endSnapApplied = true;
   } else if (endCandidate.type === 'node') {
     endId = endCandidate.nodeId;
   }

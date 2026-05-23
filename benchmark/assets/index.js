@@ -596,7 +596,7 @@ const suggestionWrapEl = root.getElementById('suggestion-wrap');
 // Attempt to fetch the OpenFreeMap tile manifest and use `tiles[0]` when available.
 try {
   if (urlInputEl && String(urlInputEl.value || '').trim() === '') {
-    const fallbackTemplate = 'https://tiles.openfreemap.org/planet/{z}/{x}/{y}.png';
+    const fallbackTemplate = 'https://tiles.openfreemap.org/planet/20260513_001001_pt/{z}/{x}/{y}.pbf';
 
     // If fetch isn't available (tests/server), use the fallback immediately.
     if (typeof fetch !== 'function') {
@@ -2237,14 +2237,6 @@ if (runBtn) runBtn.addEventListener('click', async () => {
   _pendingRunChoice = null;
   _pendingRunMetadata = null;
   _pendingRunRunId = null;
-  await saveRunMetadata(runId, {
-    createdAt: Date.now(),
-    benchmarkTimestamp,
-    totalRoutes: routes.length,
-    totalPasses: runPasses.length,
-    completed: false,
-    summaryState: createBenchmarkSummaryState(),
-  });
 
   _passContexts = runPasses.map((pass, passIndex) => ({
     ...baseRunContext,
@@ -2288,8 +2280,23 @@ if (runBtn) runBtn.addEventListener('click', async () => {
         _benchmarkRouteWorkerState.failedRouteIndices = existingRunProgress.failedRouteIndices;
       }
       _benchmarkSummaryState = await loadRunSummaryStateFromDb(runId);
-      updateSummaryCardsFromState(_benchmarkSummaryState);
     }
+
+    if (!_benchmarkSummaryState) {
+      _benchmarkSummaryState = createBenchmarkSummaryState();
+    }
+    updateSummaryCardsFromState(_benchmarkSummaryState);
+
+    const metadata = {
+      benchmarkTimestamp,
+      totalRoutes: routes.length,
+      totalPasses: runPasses.length,
+      completed: false,
+      summaryState: _benchmarkSummaryState,
+    };
+    if (!existingRunProgress) metadata.createdAt = Date.now();
+
+    await saveRunMetadata(runId, metadata);
 
     const worker = createBenchmarkRouteWorker();
     startBenchmarkUiTicker();

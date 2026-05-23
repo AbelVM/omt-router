@@ -322,6 +322,6 @@ export async function centerMapOnSource(ctrl, sourceId, fitOptions = { padding: 
     const bounds = await src.getBounds();
     ctrl._map.fitBounds(bounds, fitOptions);
   } catch (_e) {
-    console.warn(`Failed to center map on source ${sourceId}`, _e);
+    void _e;
   }
 }

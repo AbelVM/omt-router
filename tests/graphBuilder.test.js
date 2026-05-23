@@ -225,6 +225,12 @@ it('ignores one-way restrictions for pedestrian graphs with flat segment arrays'
   expect(graph.edges[0].cost).toBe(graph.edges[0].reverseCost);
 });
 
+it('throws when a flat segment buffer length is invalid', () => {
+  expect(() => mergeSegments([[0, 0, 0.001]], 'car')).toThrow(
+    /splitSegmentsAtEndpoints: invalid segment buffer length 3/
+  );
+});
+
 it('does not merge non-clipped boundary endpoints when roadId differs', () => {
   const firstBatch = [
     {

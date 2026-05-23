@@ -95,6 +95,26 @@ const _graphCache = new PowerCache({ maxEntries: 8, defaultTTL: 90_000 });
 _graphCache.startCleanup?.({ interval: 90_000, maxCleanupPerTick: 32 });
 const DEG_TO_RAD = Math.PI / 180;
 
+function fnv1aHash(tileIds) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < tileIds.length; i++) {
+    const str = tileIds[i];
+    for (let j = 0; j < str.length; j++) {
+      hash ^= str.charCodeAt(j);
+      hash = (hash * 0x01000193) >>> 0;
+    }
+  }
+  return hash.toString(16);
+}
+
+function buildPartialGraphStatus(graph) {
+  return {
+    partialGraph: graph?.hasMissingTiles ?? false,
+    hasMissingTiles: graph?.hasMissingTiles ?? false,
+    missingTileErrors: graph?.missingTileErrors ?? [],
+  };
+}
+
 function buildTileURL(urlTemplate, tile, { tileUrlTransform, tileProxyTemplate } = {}) {
   const rawURL = interpolate(urlTemplate, { z: tile.z, x: tile.x, y: tile.y });
 
@@ -244,20 +264,7 @@ export const route = async (
   let lastGraph = null;
   // Cache sorted tileIds per radius to avoid repeated sorting in the retry loop
 
-  // FNV-1a 32-bit hash for fast, stable cache keys
-  function fnv1aHash(arr) {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < arr.length; i++) {
-      const str = arr[i];
-      for (let j = 0; j < str.length; j++) {
-        hash ^= str.charCodeAt(j);
-        hash = (hash * 0x01000193) >>> 0;
-      }
-    }
-    return hash.toString(16);
-  }
-
-  const sortedTileIdsByRadius = new Map();
+const sortedTileIdsByRadius = new Map();
 
   for (let r = initialRadius; r <= maxRadius; r++) {
     const candidateTiles = getTilesAlongLine(start, end, zoom, r, schema);
@@ -303,11 +310,7 @@ export const route = async (
     });
 
     // Always surface partial graph status in the result
-    const partialGraphStatus = {
-      partialGraph: graph?.hasMissingTiles ?? false,
-      hasMissingTiles: graph?.hasMissingTiles ?? false,
-      missingTileErrors: graph?.missingTileErrors ?? [],
-    };
+    const partialGraphStatus = buildPartialGraphStatus(graph);
 
     const corsError = getMissingTileError(graph, 'MissingAllowOriginHeader');
     if (!lastResult.found && corsError) {
@@ -335,19 +338,12 @@ export const route = async (
     }
 
     if (r < maxRadius) {
-      // Log so the caller can see the retry in dev tools.
-      console.debug(
-        `[omt-router] ${lastResult.reason} at radius=${r}, retrying with radius=${r + 1}`
-      );
+      // Retry silently with a larger radius.
     }
   }
 
   // Always surface partial graph status in the result
-  const partialGraphStatus = {
-    partialGraph: lastGraph?.hasMissingTiles ?? false,
-    hasMissingTiles: lastGraph?.hasMissingTiles ?? false,
-    missingTileErrors: lastGraph?.missingTileErrors ?? [],
-  };
+  const partialGraphStatus = buildPartialGraphStatus(lastGraph);
   const result = includeGraph ? { ...lastResult, graph: lastGraph } : lastResult;
   return { ...result, ...partialGraphStatus };
 };
@@ -372,6 +368,25 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
   const maxConcurrentRoutes = Number.isFinite(options.maxConcurrentRoutes)
     ? Math.max(1, Math.floor(options.maxConcurrentRoutes))
     : Math.max(1, Math.min(requests.length, tilePool?.maxSize ?? requests.length));
+
+  for (let index = 0; index < requests.length; index += 1) {
+    const request = requests[index];
+    if (!request || typeof request !== 'object') {
+      throw new Error(
+        `routeBatch request at index ${index} must be an object with start, end, and mode`
+      );
+    }
+
+    const { start, end, mode, costField } = request;
+    validateRouteCoordinates(start, `requests[${index}].start`);
+    validateRouteCoordinates(end, `requests[${index}].end`);
+    if (typeof mode !== 'string' || mode.length === 0) {
+      throw new Error(`routeBatch request at index ${index} must include a valid mode`);
+    }
+    if (costField !== undefined) {
+      validateCostField(costField);
+    }
+  }
 
   const results = new Array(requests.length);
   let nextIndex = 0;
@@ -403,7 +418,10 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
 
   while (nextIndex < requests.length || active.size > 0) {
     while (active.size < maxConcurrentRoutes && nextIndex < requests.length) {
-      const task = scheduleNext();
+      const task = Promise.resolve().then(() => scheduleNext()).catch((error) => {
+        throw error;
+      });
+      task.catch(() => {});
       active.add(task);
       task.finally(() => active.delete(task));
     }
@@ -446,17 +464,7 @@ export async function buildGraphForTiles(
 
   const tileIds = tiles.map((t) => `${t.z}/${t.x}/${t.y}`);
   tileIds.sort();
-
-  // FNV-1a 32-bit hash (same as route())
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < tileIds.length; i++) {
-    const s = tileIds[i];
-    for (let j = 0; j < s.length; j++) {
-      hash ^= s.charCodeAt(j);
-      hash = (hash * 0x01000193) >>> 0;
-    }
-  }
-  const tileIdsHash = hash.toString(16);
+  const tileIdsHash = fnv1aHash(tileIds);
 
   const canUseGraphCache = typeof tileUrlTransform !== 'function';
   const graphKey = canUseGraphCache

@@ -200,4 +200,76 @@ describe('isoPHAST direction and pedestrian mode', () => {
     const penaltyRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
     expect(penaltyRes.reachable).toContain(0);
   });
+
+  it('throws for invalid prepared graphs and invalid isoPHAST options', () => {
+    expect(() => isoPHAST(null, 0, 1)).toThrow(/Invalid prepared graph/);
+    expect(() =>
+      isoPHAST(
+        { N: 1, adjPtr: new Int32Array([0, 0]), adjTo: new Int32Array([]), adjCost: new Int32Array([]), revAdjPtr: new Int32Array([0, 0]), revAdjFrom: new Int32Array([]), revAdjCost: new Int32Array([]) },
+        0,
+        1,
+        { direction: 'side' }
+      )
+    ).toThrow(/Invalid direction/);
+    expect(() =>
+      isoPHAST(
+        { N: 2, adjPtr: new Int32Array([0, 0, 0]), adjTo: new Int32Array([]), adjCost: new Int32Array([]), revAdjPtr: new Int32Array([0, 0, 0]), revAdjFrom: new Int32Array([]), revAdjCost: new Int32Array([]) },
+        -1,
+        1
+      )
+    ).toThrow(/Invalid startId/);
+  });
+
+  it('returns integer-scaled distances when outputUnscaled is false', () => {
+    const prepared = {
+      N: 2,
+      distScale: 10,
+      adjPtr: new Int32Array([0, 1, 1]),
+      adjTo: new Int32Array([1]),
+      adjCost: new Int32Array([5]),
+      revAdjPtr: new Int32Array([0, 0, 1]),
+      revAdjFrom: new Int32Array([0]),
+      revAdjCost: new Int32Array([5]),
+    };
+
+    const result = isoPHAST(prepared, 0, 0.1, { outputUnscaled: false });
+    expect(result.reachable).toEqual([0]);
+    expect(result.distances[0]).toBe(0);
+    expect(result.visited.length).toBe(1);
+  });
+
+  it('falls back to existing adjacency when pedestrian edge lists are unavailable', () => {
+    const prepared = {
+      N: 2,
+      distScale: 10,
+      adjPtr: new Int32Array([0, 1, 1]),
+      adjTo: new Int32Array([1]),
+      adjCost: new Int32Array([5]),
+      revAdjPtr: new Int32Array([0, 0, 1]),
+      revAdjFrom: new Int32Array([0]),
+      revAdjCost: new Int32Array([5]),
+    };
+
+    const result = isoPHAST(prepared, 0, 10, { mode: 'pedestrian', outputUnscaled: true });
+    expect(result.reachable).toEqual([0, 1]);
+    expect(result.distances[1]).toBeCloseTo(0.5);
+  });
+
+  it('throws when pedestrian adjacency contains invalid edge entries', () => {
+    const prepared = {
+      N: 2,
+      distScale: 10,
+      edgeSrc: new Int32Array([0, -1]),
+      edgeTgt: new Int32Array([1, 0]),
+      edgeCostInt: new Int32Array([10, 10]),
+      adjPtr: new Int32Array([0, 0, 0]),
+      adjTo: new Int32Array([]),
+      adjCost: new Int32Array([]),
+      revAdjPtr: new Int32Array([0, 0, 0]),
+      revAdjFrom: new Int32Array([]),
+      revAdjCost: new Int32Array([]),
+    };
+
+    expect(() => isoPHAST(prepared, 0, 5, { mode: 'pedestrian' })).toThrow(/invalid pedestrian edge/);
+  });
 });

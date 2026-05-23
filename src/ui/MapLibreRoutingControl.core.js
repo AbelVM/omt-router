@@ -59,9 +59,8 @@ function _ensureIsolineWorker(ctrl) {
     ctrl._isolineWorker = w;
     ctrl._isolinePendingRequests = ctrl._isolinePendingRequests || new Map();
     return w;
-  } catch (e) {
+  } catch (_e) {
     // Worker creation failed (e.g., environment without worker support). Fall back to main-thread execution.
-    console.warn('[omt-router] isoline worker unavailable, falling back to main-thread', e);
     return null;
   }
 }
@@ -116,7 +115,7 @@ async function computeIsolineInWorker(ctrl, params) {
             const copy = val.slice();
             graphForTransfer[key] = copy;
             transferList.push(copy.buffer);
-          } catch (_err) {
+          } catch {
             // Fallback: if slice fails for some reason, include original (will be structured-cloned)
             graphForTransfer[key] = val;
           }
@@ -310,7 +309,7 @@ export async function tryIsoline(ctrl) {
   if (!ctrl._urlTemplate && ctrl._tileJsonUrl) {
     try {
       await ctrl._loadTileTemplate();
-    } catch (_err) {
+    } catch {
       ctrl._setStatus(ctrl._text.status?.tileMetadata || 'Tile metadata error', 'error');
       return;
     }
@@ -359,7 +358,7 @@ export async function tryIsoline(ctrl) {
         tileProxyTemplate: ctrl._tileProxyTemplate ?? '',
         tileUrlTransform: ctrl._tileUrlTransform,
       });
-    } catch (_graphErr) {
+    } catch {
       const routeRes = await ctrl._routeFunction(point, point, ctrl._mode, ctrl._urlTemplate, {
         costField: ctrl._costField,
         includeGraph: true,
@@ -518,9 +517,8 @@ export async function tryIsoline(ctrl) {
     }
 
     ctrl._setStatus('', '');
-  } catch (err) {
+  } catch {
     if (calcId !== ctrl._calcId) return;
-    console.error('[omt-router] isoline error', err);
     try {
       const src = ctrl._map?.getSource(ctrl._options.isolineSourceId);
       if (src && typeof src.setData === 'function') {
@@ -530,6 +528,7 @@ export async function tryIsoline(ctrl) {
       void _e;
     }
     if (ctrl._mounted) ctrl._setStatus(ctrl._text.status?.noRoute || 'Isoline failed', 'error');
+
   }
 }
 
@@ -618,13 +617,6 @@ export async function tryRoute(ctrl) {
     }
 
     if (coords.length > 1) {
-      console.log(
-        '[dbg] requesting _centerMapOnSource (route)',
-        ctrl._options.routeSourceId,
-        !!ctrl._map?.getSource?.(ctrl._options.routeSourceId),
-        'coords.length=',
-        coords.length
-      );
       ctrl._centerMapOnSource(ctrl._options.routeSourceId, {
         padding: 100,
         maxZoom: 16,
@@ -640,7 +632,6 @@ export async function tryRoute(ctrl) {
     }
   } catch (err) {
     if (!ctrl._mounted || id !== ctrl._calcId) return;
-    console.error('[omt-router] routing error:', err);
     if (err?.code === 'engine_cancelled') {
       ctrl._setStatus(timedOut ? ctrl._text.status.timedOut : ctrl._text.status.cancelled, 'error');
     } else {
@@ -664,7 +655,6 @@ export async function tryRoute(ctrl) {
  * @param {object} result Route result object with failure reason.
  */
 export function handleRouteFailure(ctrl, result) {
-  console.warn('[omt-router] route failed:', result);
   const reason = result?.reason;
   switch (reason) {
     case RouteFailureReason.TILE_CORS:

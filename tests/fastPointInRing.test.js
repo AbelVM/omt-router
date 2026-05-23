@@ -85,4 +85,28 @@ describe('fastPointInRing', () => {
       )
     ).toBe(false);
   });
+
+  it('returns null for too-small rings and handles empty prepared rings', () => {
+    const emptyPrepared = prepareRing([]);
+
+    expect(emptyPrepared.n).toBe(0);
+    expect(pointInPreparedRing(0, 0, emptyPrepared)).toBe(false);
+    expect(findInteriorPoint([[0, 0], [1, 0]])).toBe(null);
+  });
+
+  it('accepts a prepared ring object in findInteriorPoint', () => {
+    const prepared = prepareRing([
+      [0, 0],
+      [4, 0],
+      [4, 4],
+      [2, 1],
+      [0, 4],
+      [0, 0],
+    ]);
+    const interior = findInteriorPoint(prepared);
+
+    expect(interior).toBeInstanceOf(Array);
+    expect(interior).toHaveLength(2);
+    expect(pointInPreparedRing(interior[0], interior[1], prepared)).toBe(true);
+  });
 });

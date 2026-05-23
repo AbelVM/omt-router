@@ -92,27 +92,13 @@ export async function isoline({
 
   // Pass full prepared graph and let isoPHAST handle direction and mode.
   const SEARCH_FACTOR = 3;
-  const { distances, reachable, visited } = isoPHAST(prepared, startId, maxCost, {
+  const { distances, visited } = isoPHAST(prepared, startId, maxCost, {
     outputUnscaled: true,
     direction,
     mode,
     searchThreshold: maxCost * SEARCH_FACTOR,
   });
 
-  const DEBUG_ISOLINES =
-    typeof process !== 'undefined'
-      ? process.env?.DEBUG_ISOLINES
-      : typeof import.meta !== 'undefined'
-        ? import.meta.env?.DEBUG_ISOLINES
-        : false;
-
-  if (DEBUG_ISOLINES) {
-    console.error(
-      'DEBUG_ISOLINES reachable',
-      reachable,
-      Array.from(distances).map((d, i) => [i, d])
-    );
-  }
 
   // Use d3-tricontour to build contour geometries. Build a simple
   // points array as `[x, y, value]` entries which tricontour expects.
@@ -137,11 +123,6 @@ export async function isoline({
   breaks = breaks.filter((k) => k < maxCost);
   breaks.push(maxCost);
   breaks.sort((a, b) => a - b);
-
-  if (DEBUG_ISOLINES) {
-    console.error('DEBUG_ISOLINES isoline points', points.length, points);
-    console.error('DEBUG_ISOLINES breaks', breaks);
-  }
 
   // Compute isobands via d3-tricontour adapter and return GeoJSON.
   if (points.length === 0) return { type: 'FeatureCollection', features: [] };

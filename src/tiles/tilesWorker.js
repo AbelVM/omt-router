@@ -30,7 +30,7 @@ function resetTileTaskState() {
   if (_currentTileAbortController) {
     try {
       _currentTileAbortController.abort();
-    } catch (_err) {
+    } catch {
       // Ignore abort failures.
     }
     _currentTileAbortController = null;

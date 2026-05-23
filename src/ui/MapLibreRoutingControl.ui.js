@@ -142,10 +142,26 @@ export function buildPanelMarkup(ctrl) {
       <div class="rp-status" id="rp-status-isoline" role="status" aria-live="polite" hidden></div>
     `;
 
+  const collapseLabel = ctrl._collapsed
+    ? ctrl._text.expandPanel || 'Expand routing controls'
+    : ctrl._text.collapsePanel || 'Collapse routing controls';
+  const collapseIcon = ctrl._collapsed ? '╬' : '«';
+  const collapseIconClass = `rp-collapse-icon${ctrl._collapsed ? ' rp-collapse-icon--rotated' : ''}`;
+  const collapseHeader = `
+      <div class="rp-panel-toolbar">
+        <button type="button" id="rp-collapse-btn" class="rp-collapse-btn" aria-expanded="${String(!ctrl._collapsed)}" aria-label="${collapseLabel}" title="${collapseLabel}">
+          <span class="${collapseIconClass}">${collapseIcon}</span>
+        </button>
+      </div>
+      <div class="rp-panel-body">
+    `;
+    const collapseFooter = `</div>
+      <button id="rp-remove-btn" class="rp-remove-fab" aria-label="${ctrl._text.removeRoute}" title="${ctrl._text.removeRouteTooltip}" hidden><span class="rp-btn-label"><span class="rp-label-visible">✕</span></span></button>`;
+
   if (ctrl._features === 'both') {
     const routingActive = ctrl._activeTab === 'routing';
     const isolineActive = ctrl._activeTab === 'isoline';
-    return `
+    return `${collapseHeader}
         <div class="rp-modes" style="--rp-columns:2">
           <button type="button" id="rp-tab-routing" class="rp-tab-btn ${routingActive ? 'active' : ''}"><span class="rp-btn-label"><span class="rp-label-measure">${ctrl._text.tabs?.routing || 'Routing'}</span><span class="rp-label-visible">${ctrl._text.tabs?.routing || 'Routing'}</span></span></button>
           <button type="button" id="rp-tab-isoline" class="rp-tab-btn ${isolineActive ? 'active' : ''}"><span class="rp-btn-label"><span class="rp-label-measure">${ctrl._text.tabs?.isolines || 'Isolines'}</span><span class="rp-label-visible">${ctrl._text.tabs?.isolines || 'Isolines'}</span></span></button>
@@ -156,14 +172,14 @@ export function buildPanelMarkup(ctrl) {
         <div id="rp-isoline-panel" ${isolineActive ? '' : 'hidden'}>
           ${isolineHtml}
         </div>
-      `;
+      ${collapseFooter}`;
   }
 
   if (ctrl._features === 'isolines') {
-    return `${ctrl._text.title ? `<span class="rp-title">${ctrl._text.title}</span>` : ''}${isolineHtml}`;
+    return `${collapseHeader}${ctrl._text.title ? `<span class="rp-title">${ctrl._text.title}</span>` : ''}${isolineHtml}${collapseFooter}`;
   }
 
-  return routingHtml;
+  return `${collapseHeader}${routingHtml}${collapseFooter}`;
 }
 
 /**
@@ -238,7 +254,6 @@ export function showStats(ctrl, result) {
     !ctrl._statTimeLabelEl ||
     !ctrl._engineBadgeEl
   ) {
-    console.warn('[omt-router] skipping stats update because the control panel is not mounted');
     return;
   }
 
@@ -370,7 +385,7 @@ export function resetOtherUI(ctrl, activeTab) {
         ? Number(_optIso)
         : ctrl._costField === 'travelTime' || ctrl._costField === 'optimal'
           ? 15 * 60
-          : 100;
+          : 1000;
       ctrl._isoline = ctrl._isoline || { point: null, direction: 'from', maxCost: _defaultIso };
       ctrl._isoline.point = null;
       ctrl._isoline.direction = 'from';

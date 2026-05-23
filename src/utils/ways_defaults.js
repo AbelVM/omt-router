@@ -225,7 +225,8 @@ export function parseMaxspeedKmh(maxspeed) {
 
   const numericMatch = value.match(/^(\d+(?:\.\d+)?)/);
   if (numericMatch) {
-    return Number(numericMatch[1]);
+    const numericValue = Number(numericMatch[1]);
+    return numericValue > 0 ? numericValue : null;
   }
 
   return null;
