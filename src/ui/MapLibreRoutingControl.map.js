@@ -1,6 +1,8 @@
+// @ts-check
 /**
  * Create map sources and layers for route, graph, and isoline visualization.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing map and options.
+ * @returns {void}
  */
 export function setupRouteSource(ctrl) {
   if (!ctrl._map) return;
@@ -126,7 +128,8 @@ export function setupRouteSource(ctrl) {
 
 /**
  * Remove route, graph, and isoline map layers and sources.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing map and options.
+ * @returns {void}
  */
 export function removeRouteLayers(ctrl) {
   for (const id of [
@@ -153,9 +156,10 @@ export function removeRouteLayers(ctrl) {
 
 /**
  * Place or update a draggable route marker on the map.
- * @param {object} ctrl Control instance.
- * @param {'origin'|'dest'} type Marker type.
- * @param {number[]} lngLat Coordinate [lng, lat].
+ * @param {object} ctrl - Control instance containing map and marker state.
+ * @param {'origin'|'dest'} type - Marker type ('origin' or 'dest').
+ * @param {number[]} lngLat - Coordinate [lng, lat].
+ * @returns {void}
  */
 export function placeMarker(ctrl, type, lngLat) {
   if (ctrl._markers[type]) {
@@ -196,8 +200,9 @@ export function placeMarker(ctrl, type, lngLat) {
 
 /**
  * Place or update a draggable isoline source marker on the map.
- * @param {object} ctrl Control instance.
- * @param {number[]} lngLat Coordinate [lng, lat].
+ * @param {object} ctrl - Control instance containing map and marker state.
+ * @param {number[]} lngLat - Coordinate [lng, lat].
+ * @returns {void}
  */
 export function placeIsolineMarker(ctrl, lngLat) {
   const coords = [lngLat[0], lngLat[1]];
@@ -273,7 +278,8 @@ export function placeIsolineMarker(ctrl, lngLat) {
 
 /**
  * Clear isoline geometry and remove the isoline marker from the map.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing map and marker state.
+ * @returns {void}
  */
 export function clearIsoline(ctrl) {
   if (!ctrl._map) return;
@@ -289,7 +295,8 @@ export function clearIsoline(ctrl) {
 
 /**
  * Clear the current route geometry from the map source.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing map and marker state.
+ * @returns {void}
  */
 export function clearRoute(ctrl) {
   if (!ctrl._map || !ctrl._map.getSource(ctrl._options.routeSourceId)) return;
@@ -300,7 +307,8 @@ export function clearRoute(ctrl) {
 
 /**
  * Clear the optional route graph debug layer from the map.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing map and marker state.
+ * @returns {void}
  */
 export function clearGraph(ctrl) {
   if (!ctrl._map || !ctrl._map.getSource(ctrl._options.graphSourceId)) return;
@@ -311,9 +319,10 @@ export function clearGraph(ctrl) {
 
 /**
  * Fit the map view to the bounds of a named GeoJSON source.
- * @param {object} ctrl Control instance.
- * @param {string} sourceId Source id for the geojson source.
- * @param {object} [fitOptions] fitBounds options.
+ * @param {object} ctrl - Control instance containing map and marker state.
+ * @param {string} sourceId - Source id for the geojson source.
+ * @param {object} [fitOptions] - fitBounds options.
+ * @returns {Promise<void>}
  */
 export async function centerMapOnSource(ctrl, sourceId, fitOptions = { padding: 50, maxZoom: 16 }) {
   if (!ctrl._map || !sourceId) return;

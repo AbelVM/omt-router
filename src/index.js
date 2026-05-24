@@ -1,3 +1,4 @@
+// @ts-check
 import { PowerCache } from 'performance-helpers/powerCache';
 import { getTilesAlongLine } from './tiles/tilesManager.js';
 import { buildGraphAsync } from './graphs/graphBuilder.js';
@@ -389,10 +390,11 @@ export const route = async (
 
 /**
  * Compute multiple routes in parallel using the same public route() flow.
- * @param {Array<{start:LatLng,end:LatLng,mode:string,costField?:CostField}>} requests
- * @param {string} urlTemplate
- * @param {RouteOptions} [options]
- * @returns {Promise<Array<RouteResult>>}
+ * @param {Array<{start:LatLng,end:LatLng,mode:string,costField?:CostField}>} requests - Array of route requests, each with start/end coordinates and mode.
+ * @param {string} urlTemplate - Tile URL template string.
+ * @param {RouteOptions} [options] - Optional route options (see RouteOptions typedef).
+ * @param {number} [options.maxConcurrentRoutes] - Maximum number of concurrent routes to compute.
+ * @returns {Promise<Array<RouteResult>>} Resolves to an array of route results.
  */
 export async function routeBatch(requests, urlTemplate, options = {}) {
   if (!Array.isArray(requests) || requests.length === 0) {
@@ -450,20 +452,19 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
 }
 
 /**
- * Build a merged graph for an arbitrary tile list using the shared
- * worker pool and tile cache. This is a thin wrapper around
- * `buildGraphAsync` that also reuses the module-level `_graphCache`.
+ * Build a merged graph for an arbitrary tile list using the shared worker pool and tile cache.
+ * Thin wrapper around `buildGraphAsync` that also reuses the module-level `_graphCache`.
  *
- * @param {Array<{z:number,x:number,y:number,url?:string}>} tiles
- * @param {string} mode
- * @param {Object} [opts]
- * @param {number} [opts.zoom]
- * @param {'zxy'|'tms'} [opts.schema]
- * @param {string} [opts.urlTemplate]
- * @param {string} [opts.tileProxyTemplate]
- * @param {(rawURL:string, tile:object)=>string} [opts.tileUrlTransform]
- * @param {import('./tiles/tilePool.js').TilePool} [opts.pool]
- * @returns {Promise<Object>} merged graph
+ * @param {Array<{z:number,x:number,y:number,url?:string}>} tiles - List of tile objects with z/x/y (and optional url).
+ * @param {string} mode - Routing mode (e.g., 'car', 'foot', etc).
+ * @param {Object} [opts] - Optional settings.
+ * @param {number} [opts.zoom=14] - Zoom level for the tiles.
+ * @param {'zxy'|'tms'} [opts.schema='zxy'] - Tile schema.
+ * @param {string} [opts.urlTemplate] - Tile URL template.
+ * @param {string} [opts.tileProxyTemplate] - Optional proxy template for tiles.
+ * @param {(rawURL:string, tile:object)=>string} [opts.tileUrlTransform] - Optional function to transform tile URLs.
+ * @param {import('./tiles/tilePool.js').TilePool} [opts.pool] - Tile pool instance to use.
+ * @returns {Promise<Object>} Resolves to the merged graph object.
  */
 export async function buildGraphForTiles(
   tiles,

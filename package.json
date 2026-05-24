@@ -90,7 +90,7 @@
     "d3-tricontour": "^1.1.0",
     "kdbush": "^4.1.0",
     "pbf": "^4.0.2",
-    "performance-helpers": "^1.0.1",
+    "performance-helpers": "^1.0.2",
     "rbush": "^4.0.1"
   }
 }

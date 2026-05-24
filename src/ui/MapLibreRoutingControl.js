@@ -1,3 +1,4 @@
+// @ts-check
 import {
   route as defaultRoute,
   getEngineWorkerStatus as defaultGetEngineWorkerStatus,

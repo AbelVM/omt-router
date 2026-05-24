@@ -1,3 +1,4 @@
+// @ts-check
 const DEFAULT_LOCALE = 'en';
 
 const LOCALES = {

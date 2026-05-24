@@ -1,6 +1,6 @@
 import { MapLibreRoutingControl } from '../dist/omt-router.js';
 
-const TILE_JSON_URL = './planet.json';//'https://tiles.openfreemap.org/planet';
+const TILE_JSON_URL = 'https://tiles.openfreemap.org/planet';
 const ENABLE_DEBUG = false;
 const DEFAULT_CENTER = [-3.7038093072127265, 40.416644888955474]; // Km.0 Madrid, Spain
 const DEFAULT_ZOOM = 14;
@@ -27,7 +27,7 @@ async function initMap() {
 
   const map = new maplibregl.Map({
     container: 'map',
-    style: './bright.json',//'https://tiles.openfreemap.org/styles/bright',
+    style: 'https://tiles.openfreemap.org/styles/bright',
     center,
     zoom: DEFAULT_ZOOM,
     minZoom: DEFAULT_MIN_ZOOM,

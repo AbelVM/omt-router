@@ -1,3 +1,4 @@
+// @ts-check
 import {
   fmtDistance,
   formatDuration,
@@ -184,7 +185,8 @@ export function buildPanelMarkup(ctrl) {
 
 /**
  * Synchronize the isoline threshold input and unit label with the selected cost mode.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing UI state.
+ * @returns {void}
  */
 export function updateIsolineThresholdUI(ctrl) {
   try {
@@ -210,9 +212,10 @@ export function updateIsolineThresholdUI(ctrl) {
 
 /**
  * Update the visible status message for the current active tab.
- * @param {object} ctrl Control instance.
- * @param {string} html Status text or HTML.
- * @param {string} [cls] Optional CSS class for status styling.
+ * @param {object} ctrl - Control instance containing UI state.
+ * @param {string} html - Status text or HTML.
+ * @param {string} [cls] - Optional CSS class for status styling.
+ * @returns {void}
  */
 export function setStatus(ctrl, html, cls = '') {
   const target =
@@ -242,8 +245,9 @@ export function setStatus(ctrl, html, cls = '') {
 
 /**
  * Render route statistics and engine badge details in the control panel.
- * @param {object} ctrl Control instance.
- * @param {object} result Route result object.
+ * @param {object} ctrl - Control instance containing UI state.
+ * @param {object} result - Route result object.
+ * @returns {void}
  */
 export function showStats(ctrl, result) {
   if (
@@ -281,7 +285,7 @@ export function showStats(ctrl, result) {
 
 /**
  * Fallback distance calculation when route result lacks explicit distance.
- * @param {Array<number[]>} coords Route coordinates.
+ * @param {Array<number[]>} coords - Route coordinates.
  * @returns {number} Total distance in meters.
  */
 function getRouteDistanceFallback(coords) {
@@ -304,8 +308,8 @@ function getRouteDistanceFallback(coords) {
 
 /**
  * Format isoline duration seconds into a readable duration label.
- * @param {number} seconds Duration in seconds.
- * @returns {string}
+ * @param {number} seconds - Duration in seconds.
+ * @returns {string} Formatted duration string.
  */
 export function formatDurationSeconds(seconds) {
   return formatDuration(Math.round(seconds / 60));
@@ -313,7 +317,8 @@ export function formatDurationSeconds(seconds) {
 
 /**
  * Reflect selected travel mode, cost field, and isoline direction in the panel UI.
- * @param {object} ctrl Control instance.
+ * @param {object} ctrl - Control instance containing UI state.
+ * @returns {void}
  */
 export function syncModeAndCostUI(ctrl) {
   try {
@@ -363,8 +368,9 @@ export function syncModeAndCostUI(ctrl) {
 
 /**
  * Reset inputs and status for the inactive control mode when tabs switch.
- * @param {object} ctrl Control instance.
- * @param {'routing'|'isoline'} activeTab Currently active tab name.
+ * @param {object} ctrl - Control instance containing UI state.
+ * @param {'routing'|'isoline'} activeTab - Currently active tab name.
+ * @returns {void}
  */
 export function resetOtherUI(ctrl, activeTab) {
   try {

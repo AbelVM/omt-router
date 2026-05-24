@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * @module src/engines/router
  * @description High-level routing orchestration, engine selection, and
@@ -19,7 +20,6 @@ import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerCache } from 'performance-helpers/powerCache';
 import { PowerPool } from 'performance-helpers/powerPool';
 import { haversineDistance as haversine } from '../utils/misc.js';
-import { installPowerPoolTransferFix } from './powerPoolTransferFix.js';
 import {
   DEFAULT_ENGINE_ID,
   ENGINE_ID_ALIASES,
@@ -32,7 +32,6 @@ import {
   resolveRouteEndpoints,
 } from '../graphs/snapper.js';
 
-installPowerPoolTransferFix();
 import {
   getParallelPolicyForEngine,
   hasParallelRoutingRuntime,

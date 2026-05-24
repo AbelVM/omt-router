@@ -1,3 +1,4 @@
+// @ts-check
 import { getTilesWithinRadius } from '../tiles/tilesManager.js';
 import { RouteFailureReason } from '../engines/router.js';
 import { isoline } from '../isolines/index.js';
