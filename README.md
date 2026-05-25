@@ -6,7 +6,7 @@ Client-side routing library for OpenMapTiles vector tiles. Computes optimal rout
 
 This repository is provider-agnostic for OpenMapTiles-compatible vector tiles, so the same tiles used for your basemap can be used for routing (reduces network and operational overhead).
 
-Live demo: example/
+[Live demo](example/)
 
 ---
 
@@ -74,8 +74,6 @@ An ML-based selector chooses the engine per request to minimize runtime while ke
 - Conservative defaults: `ultra-dijkstra` is used as a low-risk fallback; thresholds can be tuned for canary rollouts.
 
 At runtime the selector evaluates features such as beeline distance, `E` (edge count), `N` (node count), density/branching indicators, and available runtime capabilities (SharedArrayBuffer, Worker availability, cross-origin isolation).
-
-Recommendations: fix engine error rates and label mismatches before aggressive selector rollout; run a threshold sweep and canary rollout to increase automated coverage safely.
 
 ---
 
@@ -281,9 +279,9 @@ route()
 
 Key implementation notes:
 
-- Tile corridor enumeration uses Bresenham rasterisation to select slippy-map tiles around the origin→destination corridor and supports adaptive radius retry loops for robustness.
+- Tile corridor enumeration uses [Bresenham rasterisation](https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm) to select slippy-map tiles around the origin→destination corridor and supports adaptive radius retry loops for robustness.
 - Tile parsing is parallelised using `PowerPool` workers and cached in `PowerCache` to avoid repeated decoding.
-- Road segments are clipped to tile boundaries using Liang–Barsky clipping; adjacent tiles produce bit-identical boundary coordinates, avoiding proximity snapping.
+- Road segments are clipped to tile boundaries using [Liang–Barsky clipping](https://en.wikipedia.org/wiki/Liang%E2%80%93Barsky_algorithm); adjacent tiles produce bit-identical boundary coordinates, avoiding proximity snapping.
 - Graph merging deduplicates nodes with a coordinate hash (rounded to 6 decimal places) and computes edge costs and travel times from per-class defaults.
 
 ---
