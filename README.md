@@ -6,7 +6,7 @@ Client-side routing library for OpenMapTiles vector tiles. Computes optimal rout
 
 This repository is provider-agnostic for OpenMapTiles-compatible vector tiles, so the same tiles used for your basemap can be used for routing (reduces network and operational overhead).
 
-[Live demo](example/)
+[Live demo](https://abelvm.github.io/omt-router/example/)
 
 ---
 
@@ -331,7 +331,7 @@ If you see `reason: 'tile_cors'` with `code: 'MissingAllowOriginHeader'` the bro
 
 ## References & links
 
-- Live demo: example/
+- [Live demo](https://abelvm.github.io/omt-router/example/)
 - OpenMapTiles schema: https://openmaptiles.org/schema/#transportation
 - OpenFreeMap metadata used in the example: https://tiles.openfreemap.org/planet
 - Performance helpers: https://abelvm.github.io/performance-helpers
