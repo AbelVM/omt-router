@@ -4,20 +4,18 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OMT Router — Browser Routing for OpenMapTiles</title>
+    <title>OMT Router — Client-side routing & isolines for OpenMapTiles</title>
     <meta name="description"
-        content="Fast, accurate client-side routing for OpenMapTiles — compute routes and isolines entirely in the browser. Try the live demo or install via npm." />
-    <meta name="keywords"
-        content="OpenMapTiles,routing,client-side routing,MapLibre,isolines, isochrones,OpenStreetMap,OpenMapTiles,JavaScript,offline routing" />
+        content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control." />
     <meta name="author" content="Abel Vázquez Montoro" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://abelvm.github.io/omt-router/" />
     <meta name="theme-color" content="#020617" />
 
     <!-- Open Graph / Facebook -->
-    <meta property="og:title" content="OMT Router — Browser Routing for OpenMapTiles" />
+    <meta property="og:title" content="OMT Router — Client-side routing & isolines for OpenMapTiles" />
     <meta property="og:description"
-        content="Fast, accurate routing — entirely in the browser. Compute routes and reachability from OpenMapTiles vector tiles with no routing server." />
+        content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://abelvm.github.io/omt-router/" />
     <meta property="og:site_name" content="OMT Router" />
@@ -25,34 +23,206 @@
     <meta property="og:image" content="https://abelvm.github.io/omt-router/landing/route.webp" />
     <meta property="og:image:alt" content="Map route illustration — OMT Router" />
     <meta property="og:image:type" content="image/webp" />
+    <meta property="og:image:secure_url" content="https://abelvm.github.io/omt-router/landing/route.webp" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@abel_vm" />
     <meta name="twitter:creator" content="@abel_vm" />
-    <meta name="twitter:title" content="OMT Router — Browser Routing for OpenMapTiles" />
+    <meta name="twitter:title" content="OMT Router — Client-side routing & isolines for OpenMapTiles" />
     <meta name="twitter:description"
-        content="Fast, accurate routing — entirely in the browser. Compute routes and reachability from OpenMapTiles vector tiles with no routing server." />
+        content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control." />
     <meta name="twitter:image" content="https://abelvm.github.io/omt-router/landing/route.webp" />
     <meta name="twitter:image:alt" content="Map route illustration — OMT Router" />
 
     <script type="application/ld+json">
         {
+            "@context":"https://schema.org",
+            "@type":"SoftwareApplication",
+            "@id":"https://abelvm.github.io/omt-router/#software",
+            "name":"OMT Router",
+            "url":"https://abelvm.github.io/omt-router/",
+            "description":"OMT Router is a JavaScript library that computes routes and isolines client-side from OpenMapTiles—no routing server required.",
+            "image": {
+                "@type": "ImageObject",
+                "url": "https://abelvm.github.io/omt-router/landing/route.webp",
+                "width": 1200,
+                "height": 630
+            },
+            "author": {
+                "@type":"Person",
+                "name":"Abel Vázquez Montoro",
+                "sameAs":[ "https://www.linkedin.com/in/abelvazquez/" ]
+            },
+            "applicationCategory":"DeveloperTool",
+            "operatingSystem":"All",
+            "codeRepository":"https://github.com/AbelVM/omt-router",
+            "inLanguage":"en",
+            "license":"https://www.gnu.org/licenses/agpl-3.0.html",
+            "keywords":"OpenMapTiles,routing,client-side,MapLibre,isolines",
+            "datePublished":"2026-05-25",
+            "softwareVersion":"1.0.0",
+            "downloadUrl":"https://www.npmjs.com/package/omt-router",
+            "dateModified":"2026-05-25"
+        }
+    </script>
+
+    <script type="application/ld+json">
+        {
+            "@context":"https://schema.org",
+            "@type":"HowTo",
+            "name":"Quickstart — compute a route",
+            "totalTime":"PT5M",
+            "step":[
+                {"@type":"HowToStep","name":"Install","text":"npm install omt-router"},
+                {"@type":"HowToStep","name":"Import & call","text":"import { route } from 'omt-router'; await route(src, dst, 'car', TILE_URL);"},
+                {"@type":"HowToStep","name":"MapLibre control","text":"map.addControl(new MapLibreRoutingControl({ routeFunction: route }));"}
+            ]
+        }
+    </script>
+
+    <script type="application/ld+json">
+        {
             "@context": "https://schema.org",
-            "@type": "SoftwareApplication",
-            "name": "OMT Router",
-            "url": "https://abelvm.github.io/omt-router/",
-            "description": "Fast, accurate client-side routing for OpenMapTiles — compute routes and isolines entirely in the browser.",
-            "image": "https://abelvm.github.io/omt-router/landing/route.webp",
-            "author": { "@type": "Person", "name": "Abel Vázquez Montoro" },
-            "applicationCategory": "DeveloperTool",
-            "operatingSystem": "All"
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "Which tiles work?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "Any OpenMapTiles-compatible vector tile source. CORS or proxying may be required; examples include OpenFreeMap, MapTiler, or self-hosted tiles."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "Why no_node / poor_snap errors?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "The endpoint is outside the snap radius or road data is missing. Choose a closer endpoint or check the map data."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "When does engine fallback happen?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "When the selected engine cannot return a safe route; deterministic fallback selects an alternative engine to ensure correctness."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "Results are weird in certain areas",
+                    "acceptedAnswer": {"@type": "Answer", "text": "Results quality depends on OpenStreetMap data accuracy; contribute fixes to OSM or choose higher-quality local tiles."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "Routing is way slower than advertised",
+                    "acceptedAnswer": {"@type": "Answer", "text": "Data preparation (fetching/parsing tiles and building the graph) usually dominates; route calculation itself is millisecond-scale. Use local or cached tiles to reduce preparation time."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "How can I contribute?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "Improve OSM data, report issues, or open issues/PRs on the project repository."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "What is the license?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "OMT Router is licensed under AGPL-3.0-only; modifications served over a network must be shared publicly."}
+                },
+                {
+                    "@type": "Question",
+                    "name": "Why this license?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "AGPL ensures improvements are shared with the community and protects user freedoms for networked software."}
+                }
+            ]
         }
         </script>
+
+    <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                "@id": "https://abelvm.github.io/omt-router/#org",
+                "name": "OMT Router",
+                "url": "https://abelvm.github.io/omt-router/",
+                "logo": "https://abelvm.github.io/omt-router/landing/route.webp",
+                "sameAs": [
+                    "https://github.com/AbelVM/omt-router",
+                    "https://www.linkedin.com/in/abelvazquez/"
+                ]
+            }
+        </script>
+
+    <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": 1,
+                        "name": "Home",
+                        "item": {
+                            "@id": "https://abelvm.github.io/omt-router/",
+                            "name": "Home"
+                        }
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 2,
+                        "name": "Demo",
+                        "item": {
+                            "@id": "https://abelvm.github.io/omt-router/#demo",
+                            "name": "Demo"
+                        }
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 3,
+                        "name": "Quickstart",
+                        "item": {
+                            "@id": "https://abelvm.github.io/omt-router/#quickstart",
+                            "name": "Quickstart"
+                        }
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 4,
+                        "name": "API",
+                        "item": {
+                            "@id": "https://abelvm.github.io/omt-router/#api",
+                            "name": "API"
+                        }
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 5,
+                        "name": "FAQ",
+                        "item": {
+                            "@id": "https://abelvm.github.io/omt-router/#faq",
+                            "name": "FAQ"
+                        }
+                    }
+                ]
+            }
+        </script>
+
+    <script type="application/ld+json">
+        {
+            "@context":"https://schema.org",
+            "@type":"WebPage",
+            "@id":"https://abelvm.github.io/omt-router/#webpage",
+            "url":"https://abelvm.github.io/omt-router/",
+            "name":"OMT Router",
+            "inLanguage":"en",
+            "mainEntity": {"@id":"https://abelvm.github.io/omt-router/#software"},
+            "publisher": {"@id":"https://abelvm.github.io/omt-router/#org"},
+            "speakable": {"@type":"SpeakableSpecification","cssSelector":[".hero-answer"]}
+        }
+        </script>
+
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js"
+        crossorigin />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preload" as="image" href="landing/route.webp" />
     <link
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
         rel="stylesheet" />
@@ -67,7 +237,8 @@
                     <span class="brand-mark"><span class="brand-mark-glyph">╬</span></span>
                     <span class="brand-name">OMT Router</span>
                 </a>
-                <button id="menu-toggle" class="menu-button" aria-label="Toggle navigation">
+                <button id="menu-toggle" class="menu-button" aria-label="Toggle navigation" aria-expanded="false"
+                    aria-controls="primary-nav">
                     <span class="menu-bar"></span>
                     <span class="menu-bar"></span>
                     <span class="menu-bar"></span>
@@ -86,20 +257,18 @@
             </div>
         </header>
 
-        <main>
+        <main id="main-content">
             <section id="top" class="hero-section">
                 <div class="container hero-grid">
                     <div class="hero-copy">
-                        <span class="eyebrow">OpenMapTiles routing in the browser</span>
-                        <h1>Fast, accurate routing — entirely in the browser.</h1>
-                        <p class="hero-text">Compute routes and reachability straight from OpenMapTiles vector tiles, no
-                            routing servers. Just reuse the tiles you are already using for your basemap.</p>
-                        <p class="hero-text">Leverage OpenStreetMap data for navigation and routing applications.</p>
-                        <p>⠀</p>
+                        <span class="eyebrow">Backend-less routing</span>
+                        <h1>OMT Router — Fast, accurate client-side routing for OpenMapTiles</h1>
+                        <p class="hero-answer">Client-side JavaScript library for routing and isolines from
+                            OpenMapTiles—no routing server required.</p>
                         <div class="hero-actions">
                             <a href="example/" class="btn btn-primary">Try Live Demo</a>
-                            <a href="https://www.npmjs.com/package/omt-router" class="btn btn-secondary">npm install
-                                omt-router</a>
+                            <a href="https://www.npmjs.com/package/omt-router" class="btn btn-secondary">Install via
+                                npm</a>
                         </div>
                         <div class="hero-badges">
                             <div><strong>Millisecond-scale</strong> client-side route computation</div>
@@ -115,7 +284,7 @@
                             <div class="map-footer">
                                 <div>
                                     <p class="map-label">Route profile</p>
-                                    <p class="map-value">Car · Fastest · 18.2 km</p>
+                                    <p class="map-value">Car · Fastest · 16.4 km · 19 min</p>
                                 </div>
                                 <div class="map-tags">
                                     <span>Accuracy</span>
@@ -186,7 +355,7 @@
                             <div class="map-footer">
                                 <div>
                                     <p class="map-label">Isoline profile</p>
-                                    <p class="map-value">Walking · Travel Time</p>
+                                    <p class="map-value">Walking · Travel Time · 15 min</p>
                                 </div>
                                 <div class="map-tags">
                                     <span>Detailed</span>
@@ -319,7 +488,7 @@
                             boundaries. Spatial-index-based snapping keeps endpoints stable within configurable
                             thresholds.</p>
                         <a href="https://github.com/AbelVM/omt-router/blob/main/README.md" target="_blank"
-                            class="btn btn-secondary">Read Technical Notes</a>
+                            rel="noopener noreferrer" class="btn btn-secondary">Read Technical Notes</a>
                     </div>
                     <div class="panel-visual accuracy-card">
                         <div class="accuracy-icon"><i data-lucide="text-search"></i></div>
@@ -346,8 +515,8 @@
                     <article class="feature-card">
                         <div class="feature-icon"><i data-lucide="rabbit"></i></div>
                         <h3>Fastest core</h3>
-                        <p>Powered by <b><a href="https://abelvm.github.io/performance-helpers"
-                                    target="_blank">performance-helpers</a></b></p>
+                        <p>Powered by <b><a href="https://abelvm.github.io/performance-helpers" target="_blank"
+                                    rel="noopener noreferrer">performance-helpers</a></b></p>
                     </article>
                 </div>
             </section>
@@ -391,10 +560,12 @@
                             <span class="faq-toggle">+</span>
                         </button>
                         <div id="faq-panel-1" class="faq-panel">Any <a href="https://www.openmaptiles.org/"
-                                target="_blank">OpenMapTiles</a>-compatible vector tile source. CORS or proxying might
+                                target="_blank" rel="noopener noreferrer">OpenMapTiles</a>-compatible vector tile
+                            source. CORS or proxying might
                             be required for browser fetches. You can use third-party servers like <a
-                                href="https://openfreemap.org/" target="_blank">OpenFreeMap</a> or <a
-                                href="https://www.maptiler.com/" target="_blank">Maptiler</a> or host your own tiles.
+                                href="https://openfreemap.org/" target="_blank"
+                                rel="noopener noreferrer">OpenFreeMap</a> or <a href="https://www.maptiler.com/"
+                                target="_blank" rel="noopener noreferrer">Maptiler</a> or host your own tiles.
                         </div>
 
                         <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-2">
@@ -420,45 +591,47 @@
                             of the underlying OpenStreetMap data. If you feel it lacks detail in certain areas,
                             contributions to OSM are welcome.</div>
 
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-4">
+                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-5">
                             <span>Routing is way slower than advertised</span>
                             <span class="faq-toggle">+</span>
                         </button>
-                        <div id="faq-panel-4" class="faq-panel">There are two steps involved in routing: data
+                        <div id="faq-panel-5" class="faq-panel">There are two steps involved in routing: data
                             preparation and route calculation. Route calculation takes a few milliseconds, but data
                             preparation depends on beeline distance between points and the complexity of the network. To
                             build the graph needed for calculations, the system must fetch the needed tiles and that's
                             the most time-consuming part. So, if you requests the route for points far apart or in areas
                             with dense networks, it may take longer.</div>
 
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-5">
+                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-6">
                             <span>How can I contribute?</span>
                             <span class="faq-toggle">+</span>
                         </button>
-                        <div id="faq-panel-5" class="faq-panel">You can contribute by improving the underlying
+                        <div id="faq-panel-6" class="faq-panel">You can contribute by improving the underlying
                             OpenStreetMap data, reporting issues, or suggesting enhancements to the <a
-                                href="https://github.com/omt-router/omt-router" target="_blank">OMT Router project</a>.
+                                href="https://github.com/AbelVM/omt-router" target="_blank"
+                                rel="noopener noreferrer">OMT Router project</a>.
                         </div>
 
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-6">
+                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-7">
                             <span>What is the license?</span>
                             <span class="faq-toggle">+</span>
                         </button>
-                        <div id="faq-panel-6" class="faq-panel">OMT Router is <a
-                                href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank">AGPL-3.0-only</a>. The
+                        <div id="faq-panel-7" class="faq-panel">OMT Router is <a
+                                href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank"
+                                rel="noopener noreferrer">AGPL-3.0-only</a>. The
                             <b>GNU Affero General Public License version 3 (AGPLv3)</b> lets you use, modify, and share
                             this library for free. However, if you modify the code and run it over a network (like a
                             cloud service or website), you must share your modified source code publicly. If you want to
                             use this library in a closed-source or proprietary product without these open-source
                             obligations, please contact <a href="https://www.linkedin.com/in/abelvazquez/"
-                                target="_blank">me</a> for a commercial license.
+                                target="_blank" rel="noopener noreferrer">me</a> for a commercial license.
                         </div>
 
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-7">
+                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-8">
                             <span>Why this license?</span>
                             <span class="faq-toggle">+</span>
                         </button>
-                        <div id="faq-panel-7" class="faq-panel">The AGPL-3.0-only license ensures that improvements to
+                        <div id="faq-panel-8" class="faq-panel">The AGPL-3.0-only license ensures that improvements to
                             the software are shared with the community, promoting transparency and collaboration. It
                             also protects users' freedoms by requiring that modifications made available over a network
                             are shared publicly.</div>
@@ -474,19 +647,21 @@
                     <p class="footer-copy">Client-side routing for OpenMapTiles with engine selection, isolines, and map
                         integration.</p>
                     <p class="footer-copy">Made with <span class="as-hot">♥
-                        </span> by <a href="https://www.linkedin.com/in/abelvazquez/" target="_blank">Abel Vázquez
+                        </span> by <a href="https://www.linkedin.com/in/abelvazquez/" target="_blank"
+                            rel="noopener noreferrer">Abel Vázquez
                             Montoro</a></p>
                 </div>
                 <div class="footer-links">
                     <a href="#demo">Demo</a>
-                    <a href="#api">Maplibre control</a>
-                    <a href="https://github.com/AbelVM/omt-router" target="_blank">Source code</a>
+                    <a href="#api">MapLibre control</a>
+                    <a href="https://github.com/AbelVM/omt-router" target="_blank" rel="noopener noreferrer">Source
+                        code</a>
                     <a href="#faq">FAQ</a>
                 </div>
             </div>
         </footer>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
     <script src="landing/script.js"></script>
 </body>
 

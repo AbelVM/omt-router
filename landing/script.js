@@ -15,9 +15,49 @@ document.addEventListener('DOMContentLoaded', function () {
   var faqButtons = document.querySelectorAll('.faq-item');
 
   if (navToggle) {
-    navToggle.addEventListener('click', function () {
-      navMenu.classList.toggle('open');
-    });
+    if (navMenu) {
+      // ensure initial aria state matches markup
+      var navInitExpanded = navToggle.getAttribute('aria-expanded') === 'true';
+      navMenu.setAttribute('aria-hidden', navInitExpanded ? 'false' : 'true');
+
+      navToggle.addEventListener('click', function () {
+        var isOpen = navMenu.classList.toggle('open');
+        navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        navMenu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+      });
+
+      // Close the menu with Escape and return focus to the toggle
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          if (navMenu.classList.contains('open')) {
+            navMenu.classList.remove('open');
+            navToggle.setAttribute('aria-expanded', 'false');
+            navMenu.setAttribute('aria-hidden', 'true');
+            navToggle.focus();
+          }
+        }
+      });
+
+      // Close the menu when a navigation link is selected (single-page anchors)
+      var navLinks = navMenu.querySelectorAll('a');
+      if (navLinks.length) {
+        navLinks.forEach(function (link) {
+          link.addEventListener('click', function () {
+            if (navMenu.classList.contains('open')) {
+              navMenu.classList.remove('open');
+              navToggle.setAttribute('aria-expanded', 'false');
+              navMenu.setAttribute('aria-hidden', 'true');
+            }
+          });
+        });
+      }
+    } else {
+      // Fallback: toggle aria-expanded if nav exists in markup but menu element is missing
+      navToggle.addEventListener('click', function () {
+        var isExpanded = navToggle.getAttribute('aria-expanded') === 'true';
+        navToggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+      });
+    }
   }
 
   faqButtons.forEach(function (button) {
