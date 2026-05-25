@@ -8,12 +8,13 @@ const DEFAULT_MIN_ZOOM = 10;
 
 async function getGeoIpCenter() {
   try {
-    const response = await fetch('http://ip-api.com/json/');
+    const response = await fetch('https://api.country.is/?fields=location');
     const data = await response.json();
-    if (response.ok && data && data.status === 'success') {
-      const { lat, lon } = data;
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        return [lon, lat];
+    if (response.ok) {
+      const location = data.location
+      const { latitude, longitude } = location;
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return [longitude, latitude];
       }
     }
   } catch (error) {
