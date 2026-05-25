@@ -101,7 +101,7 @@ From repo root:
 Alternatively, if your Python environment is active, you can use the package script:
 
 ```bash
-  npm run train:LR
+  npm run train
 ```
 
 The script reads paired benchmark JSON files in `benchmark/results` and generates a runtime-compatible JS model artifact at `src/tuning/model.js`.
