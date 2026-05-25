@@ -1,6 +1,6 @@
 # OMT Router
 
-[![npm](https://img.shields.io/npm/v/omt-router)](https://www.npmjs.com/package/omt-router) [![license](https://img.shields.io/npm/l/omt-router)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/omt-router)](https://www.npmjs.com/package/omt-router) [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.en.html)
 
 Client-side routing library for OpenMapTiles vector tiles. Computes optimal routes and isolines for `car`, `pedestrian`, and `bicycle` travel entirely in the browser — no external routing backend required.
 
