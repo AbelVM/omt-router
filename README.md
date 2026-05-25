@@ -280,7 +280,7 @@ route()
 Key implementation notes:
 
 - Tile corridor enumeration uses [Bresenham rasterisation](https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm) to select slippy-map tiles around the origin→destination corridor and supports adaptive radius retry loops for robustness.
-- Tile parsing is parallelised using `PowerPool` workers and cached in `PowerCache` to avoid repeated decoding.
+- Tile parsing is parallelised using [PowerPool](https://abelvm.github.io/performance-helpers/#/powerpool) workers and cached in [PowerCache](https://abelvm.github.io/performance-helpers/#/lru-cache-with-ttl-and-memoizer) to avoid repeated decoding.
 - Road segments are clipped to tile boundaries using [Liang–Barsky clipping](https://en.wikipedia.org/wiki/Liang%E2%80%93Barsky_algorithm); adjacent tiles produce bit-identical boundary coordinates, avoiding proximity snapping.
 - Graph merging deduplicates nodes with a coordinate hash (rounded to 6 decimal places) and computes edge costs and travel times from per-class defaults.
 
