@@ -132,9 +132,12 @@ document.addEventListener('DOMContentLoaded', function () {
     addInteractionListeners();
     hintTimeout = setTimeout(function () { if (!interacted) showScrollHint(); }, INACTIVITY_MS);
 
-    // Hide when user scrolls past a small threshold
-    window.addEventListener('scroll', function onScrollForHint() {
-      if (window.scrollY > (window.innerHeight * 0.15)) { hideScrollHint(); removeInteractionListeners(); window.removeEventListener('scroll', onScrollForHint); }
+    // Hide as soon as the user starts scrolling (ignore synthetic scroll events)
+    window.addEventListener('scroll', function onScrollForHint(e) {
+      if (e && e.isTrusted === false) return;
+      hideScrollHint();
+      removeInteractionListeners();
+      window.removeEventListener('scroll', onScrollForHint);
     }, { passive: true });
 
     // Clicking the hint smooth-scrolls slightly down and hides the hint

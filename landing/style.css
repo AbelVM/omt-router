@@ -168,7 +168,8 @@ svg {
 
 .hero-section {
     position: relative;
-    min-height: calc(var(--vh, 1vh) * 100 - 2 * var(--site-header-height, 0px));
+    /* add a small buffer so the next section isn't partially visible */
+    min-height: calc(var(--vh, 1vh) * 100 - 2 * var(--site-header-height, 0px) + 15px);
     padding: 2.5rem 0;
     display: flex;
     align-items: center;
