@@ -1,0 +1,53 @@
+OMT Router — Client-side routing & isolines for OpenMapTiles
+
+Description:
+OMT Router is a JavaScript library that builds routing graphs from OpenMapTiles vector tiles
+in the browser (Web Workers) and computes routes and isolines for car, pedestrian, and bicycle
+travel without any external routing backend.
+
+Keywords: routing, isolines, OpenMapTiles, client-side, MapLibre, Web Workers, isoPHAST, isochrone, dijkstra, catchment
+
+Key features:
+- Client-side graph construction and routing (no server required).
+- Route finding and isolines (isoPHAST); endpoint snapping with quality guard.
+- Seamless tile stitching using Liang–Barsky clipping for consistent boundary nodes.
+- Worker pool (`PowerPool`) and tile parse cache (`PowerCache`) for parallel parsing.
+- AI-driven engine selector to trade runtime vs correctness; conservative fallbacks.
+
+Available engines:
+- bidirectional-astar — stable, good for sparse or long routes.
+- adaptive-barrier — parallel-ready; good for dense, medium/large graphs.
+- delta-stepping — parallel-ready; optimized for large frontiers and bursts.
+- ultra-dijkstra — reliable baseline and low-risk fallback.
+
+Engine selector:
+Compact runtime model in `src/tuning/model.js` with inference in `src/tuning/tuning.js`.
+Chooses engine per-request using features (E/N/density/beeline) and runtime capabilities
+(SharedArrayBuffer/worker availability). Supports `sabOn`/`sabOff` profiles.
+
+API highlights:
+- `route(origin, destination, mode, tileUrlTemplate, options)` — main route function.
+- `queryRoute()` / `route()` accept `options.engineId` or `auto` for selector.
+- `MapLibreRoutingControl` — drop-in MapLibre GL JS control for route UI.
+
+RouteResult (selected fields):
+- `found` (boolean), `path` (internal node IDs), `coordinates` ([[lng,lat],...]),
+- `cost` (distance meters or travelTime seconds), `costField`, `partialGraph` (boolean)
+
+Quick start (minimal):
+1) npm install omt-router
+2) Example:
+   import { route } from 'omt-router';
+   const result = await route([-3.7038,40.4168], [-3.6937,40.4101], 'car', urlTemplate, { costField: 'travelTime' });
+
+MapLibre integration (example):
+   import { MapLibreRoutingControl } from 'omt-router';
+   map.addControl(new MapLibreRoutingControl({ routeFunction: route, tileJsonUrl: 'https://tiles.openfreemap.org/planet' }));
+
+Notes:
+- Demo: https://abelvm.github.io/omt-router/example/
+- Repository: https://github.com/AbelVM/omt-router
+- License: AGPL v3
+- See `README.md` and `index.html` (landing page) for full docs and examples.
+
+Generated: 2026-05-26
