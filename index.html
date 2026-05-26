@@ -95,6 +95,11 @@
                 },
                 {
                     "@type": "Question",
+                    "name": "What's an 'optimal' route?",
+                    "acceptedAnswer": {"@type": "Answer", "text": "It's the fastest route, but weighting by road hierarchy. It's logical to prefer highways for long trips and local roads for short ones, even if the latter are faster in absolute terms. This is a common approach in routing engines to provide more intuitive and practical routes."}
+                },
+                {
+                    "@type": "Question",
                     "name": "Why no_node / poor_snap errors?",
                     "acceptedAnswer": {"@type": "Answer", "text": "The endpoint is outside the snap radius or road data is missing. Choose a closer endpoint or check the map data."}
                 },
@@ -571,6 +576,17 @@
                                 href="https://openfreemap.org/" target="_blank"
                                 rel="noopener noreferrer">OpenFreeMap</a> or <a href="https://www.maptiler.com/"
                                 target="_blank" rel="noopener noreferrer">Maptiler</a> or host your own tiles.
+                        </div>
+
+                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-1">
+                            <span>What's an "optimal" route?</span>
+                            <span class="faq-toggle">+</span>
+                        </button>
+                        <div id="faq-panel-1" class="faq-panel">
+                            It's the fastest route, but weighting by road hierarchy. It's logical to prefer highways
+                            for long trips and local roads for short ones, even if the latter are faster in absolute
+                            terms. This is a common approach in routing engines to provide more intuitive and practical
+                            routes.
                         </div>
 
                         <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-2">
