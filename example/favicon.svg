@@ -2,11 +2,10 @@
   <title id="title">OMT Router favicon</title>
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#061126" />
-      <stop offset="100%" stop-color="#020617" />
+      <stop offset="0%" stop-color="#0f1418" />
+      <stop offset="100%" stop-color="#0b1114" />
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="16" fill="url(#bg)" />
-  <rect x="6" y="6" width="52" height="52" rx="14" fill="none" stroke="#00e5ff" stroke-opacity="0.18" stroke-width="4" />
-  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-family="JetBrains Mono, monospace" font-size="42" fill="#00e5ff" transform="rotate(45 32 32)">╬</text>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-family="JetBrains Mono, monospace" font-size="42" fill="#f20084" transform="rotate(45 32 32)">╬</text>
 </svg>

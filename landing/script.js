@@ -152,6 +152,10 @@ document.addEventListener('DOMContentLoaded', function () {
   if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
     var selectors = 'h1,h2,h3,.hero-copy,.feature-card,.usecase-card,.panel-content,.code-block,.control-card';
     document.querySelectorAll(selectors).forEach(function (el) { el.classList.add('reveal'); });
+    // staggers: set small per-element CSS delay using --reveal-delay
+    document.querySelectorAll('.reveal').forEach(function (el, i) {
+      el.style.setProperty('--reveal-delay', (i * 20) + 'ms');
+    });
 
     var io = new IntersectionObserver(function (entries, obs) {
       entries.forEach(function (entry) {
