@@ -1,6 +1,6 @@
 {
   "name": "omt-router",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "description": "Client-side routing library for OpenMapTiles vector tiles (pedestrian, car, bicycle).",
   "type": "module",

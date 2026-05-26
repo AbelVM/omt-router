@@ -85,6 +85,7 @@ export const ways = {
       'footway',
       'pedestrian',
       'bridleway',
+      'minor'
     ]),
     subclass: new Set(['cycleway', 'path']),
     exclude_classes: new Set([
