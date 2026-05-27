@@ -11,7 +11,7 @@ async function getGeoIpCenter() {
     const response = await fetch('https://api.country.is/?fields=location');
     const data = await response.json();
     if (response.ok) {
-      const location = data.location
+      const location = data.location;
       const { latitude, longitude } = location;
       if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
         return [longitude, latitude];

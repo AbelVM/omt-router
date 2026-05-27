@@ -233,10 +233,26 @@ describe('MapLibreRoutingControl UI helpers', () => {
   });
 
   it('syncs mode and cost button state across routing and isoline tabs', () => {
-    const routingModeBtn = { dataset: { mode: 'car' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
-    const isolineModeBtn = { dataset: { mode: 'car' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
-    const routingCostBtn = { dataset: { costField: 'travelTime' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
-    const isolineCostBtn = { dataset: { costField: 'travelTime' }, classList: { toggle: vi.fn() }, setAttribute: vi.fn() };
+    const routingModeBtn = {
+      dataset: { mode: 'car' },
+      classList: { toggle: vi.fn() },
+      setAttribute: vi.fn(),
+    };
+    const isolineModeBtn = {
+      dataset: { mode: 'car' },
+      classList: { toggle: vi.fn() },
+      setAttribute: vi.fn(),
+    };
+    const routingCostBtn = {
+      dataset: { costField: 'travelTime' },
+      classList: { toggle: vi.fn() },
+      setAttribute: vi.fn(),
+    };
+    const isolineCostBtn = {
+      dataset: { costField: 'travelTime' },
+      classList: { toggle: vi.fn() },
+      setAttribute: vi.fn(),
+    };
     const panel = {
       querySelectorAll: (selector) => {
         if (selector === '.rp-mode-btn') return [routingModeBtn, isolineModeBtn];

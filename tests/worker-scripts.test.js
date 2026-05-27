@@ -154,7 +154,8 @@ describe('tilesWorker worker script', () => {
               { once: true }
             );
           }
-          firstFetchResolve = () => resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(1)) });
+          firstFetchResolve = () =>
+            resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(1)) });
         });
       }
       return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(2)) });

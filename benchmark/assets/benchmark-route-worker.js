@@ -43,26 +43,48 @@ function installPowerCacheSafeguards({ reapMs = 30_000 } = {}) {
         const p = origGetOrSetAsync.apply(cache, args);
         if (p && typeof p.then === 'function') {
           let settled = false;
-          const t = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            try {
-              if (cache._inflightPromises && typeof cache._inflightPromises.clear === 'function') {
-                cache._inflightPromises.clear();
+          const t = setTimeout(
+            () => {
+              if (settled) return;
+              settled = true;
+              try {
+                if (
+                  cache._inflightPromises &&
+                  typeof cache._inflightPromises.clear === 'function'
+                ) {
+                  cache._inflightPromises.clear();
+                }
+              } catch (_e) {
+                /* ignore */
               }
-            } catch (_e) {
-              /* ignore */
-            }
-            try { cache.clear?.(); } catch (_e) { /* ignore */ }
-          }, Number.isFinite(reapMs) ? reapMs : 30_000);
+              try {
+                cache.clear?.();
+              } catch (_e) {
+                /* ignore */
+              }
+            },
+            Number.isFinite(reapMs) ? reapMs : 30_000
+          );
 
-          try { cache._safetyReapTimers.add(t); } catch (_e) { /* ignore */ }
+          try {
+            cache._safetyReapTimers.add(t);
+          } catch (_e) {
+            /* ignore */
+          }
 
           const cleanup = () => {
             if (settled) return;
             settled = true;
-            try { clearTimeout(t); } catch (_e) { /* ignore */ }
-            try { cache._safetyReapTimers.delete(t); } catch (_e) { /* ignore */ }
+            try {
+              clearTimeout(t);
+            } catch (_e) {
+              /* ignore */
+            }
+            try {
+              cache._safetyReapTimers.delete(t);
+            } catch (_e) {
+              /* ignore */
+            }
           };
 
           p.then(cleanup, cleanup);
@@ -77,9 +99,17 @@ function installPowerCacheSafeguards({ reapMs = 30_000 } = {}) {
       try {
         if (this._safetyReapTimers) {
           for (const tt of this._safetyReapTimers) {
-            try { clearTimeout(tt); } catch (_e) { /* ignore */ }
+            try {
+              clearTimeout(tt);
+            } catch (_e) {
+              /* ignore */
+            }
           }
-          try { this._safetyReapTimers.clear(); } catch (_e) { /* ignore */ }
+          try {
+            this._safetyReapTimers.clear();
+          } catch (_e) {
+            /* ignore */
+          }
         }
       } catch (_e) {
         /* ignore */
@@ -92,9 +122,17 @@ function installPowerCacheSafeguards({ reapMs = 30_000 } = {}) {
       try {
         if (this._safetyReapTimers) {
           for (const tt of this._safetyReapTimers) {
-            try { clearTimeout(tt); } catch (_e) { /* ignore */ }
+            try {
+              clearTimeout(tt);
+            } catch (_e) {
+              /* ignore */
+            }
           }
-          try { this._safetyReapTimers.clear(); } catch (_e) { /* ignore */ }
+          try {
+            this._safetyReapTimers.clear();
+          } catch (_e) {
+            /* ignore */
+          }
         }
       } catch (_e) {
         /* ignore */
@@ -128,7 +166,7 @@ let _routeCacheEvictions = 0;
 let _routeCachePeakSize = 0;
 
 function createSharedTilePoolProxy(port) {
-  const hw = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency ?? 4 : 4;
+  const hw = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 4) : 4;
   const maxSize = Math.min(8, Math.max(1, hw - 1));
 
   const proxy = {
@@ -140,7 +178,11 @@ function createSharedTilePoolProxy(port) {
 
       if (!awaitResponse) {
         port.postMessage(
-          { type: 'sharedTilePoolRequest', message, timeout: Number.isFinite(timeout) ? timeout : 10_000 },
+          {
+            type: 'sharedTilePoolRequest',
+            message,
+            timeout: Number.isFinite(timeout) ? timeout : 10_000,
+          },
           transfer
         );
         return true;
@@ -148,10 +190,13 @@ function createSharedTilePoolProxy(port) {
 
       const correlationId = `sharedTilePool:${_sharedTilePoolNextRequestId++}`;
       return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          _sharedTilePoolPendingResponses.delete(correlationId);
-          reject(new Error('shared_tile_pool_request_timeout'));
-        }, Number.isFinite(timeout) && timeout > 0 ? timeout : 10_000);
+        const timeoutId = setTimeout(
+          () => {
+            _sharedTilePoolPendingResponses.delete(correlationId);
+            reject(new Error('shared_tile_pool_request_timeout'));
+          },
+          Number.isFinite(timeout) && timeout > 0 ? timeout : 10_000
+        );
 
         _sharedTilePoolPendingResponses.set(correlationId, { resolve, reject, timeoutId });
         port.postMessage(
@@ -164,7 +209,8 @@ function createSharedTilePoolProxy(port) {
 
   port.onmessage = (event) => {
     const data = event?.data;
-    if (!data || data.type !== 'sharedTilePoolResponse' || typeof data.correlationId !== 'string') return;
+    if (!data || data.type !== 'sharedTilePoolResponse' || typeof data.correlationId !== 'string')
+      return;
 
     const entry = _sharedTilePoolPendingResponses.get(data.correlationId);
     if (!entry) return;
@@ -263,7 +309,15 @@ function instrumentRouteCacheEvent(type, details) {
 }
 
 function buildRouteCacheKey(routeDef, mode, zoom, costField, radius) {
-  return [routeDef.start.join(','), routeDef.end.join(','), mode, zoom, costField, radius, routeDef.forceRadius ?? 'auto'].join('|');
+  return [
+    routeDef.start.join(','),
+    routeDef.end.join(','),
+    mode,
+    zoom,
+    costField,
+    radius,
+    routeDef.forceRadius ?? 'auto',
+  ].join('|');
 }
 
 function disposePowerCache(cache) {
@@ -278,7 +332,11 @@ function disposePowerCache(cache) {
 
     try {
       if (cache._cleanupTimer) {
-        try { clearTimeout(cache._cleanupTimer); } catch (_e) { /* ignore */ }
+        try {
+          clearTimeout(cache._cleanupTimer);
+        } catch (_e) {
+          /* ignore */
+        }
         cache._cleanupTimer = null;
       }
     } catch (_e) {
@@ -298,9 +356,13 @@ function disposePowerCache(cache) {
     try {
       if (cache._safetyReapTimers && typeof cache._safetyReapTimers.forEach === 'function') {
         cache._safetyReapTimers.forEach((tt) => {
-          try { clearTimeout(tt); } catch (_e) {}
+          try {
+            clearTimeout(tt);
+          } catch (_e) {}
         });
-        try { cache._safetyReapTimers.clear(); } catch (_e) {}
+        try {
+          cache._safetyReapTimers.clear();
+        } catch (_e) {}
       }
     } catch (_e) {
       /* ignore */
@@ -322,7 +384,7 @@ function getPowerCacheMetrics(cache) {
   if (!cache) return null;
   try {
     return {
-      size: typeof cache.size === 'number' ? cache.size : cache._map?.size ?? null,
+      size: typeof cache.size === 'number' ? cache.size : (cache._map?.size ?? null),
       stats: typeof cache.stats === 'function' ? cache.stats() : null,
       inflight: cache._inflightPromises?.size ?? null,
       cleanupTimerPresent: !!cache._cleanupTimer,
@@ -345,7 +407,10 @@ function reportAllPowerCaches() {
       try {
         const prepared = entry?.prepared;
         if (prepared && prepared._routeCache) {
-          metrics.preparedRouteCaches.push({ key, metrics: getPowerCacheMetrics(prepared._routeCache) });
+          metrics.preparedRouteCaches.push({
+            key,
+            metrics: getPowerCacheMetrics(prepared._routeCache),
+          });
         }
       } catch (_e) {
         metrics.preparedRouteCaches.push({ key, error: String(_e) });
@@ -398,7 +463,11 @@ function forceReleaseAllPowerCaches() {
 
   // Report memory right after forced release
   reportWorkerMemoryPhase('powercache:forceRelease', { cacheStats: getRouteCacheStats() });
-  try { postMessage({ type: 'powercache:forceRelease:done', memory: getWorkerMemoryUsage() }); } catch (_e) { /* ignore */ }
+  try {
+    postMessage({ type: 'powercache:forceRelease:done', memory: getWorkerMemoryUsage() });
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 function releaseCachedPreparedRoute(cacheEntry) {
@@ -442,18 +511,31 @@ function pruneRouteCacheIfNeeded() {
     };
     instrumentRouteCacheEvent('evict', evictDetails);
     // Post memory snapshot for investigation when evictions occur.
-    reportWorkerMemoryPhase('route-cache-evict', { ...evictDetails, cacheStats: getRouteCacheStats() });
+    reportWorkerMemoryPhase('route-cache-evict', {
+      ...evictDetails,
+      cacheStats: getRouteCacheStats(),
+    });
   }
 }
 
 function releasePreparedRoute(routeDef, urlTemplate, mode, zoom, costField) {
-  const cacheKey = buildRouteCacheKey(routeDef, mode, zoom, costField, routeDef.forceRadius ?? computeRadius(routeDef.start, routeDef.end, zoom));
+  const cacheKey = buildRouteCacheKey(
+    routeDef,
+    mode,
+    zoom,
+    costField,
+    routeDef.forceRadius ?? computeRadius(routeDef.start, routeDef.end, zoom)
+  );
   const cacheEntry = _routeCache.get(cacheKey);
   if (!cacheEntry) return false;
   releaseCachedPreparedRoute(cacheEntry);
   _routeCache.delete(cacheKey);
   // Avoid noisy console logs for releases; instead post a memory snapshot for telemetry.
-  reportWorkerMemoryPhase('route-cache-release', { cacheSize: _routeCache.size, cacheKey, cacheStats: getRouteCacheStats() });
+  reportWorkerMemoryPhase('route-cache-release', {
+    cacheSize: _routeCache.size,
+    cacheKey,
+    cacheStats: getRouteCacheStats(),
+  });
   return true;
 }
 
@@ -473,7 +555,9 @@ function getTilePool() {
     _sharedTilePool = createSharedTilePoolProxy(_sharedTilePoolPort);
     return _sharedTilePool;
   }
-  throw new Error('Shared tile pool is not initialized. Route workers must use the shared tile pool.');
+  throw new Error(
+    'Shared tile pool is not initialized. Route workers must use the shared tile pool.'
+  );
 }
 
 function clearTileCache() {
@@ -510,7 +594,10 @@ function disposeAllRouteResources() {
 
 function getTileCache() {
   if (!_tileCache) {
-    _tileCache = new PowerCache({ maxEntries: TILE_CACHE_MAX_ENTRIES, defaultTTL: BENCHMARK_CACHE_TTL });
+    _tileCache = new PowerCache({
+      maxEntries: TILE_CACHE_MAX_ENTRIES,
+      defaultTTL: BENCHMARK_CACHE_TTL,
+    });
     _tileCache.startCleanup?.({ interval: BENCHMARK_CACHE_TTL, maxCleanupPerTick: 128 });
     // Log that a tile cache was (re)created and capture memory snapshot.
     reportWorkerMemoryPhase('tile-cache-created', { cacheStats: getRouteCacheStats() });
@@ -541,8 +628,7 @@ function summarizeSamples(samples) {
   const min = Math.min(...filtered);
   const max = Math.max(...filtered);
   const mean = filtered.reduce((sum, value) => sum + value, 0) / filtered.length;
-  const variance =
-    filtered.reduce((sum, value) => sum + (value - mean) ** 2, 0) / filtered.length;
+  const variance = filtered.reduce((sum, value) => sum + (value - mean) ** 2, 0) / filtered.length;
   return {
     min: round4(min),
     max: round4(max),
@@ -555,21 +641,45 @@ function summarizeSamples(samples) {
 function selectTimingWinner(times) {
   const entries = Object.entries(times).filter(([, value]) => Number.isFinite(value));
   if (entries.length === 0) {
-    return { fastestMs: null, winner: null, winnerTied: false, winnerCandidates: [], secondBestMs: null, worstMs: null, bestToWorstMs: null, bestToWorstPct: null, engineCountWithin5Pct: 0, winnerMarginMs: null, winnerMarginPct: null, runnerUpEngine: null };
+    return {
+      fastestMs: null,
+      winner: null,
+      winnerTied: false,
+      winnerCandidates: [],
+      secondBestMs: null,
+      worstMs: null,
+      bestToWorstMs: null,
+      bestToWorstPct: null,
+      engineCountWithin5Pct: 0,
+      winnerMarginMs: null,
+      winnerMarginPct: null,
+      runnerUpEngine: null,
+    };
   }
   entries.sort((a, b) => a[1] - b[1]);
   const fastestMs = entries[0][1];
   const secondBestMs = entries.length > 1 ? entries[1][1] : null;
   const worstMs = entries[entries.length - 1][1];
-  const bestToWorstMs = Number.isFinite(fastestMs) && Number.isFinite(worstMs) ? round4(worstMs - fastestMs) : null;
-  const bestToWorstPct = Number.isFinite(fastestMs) && fastestMs > 0 ? round4(((worstMs - fastestMs) / fastestMs) * 100) : null;
-  const winnerCandidates = entries.filter(([, value]) => Math.abs(value - fastestMs) <= Math.max(0.1, fastestMs * 0.05)).map(([engine]) => engine);
+  const bestToWorstMs =
+    Number.isFinite(fastestMs) && Number.isFinite(worstMs) ? round4(worstMs - fastestMs) : null;
+  const bestToWorstPct =
+    Number.isFinite(fastestMs) && fastestMs > 0
+      ? round4(((worstMs - fastestMs) / fastestMs) * 100)
+      : null;
+  const winnerCandidates = entries
+    .filter(([, value]) => Math.abs(value - fastestMs) <= Math.max(0.1, fastestMs * 0.05))
+    .map(([engine]) => engine);
   const winner = winnerCandidates.length > 0 ? winnerCandidates[0] : entries[0][0];
   const winnerTied = winnerCandidates.length > 1;
   const winnerMarginMs = Number.isFinite(secondBestMs) ? round4(secondBestMs - fastestMs) : null;
-  const winnerMarginPct = Number.isFinite(secondBestMs) && Number.isFinite(fastestMs) && fastestMs > 0 ? round4(((secondBestMs - fastestMs) / fastestMs) * 100) : null;
+  const winnerMarginPct =
+    Number.isFinite(secondBestMs) && Number.isFinite(fastestMs) && fastestMs > 0
+      ? round4(((secondBestMs - fastestMs) / fastestMs) * 100)
+      : null;
   const runnerUpEngine = entries.length > 1 ? entries[1][0] : null;
-  const engineCountWithin5Pct = entries.filter(([, value]) => Number.isFinite(fastestMs) && fastestMs > 0 && value <= fastestMs * 1.05).length;
+  const engineCountWithin5Pct = entries.filter(
+    ([, value]) => Number.isFinite(fastestMs) && fastestMs > 0 && value <= fastestMs * 1.05
+  ).length;
   return {
     fastestMs,
     winner,
@@ -671,7 +781,15 @@ function computeRadius(start, end, zoom) {
   return Math.min(3, Math.max(1, Math.ceil(bufferM / tileWidthM)));
 }
 
-async function getPreparedRoute(routeDef, urlTemplate, mode, zoom, costField, routeIndex, passIndex) {
+async function getPreparedRoute(
+  routeDef,
+  urlTemplate,
+  mode,
+  zoom,
+  costField,
+  routeIndex,
+  passIndex
+) {
   const routeLabel = routeDef?.name ?? `${routeDef?.start?.join(',')}→${routeDef?.end?.join(',')}`;
   const radius = routeDef.forceRadius ?? computeRadius(routeDef.start, routeDef.end, zoom);
   const cacheKey = buildRouteCacheKey(routeDef, mode, zoom, costField, radius);
@@ -698,7 +816,14 @@ async function getPreparedRoute(routeDef, urlTemplate, mode, zoom, costField, ro
     tile.url = interpolate(urlTemplate, { z: tile.z, x: tile.x, y: tile.y });
   }
   const tiles = tileList;
-  postMessage({ type: 'status', status: 'fetching-tiles', routeIndex, passIndex, routeLabel, tileCount: tiles.length });
+  postMessage({
+    type: 'status',
+    status: 'fetching-tiles',
+    routeIndex,
+    passIndex,
+    routeLabel,
+    tileCount: tiles.length,
+  });
   reportWorkerMemoryPhase('before-build-graph', {
     routeIndex,
     passIndex,
@@ -750,7 +875,9 @@ async function getPreparedRoute(routeDef, urlTemplate, mode, zoom, costField, ro
     selectorFeatures = {};
   }
   if (prepared) {
-    try { prepared.selectorFeatures = selectorFeatures; } catch (_e) {}
+    try {
+      prepared.selectorFeatures = selectorFeatures;
+    } catch (_e) {}
   }
   try {
     reportWorkerMemoryPhase('prepared-metrics-state', {
@@ -759,11 +886,13 @@ async function getPreparedRoute(routeDef, urlTemplate, mode, zoom, costField, ro
       routeLabel,
       hasMetrics: Boolean(prepared?.metrics),
       hasSelectorFeatures: Boolean(selectorFeatures),
-      metricsSnippet: prepared?.metrics ? {
-        nodeCount: prepared.metrics.nodeCount ?? prepared.metrics.safeN ?? null,
-        edgeCount: prepared.metrics.edgeCount ?? prepared.metrics.safeE ?? null,
-        haversine: prepared.metrics.haversineDistance ?? prepared.metrics.safeBeelineKm ?? null,
-      } : null,
+      metricsSnippet: prepared?.metrics
+        ? {
+            nodeCount: prepared.metrics.nodeCount ?? prepared.metrics.safeN ?? null,
+            edgeCount: prepared.metrics.edgeCount ?? prepared.metrics.safeE ?? null,
+            haversine: prepared.metrics.haversineDistance ?? prepared.metrics.safeBeelineKm ?? null,
+          }
+        : null,
     });
   } catch (_e) {}
   const cached = { prepared, radius, fetchMs, startId, endId, selectorFeatures };
@@ -795,7 +924,10 @@ async function runEngineQueryWithTimeout(startId, endId, prepared, options) {
 
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`engine_timeout:${options.engineId}`)), options.engineRunTimeoutMs);
+    timeoutId = setTimeout(
+      () => reject(new Error(`engine_timeout:${options.engineId}`)),
+      options.engineRunTimeoutMs
+    );
   });
 
   try {
@@ -819,20 +951,30 @@ async function benchmarkRouteJob(message) {
   } = message;
 
   const routeLabel = routeDef?.name ?? `${routeDef?.start?.join(',')}→${routeDef?.end?.join(',')}`;
-  const routePasses = Array.isArray(message.routePasses) && message.routePasses.length > 0
-    ? message.routePasses
-    : (() => {
-        throw new Error('[benchmark] routePasses batch required');
-      })();
+  const routePasses =
+    Array.isArray(message.routePasses) && message.routePasses.length > 0
+      ? message.routePasses
+      : (() => {
+          throw new Error('[benchmark] routePasses batch required');
+        })();
 
   let preparedRoute = null;
   let preparedRouteAcquired = false;
   let prepareError = null;
-  const initialPassIndex = typeof routePasses[0]?.passIndex === 'number' ? routePasses[0].passIndex : 0;
+  const initialPassIndex =
+    typeof routePasses[0]?.passIndex === 'number' ? routePasses[0].passIndex : 0;
 
   try {
     try {
-      preparedRoute = await getPreparedRoute(routeDef, urlTemplate, mode, zoom, costField, routeIndex, initialPassIndex);
+      preparedRoute = await getPreparedRoute(
+        routeDef,
+        urlTemplate,
+        mode,
+        zoom,
+        costField,
+        routeIndex,
+        initialPassIndex
+      );
       preparedRouteAcquired = true;
     } catch (error) {
       prepareError = error;
@@ -841,7 +983,8 @@ async function benchmarkRouteJob(message) {
     for (const pass of routePasses) {
       const passIndex = typeof pass.passIndex === 'number' ? pass.passIndex : 0;
       const forceSerialRouting = pass.forceSerialRouting === true;
-      const sharedArrayBuffer = pass.sharedArrayBuffer ?? (typeof SharedArrayBuffer !== 'undefined' && !forceSerialRouting);
+      const sharedArrayBuffer =
+        pass.sharedArrayBuffer ?? (typeof SharedArrayBuffer !== 'undefined' && !forceSerialRouting);
 
       postMessage({ type: 'status', status: 'started', routeIndex, passIndex, routeLabel });
       if (prepareError) {
@@ -873,331 +1016,428 @@ async function benchmarkRouteJob(message) {
           _passIndex: passIndex,
         };
         await saveResultToDB(runId, passIndex, routeIndex, result);
-        postMessage({ type: 'status', status: 'result-saved', runId, routeIndex, passIndex, routeLabel });
+        postMessage({
+          type: 'status',
+          status: 'result-saved',
+          runId,
+          routeIndex,
+          passIndex,
+          routeLabel,
+        });
         continue;
       }
 
       const { prepared, radius, fetchMs, startId, endId } = preparedRoute;
 
-        const baseResult = {
-          id: routeDef?.id,
-          name: routeDef?.name,
-          category: routeDef?.category,
-          lengthCategory: routeDef?.lengthCategory,
-          start: routeDef?.start,
-          end: routeDef?.end,
-          radius,
-          nRuns,
-          fetchMs,
-          _sab: sharedArrayBuffer,
-          sharedArrayBuffer,
-          _passIndex: passIndex,
-        };
+      const baseResult = {
+        id: routeDef?.id,
+        name: routeDef?.name,
+        category: routeDef?.category,
+        lengthCategory: routeDef?.lengthCategory,
+        start: routeDef?.start,
+        end: routeDef?.end,
+        radius,
+        nRuns,
+        fetchMs,
+        _sab: sharedArrayBuffer,
+        sharedArrayBuffer,
+        _passIndex: passIndex,
+      };
 
-        if (startId === -1 || endId === -1 || !prepared) {
-          const result = {
-            ...baseResult,
-            bidirectional_astar_ms: null,
-            adaptive_barrier_ms: null,
-            adaptive_barrier_parallel: null,
-            delta_stepping_parallel: null,
-            delta_stepping_ms: null,
-            ultra_dijkstra_ms: null,
-            bidirectional_astar_cost: null,
-            adaptive_barrier_cost: null,
-            delta_stepping_cost: null,
-            ultra_dijkstra_cost: null,
-            winner: null,
-            error: 'no_node',
-          };
-          await saveResultToDB(runId, passIndex, routeIndex, result);
-          postMessage({ type: 'status', status: 'result-saved', runId, routeIndex, passIndex, routeLabel });
-          continue;
-        }
-
-        let selectorFeatures;
-        if (prepared && prepared.selectorFeatures) {
-          selectorFeatures = prepared.selectorFeatures;
-        } else {
-          if (!prepared || !prepared.metrics) {
-            try { console.warn('[benchmark-route-worker] prepared.metrics missing and no cached selectorFeatures', { runId, routeIndex, passIndex }); } catch (_e) {}
-          }
-          selectorFeatures = classifySelectorFeatures(prepared?.metrics);
-        }
-        const benchmarkResult = {
+      if (startId === -1 || endId === -1 || !prepared) {
+        const result = {
           ...baseResult,
-          ...selectorFeatures,
+          bidirectional_astar_ms: null,
+          adaptive_barrier_ms: null,
+          adaptive_barrier_parallel: null,
+          delta_stepping_parallel: null,
+          delta_stepping_ms: null,
+          ultra_dijkstra_ms: null,
+          bidirectional_astar_cost: null,
+          adaptive_barrier_cost: null,
+          delta_stepping_cost: null,
+          ultra_dijkstra_cost: null,
+          winner: null,
+          error: 'no_node',
         };
-
-        const warmResults = {};
-        const warmTimings = {};
-        const warmErrors = {};
-        const timedResults = {};
-        const timesMap = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, []]));
-        const engineRunErrors = {};
-        reportWorkerMemoryPhase('before-engine-benchmark', {
+        await saveResultToDB(runId, passIndex, routeIndex, result);
+        postMessage({
+          type: 'status',
+          status: 'result-saved',
+          runId,
           routeIndex,
           passIndex,
           routeLabel,
-          startId,
-          endId,
-          preparedN: prepared?.N ?? null,
-          preparedE: prepared?.E ?? null,
         });
+        continue;
+      }
 
-        let referenceCost = null;
-        for (const engineId of ENGINE_IDS) {
-          postMessage({ type: 'status', status: 'warming-engine', routeIndex, passIndex, engineId });
-          const startMs = performance.now();
-          let rawWarm;
+      let selectorFeatures;
+      if (prepared && prepared.selectorFeatures) {
+        selectorFeatures = prepared.selectorFeatures;
+      } else {
+        if (!prepared || !prepared.metrics) {
           try {
-            rawWarm = await runEngineQueryWithTimeout(startId, endId, prepared, {
+            console.warn(
+              '[benchmark-route-worker] prepared.metrics missing and no cached selectorFeatures',
+              { runId, routeIndex, passIndex }
+            );
+          } catch (_e) {}
+        }
+        selectorFeatures = classifySelectorFeatures(prepared?.metrics);
+      }
+      const benchmarkResult = {
+        ...baseResult,
+        ...selectorFeatures,
+      };
+
+      const warmResults = {};
+      const warmTimings = {};
+      const warmErrors = {};
+      const timedResults = {};
+      const timesMap = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, []]));
+      const engineRunErrors = {};
+      reportWorkerMemoryPhase('before-engine-benchmark', {
+        routeIndex,
+        passIndex,
+        routeLabel,
+        startId,
+        endId,
+        preparedN: prepared?.N ?? null,
+        preparedE: prepared?.E ?? null,
+      });
+
+      let referenceCost = null;
+      for (const engineId of ENGINE_IDS) {
+        postMessage({ type: 'status', status: 'warming-engine', routeIndex, passIndex, engineId });
+        const startMs = performance.now();
+        let rawWarm;
+        try {
+          rawWarm = await runEngineQueryWithTimeout(startId, endId, prepared, {
+            engineId,
+            costField,
+            forceSerialRouting,
+            engineRunTimeoutMs,
+          });
+          warmErrors[engineId] = null;
+        } catch (error) {
+          rawWarm = {
+            error: normalizeEngineErrorMessage(error),
+            errorCode: normalizeEngineErrorCode(error),
+            parallelUsed: false,
+          };
+          warmErrors[engineId] = rawWarm.error;
+        } finally {
+          warmTimings[engineId] = round2(performance.now() - startMs);
+        }
+
+        if (engineId === 'bidirectional-astar') {
+          warmResults[engineId] = normalizeBenchmarkResult(
+            'bidirectional-astar',
+            rawWarm,
+            prepared
+          );
+          referenceCost = warmResults[engineId]?.cost ?? null;
+        } else {
+          warmResults[engineId] = normalizeBenchmarkResult(
+            engineId,
+            rawWarm,
+            prepared,
+            referenceCost
+          );
+        }
+      }
+
+      for (let round = 0; round < nRuns; round++) {
+        postMessage({
+          type: 'status',
+          status: 'timing-round',
+          routeIndex,
+          passIndex,
+          round: round + 1,
+          totalRounds: nRuns,
+        });
+        for (const engineId of ENGINE_IDS) {
+          if (engineRunErrors[engineId]) {
+            continue;
+          }
+          try {
+            const t0 = performance.now();
+            const timed = await runEngineQueryWithTimeout(startId, endId, prepared, {
               engineId,
               costField,
               forceSerialRouting,
               engineRunTimeoutMs,
             });
-            warmErrors[engineId] = null;
-          } catch (error) {
-            rawWarm = {
-              error: normalizeEngineErrorMessage(error),
-              errorCode: normalizeEngineErrorCode(error),
-              parallelUsed: false,
-            };
-            warmErrors[engineId] = rawWarm.error;
-          } finally {
-            warmTimings[engineId] = round2(performance.now() - startMs);
-          }
-
-          if (engineId === 'bidirectional-astar') {
-            warmResults[engineId] = normalizeBenchmarkResult('bidirectional-astar', rawWarm, prepared);
-            referenceCost = warmResults[engineId]?.cost ?? null;
-          } else {
-            warmResults[engineId] = normalizeBenchmarkResult(engineId, rawWarm, prepared, referenceCost);
-          }
-        }
-
-        for (let round = 0; round < nRuns; round++) {
-          postMessage({ type: 'status', status: 'timing-round', routeIndex, passIndex, round: round + 1, totalRounds: nRuns });
-          for (const engineId of ENGINE_IDS) {
-            if (engineRunErrors[engineId]) {
-              continue;
+            let elapsed = performance.now() - t0;
+            if (elapsed === 0) {
+              const batchRuns = 16;
+              const tb0 = performance.now();
+              for (let j = 0; j < batchRuns; j++) {
+                await runEngineQueryWithTimeout(startId, endId, prepared, {
+                  engineId,
+                  costField,
+                  forceSerialRouting,
+                  engineRunTimeoutMs,
+                });
+              }
+              elapsed = (performance.now() - tb0) / batchRuns;
             }
-            try {
-              const t0 = performance.now();
-              const timed = await runEngineQueryWithTimeout(startId, endId, prepared, {
+            if (!timedResults[engineId]) {
+              timedResults[engineId] = normalizeBenchmarkResult(
                 engineId,
-                costField,
-                forceSerialRouting,
-                engineRunTimeoutMs,
-              });
-              let elapsed = performance.now() - t0;
-              if (elapsed === 0) {
-                const batchRuns = 16;
-                const tb0 = performance.now();
-                for (let j = 0; j < batchRuns; j++) {
-                  await runEngineQueryWithTimeout(startId, endId, prepared, {
-                    engineId,
-                    costField,
-                    forceSerialRouting,
-                    engineRunTimeoutMs,
-                  });
-                }
-                elapsed = (performance.now() - tb0) / batchRuns;
-              }
-              if (!timedResults[engineId]) {
-                timedResults[engineId] = normalizeBenchmarkResult(engineId, timed, prepared, referenceCost);
-              }
-              timesMap[engineId].push(elapsed);
-            } catch (error) {
-              engineRunErrors[engineId] = normalizeEngineErrorMessage(error);
+                timed,
+                prepared,
+                referenceCost
+              );
             }
+            timesMap[engineId].push(elapsed);
+          } catch (error) {
+            engineRunErrors[engineId] = normalizeEngineErrorMessage(error);
           }
         }
+      }
 
-        reportWorkerMemoryPhase('after-engine-warmup', {
-          routeIndex,
-          passIndex,
-          routeLabel,
-          warmEngineResults: Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, warmResults[engineId]?.found ?? false])),
-        });
+      reportWorkerMemoryPhase('after-engine-warmup', {
+        routeIndex,
+        passIndex,
+        routeLabel,
+        warmEngineResults: Object.fromEntries(
+          ENGINE_IDS.map((engineId) => [engineId, warmResults[engineId]?.found ?? false])
+        ),
+      });
 
-        const resultsByEngine = {};
-        for (const engineId of ENGINE_IDS) {
-          const rawWarm = warmResults[engineId];
-          const rawTimed = timedResults[engineId] ?? null;
-          const hasTimedSamples = timesMap[engineId].length > 0;
-          const useTimed = rawTimed && !rawTimed.error;
-          const resultSource = useTimed ? 'timed' : rawWarm ? 'warm' : 'none';
-          const status = engineRunErrors[engineId]
-            ? 'timed_error'
-            : useTimed
-              ? rawWarm?.error
-                ? 'warm_error_recovered'
-                : 'ok'
-              : rawTimed?.error
-                ? 'timed_error'
-                : rawWarm?.error
-                  ? 'warm_error'
-                  : 'ok';
-          const finalResult = useTimed ? rawTimed : rawWarm ?? {};
-          resultsByEngine[engineId] = {
-            medianMs: hasTimedSamples ? median(timesMap[engineId]) : null,
-            warmupMs: Number.isFinite(warmTimings[engineId]) ? warmTimings[engineId] : null,
-            found: finalResult.found ?? false,
-            parallelUsed: finalResult.parallelUsed ?? false,
-            cost: finalResult.cost ?? null,
-            error: engineRunErrors[engineId] ?? rawTimed?.error ?? rawWarm?.error ?? null,
-            warmError: rawWarm?.error ?? null,
-            warmErrorCode: rawWarm?.errorCode ?? null,
-            timedError: engineRunErrors[engineId] ?? rawTimed?.error ?? null,
-            timedErrorCode: engineRunErrors[engineId] ? normalizeEngineErrorCode({ message: engineRunErrors[engineId] }) : rawTimed?.errorCode ?? null,
-            resultSource,
-            status,
-          };
+      const resultsByEngine = {};
+      for (const engineId of ENGINE_IDS) {
+        const rawWarm = warmResults[engineId];
+        const rawTimed = timedResults[engineId] ?? null;
+        const hasTimedSamples = timesMap[engineId].length > 0;
+        const useTimed = rawTimed && !rawTimed.error;
+        const resultSource = useTimed ? 'timed' : rawWarm ? 'warm' : 'none';
+        const status = engineRunErrors[engineId]
+          ? 'timed_error'
+          : useTimed
+            ? rawWarm?.error
+              ? 'warm_error_recovered'
+              : 'ok'
+            : rawTimed?.error
+              ? 'timed_error'
+              : rawWarm?.error
+                ? 'warm_error'
+                : 'ok';
+        const finalResult = useTimed ? rawTimed : (rawWarm ?? {});
+        resultsByEngine[engineId] = {
+          medianMs: hasTimedSamples ? median(timesMap[engineId]) : null,
+          warmupMs: Number.isFinite(warmTimings[engineId]) ? warmTimings[engineId] : null,
+          found: finalResult.found ?? false,
+          parallelUsed: finalResult.parallelUsed ?? false,
+          cost: finalResult.cost ?? null,
+          error: engineRunErrors[engineId] ?? rawTimed?.error ?? rawWarm?.error ?? null,
+          warmError: rawWarm?.error ?? null,
+          warmErrorCode: rawWarm?.errorCode ?? null,
+          timedError: engineRunErrors[engineId] ?? rawTimed?.error ?? null,
+          timedErrorCode: engineRunErrors[engineId]
+            ? normalizeEngineErrorCode({ message: engineRunErrors[engineId] })
+            : (rawTimed?.errorCode ?? null),
+          resultSource,
+          status,
+        };
+      }
+
+      const times = Object.fromEntries(
+        ENGINE_IDS.map((engineId) => [engineId, resultsByEngine[engineId].medianMs]).filter(
+          ([, value]) => Number.isFinite(value)
+        )
+      );
+      const timingWinner = selectTimingWinner(times);
+      const winner = timingWinner.winner;
+      const fastestMs = timingWinner.fastestMs;
+      const autoEngine = selectBestEngine(selectorFeatures || prepared?.metrics);
+      const autoEngineMs = resultsByEngine[autoEngine]?.medianMs ?? null;
+      const winnerMs =
+        winner != null ? (resultsByEngine[winner]?.medianMs ?? fastestMs) : fastestMs;
+      const autoVsWinnerPct =
+        Number.isFinite(autoEngineMs) && Number.isFinite(winnerMs) && winnerMs > 0
+          ? round2(((autoEngineMs - winnerMs) / winnerMs) * 100)
+          : null;
+
+      const costs = Object.fromEntries(
+        ENGINE_IDS.map((engineId) => [engineId, resultsByEngine[engineId].cost]).filter(
+          ([, cost]) => cost != null
+        )
+      );
+      const costWinner =
+        Object.keys(costs).length > 0
+          ? Object.entries(costs).reduce((a, b) => (a[1] < b[1] ? a : b))[0]
+          : null;
+
+      let metricsId = null;
+      if (prepared && prepared.metrics) {
+        try {
+          metricsId = await savePreparedMetricsToDB(prepared.metrics);
+        } catch (err) {
+          console.warn('[benchmark-route-worker] savePreparedMetricsToDB failed:', err);
         }
+      }
 
-        const times = Object.fromEntries(ENGINE_IDS.map((engineId) => [engineId, resultsByEngine[engineId].medianMs]).filter(([, value]) => Number.isFinite(value)));
-        const timingWinner = selectTimingWinner(times);
-        const winner = timingWinner.winner;
-        const fastestMs = timingWinner.fastestMs;
-        const autoEngine = selectBestEngine(selectorFeatures || prepared?.metrics);
-        const autoEngineMs = resultsByEngine[autoEngine]?.medianMs ?? null;
-        const winnerMs = winner != null ? resultsByEngine[winner]?.medianMs ?? fastestMs : fastestMs;
-        const autoVsWinnerPct = Number.isFinite(autoEngineMs) && Number.isFinite(winnerMs) && winnerMs > 0 ? round2(((autoEngineMs - winnerMs) / winnerMs) * 100) : null;
-
-        const costs = Object.fromEntries(
-          ENGINE_IDS.map((engineId) => [engineId, resultsByEngine[engineId].cost])
-            .filter(([, cost]) => cost != null)
-        );
-        const costWinner = Object.keys(costs).length > 0 ? Object.entries(costs).reduce((a, b) => (a[1] < b[1] ? a : b))[0] : null;
-
-        let metricsId = null;
-        if (prepared && prepared.metrics) {
-          try {
-            metricsId = await savePreparedMetricsToDB(prepared.metrics);
-          } catch (err) {
-            console.warn('[benchmark-route-worker] savePreparedMetricsToDB failed:', err);
-          }
-        }
-
-        const result = {
-          ...benchmarkResult,
-          graph: { metricsId, radius, startNodeId: startId, endNodeId: endId },
-          fetchMs,
-          best_time_ms: timingWinner.fastestMs,
-          bidirectional_astar_ms: resultsByEngine['bidirectional-astar'].medianMs,
-          adaptive_barrier_ms: resultsByEngine['adaptive-barrier'].medianMs,
-          adaptive_barrier_parallel: resultsByEngine['adaptive-barrier'].parallelUsed ? 1 : 0,
-          delta_stepping_parallel: resultsByEngine['delta-stepping'].parallelUsed ? 1 : 0,
-          delta_stepping_ms: resultsByEngine['delta-stepping'].medianMs,
-          ultra_dijkstra_ms: resultsByEngine['ultra-dijkstra'].medianMs,
-          bidirectional_astar_delta_ms: Number.isFinite(resultsByEngine['bidirectional-astar'].medianMs) ? round4(resultsByEngine['bidirectional-astar'].medianMs - fastestMs) : null,
-          adaptive_barrier_delta_ms: Number.isFinite(resultsByEngine['adaptive-barrier'].medianMs) ? round4(resultsByEngine['adaptive-barrier'].medianMs - fastestMs) : null,
-          delta_stepping_delta_ms: Number.isFinite(resultsByEngine['delta-stepping'].medianMs) ? round4(resultsByEngine['delta-stepping'].medianMs - fastestMs) : null,
-          ultra_dijkstra_delta_ms: Number.isFinite(resultsByEngine['ultra-dijkstra'].medianMs) ? round4(resultsByEngine['ultra-dijkstra'].medianMs - fastestMs) : null,
-          bidirectional_astar_cost: resultsByEngine['bidirectional-astar'].cost,
-          adaptive_barrier_cost: resultsByEngine['adaptive-barrier'].cost,
-          delta_stepping_cost: resultsByEngine['delta-stepping'].cost,
-          ultra_dijkstra_cost: resultsByEngine['ultra-dijkstra'].cost,
-          n_engines_found: Object.values(resultsByEngine).filter((r) => r.found).length,
-          n_engines_timed: Object.values(resultsByEngine).filter((r) => Number.isFinite(r.medianMs)).length,
-          n_engines_cost: Object.values(resultsByEngine).filter((r) => r.cost != null).length,
-          n_engines_warm_errors: Object.values(resultsByEngine).filter((r) => Boolean(r.warmError)).length,
-          n_engines_timed_errors: Object.values(resultsByEngine).filter((r) => Boolean(r.timedError)).length,
-          any_engine_warm_error: Object.values(resultsByEngine).some((r) => Boolean(r.warmError)),
-          any_engine_timed_error: Object.values(resultsByEngine).some((r) => Boolean(r.timedError)),
-          any_engine_error: Object.values(resultsByEngine).some((r) => Boolean(r.error)),
-          cost_winner_ms: costWinner ? resultsByEngine[costWinner]?.medianMs ?? null : null,
-          winner_vs_cost_pct: costWinner && Number.isFinite(resultsByEngine[costWinner]?.medianMs) ? round2(((fastestMs - resultsByEngine[costWinner].medianMs) / resultsByEngine[costWinner].medianMs) * 100) : null,
-          winner_vs_cost_ms: costWinner && Number.isFinite(resultsByEngine[costWinner]?.medianMs) ? round4(fastestMs - resultsByEngine[costWinner].medianMs) : null,
-          auto_engine: autoEngine,
-          auto_engine_ms: autoEngineMs,
-          auto_vs_winner_pct: autoVsWinnerPct,
-          auto_matches_winner: timingWinner.winnerCandidates.length > 0 ? Number(timingWinner.winnerCandidates.includes(autoEngine)) : null,
-          auto_is_winner: autoEngine === winner,
-          winner_tied: Number(timingWinner.winnerTied),
-          winner_candidates: timingWinner.winnerCandidates,
-          winner_candidate_count: timingWinner.winnerCandidates.length,
-          winner_margin_ms: timingWinner.winnerMarginMs,
-          winner_margin_pct: timingWinner.winnerMarginPct,
-          second_best_ms: timingWinner.secondBestMs,
-          runner_up_engine: timingWinner.runnerUpEngine,
-          worst_time_ms: timingWinner.worstMs,
-          best_to_worst_ms: timingWinner.bestToWorstMs,
-          best_to_worst_pct: timingWinner.bestToWorstPct,
-          engines_within_5pct: timingWinner.engineCountWithin5Pct,
-          winner_is_cost_winner: winner !== null && winner === costWinner,
-          costWinner,
-          winner,
-          engines_found: {
-            bidirectional_astar: resultsByEngine['bidirectional-astar'].found,
-            adaptive_barrier: resultsByEngine['adaptive-barrier'].found,
-            delta_stepping: resultsByEngine['delta-stepping'].found,
-            ultra_dijkstra: resultsByEngine['ultra-dijkstra'].found,
-          },
-          errors: {
-            bidirectional_astar_error: resultsByEngine['bidirectional-astar'].error,
-            adaptive_barrier_error: resultsByEngine['adaptive-barrier'].error,
-            delta_stepping_error: resultsByEngine['delta-stepping'].error,
-            ultra_dijkstra_error: resultsByEngine['ultra-dijkstra'].error,
-          },
+      const result = {
+        ...benchmarkResult,
+        graph: { metricsId, radius, startNodeId: startId, endNodeId: endId },
+        fetchMs,
+        best_time_ms: timingWinner.fastestMs,
+        bidirectional_astar_ms: resultsByEngine['bidirectional-astar'].medianMs,
+        adaptive_barrier_ms: resultsByEngine['adaptive-barrier'].medianMs,
+        adaptive_barrier_parallel: resultsByEngine['adaptive-barrier'].parallelUsed ? 1 : 0,
+        delta_stepping_parallel: resultsByEngine['delta-stepping'].parallelUsed ? 1 : 0,
+        delta_stepping_ms: resultsByEngine['delta-stepping'].medianMs,
+        ultra_dijkstra_ms: resultsByEngine['ultra-dijkstra'].medianMs,
+        bidirectional_astar_delta_ms: Number.isFinite(
+          resultsByEngine['bidirectional-astar'].medianMs
+        )
+          ? round4(resultsByEngine['bidirectional-astar'].medianMs - fastestMs)
+          : null,
+        adaptive_barrier_delta_ms: Number.isFinite(resultsByEngine['adaptive-barrier'].medianMs)
+          ? round4(resultsByEngine['adaptive-barrier'].medianMs - fastestMs)
+          : null,
+        delta_stepping_delta_ms: Number.isFinite(resultsByEngine['delta-stepping'].medianMs)
+          ? round4(resultsByEngine['delta-stepping'].medianMs - fastestMs)
+          : null,
+        ultra_dijkstra_delta_ms: Number.isFinite(resultsByEngine['ultra-dijkstra'].medianMs)
+          ? round4(resultsByEngine['ultra-dijkstra'].medianMs - fastestMs)
+          : null,
+        bidirectional_astar_cost: resultsByEngine['bidirectional-astar'].cost,
+        adaptive_barrier_cost: resultsByEngine['adaptive-barrier'].cost,
+        delta_stepping_cost: resultsByEngine['delta-stepping'].cost,
+        ultra_dijkstra_cost: resultsByEngine['ultra-dijkstra'].cost,
+        n_engines_found: Object.values(resultsByEngine).filter((r) => r.found).length,
+        n_engines_timed: Object.values(resultsByEngine).filter((r) => Number.isFinite(r.medianMs))
+          .length,
+        n_engines_cost: Object.values(resultsByEngine).filter((r) => r.cost != null).length,
+        n_engines_warm_errors: Object.values(resultsByEngine).filter((r) => Boolean(r.warmError))
+          .length,
+        n_engines_timed_errors: Object.values(resultsByEngine).filter((r) => Boolean(r.timedError))
+          .length,
+        any_engine_warm_error: Object.values(resultsByEngine).some((r) => Boolean(r.warmError)),
+        any_engine_timed_error: Object.values(resultsByEngine).some((r) => Boolean(r.timedError)),
+        any_engine_error: Object.values(resultsByEngine).some((r) => Boolean(r.error)),
+        cost_winner_ms: costWinner ? (resultsByEngine[costWinner]?.medianMs ?? null) : null,
+        winner_vs_cost_pct:
+          costWinner && Number.isFinite(resultsByEngine[costWinner]?.medianMs)
+            ? round2(
+                ((fastestMs - resultsByEngine[costWinner].medianMs) /
+                  resultsByEngine[costWinner].medianMs) *
+                  100
+              )
+            : null,
+        winner_vs_cost_ms:
+          costWinner && Number.isFinite(resultsByEngine[costWinner]?.medianMs)
+            ? round4(fastestMs - resultsByEngine[costWinner].medianMs)
+            : null,
+        auto_engine: autoEngine,
+        auto_engine_ms: autoEngineMs,
+        auto_vs_winner_pct: autoVsWinnerPct,
+        auto_matches_winner:
+          timingWinner.winnerCandidates.length > 0
+            ? Number(timingWinner.winnerCandidates.includes(autoEngine))
+            : null,
+        auto_is_winner: autoEngine === winner,
+        winner_tied: Number(timingWinner.winnerTied),
+        winner_candidates: timingWinner.winnerCandidates,
+        winner_candidate_count: timingWinner.winnerCandidates.length,
+        winner_margin_ms: timingWinner.winnerMarginMs,
+        winner_margin_pct: timingWinner.winnerMarginPct,
+        second_best_ms: timingWinner.secondBestMs,
+        runner_up_engine: timingWinner.runnerUpEngine,
+        worst_time_ms: timingWinner.worstMs,
+        best_to_worst_ms: timingWinner.bestToWorstMs,
+        best_to_worst_pct: timingWinner.bestToWorstPct,
+        engines_within_5pct: timingWinner.engineCountWithin5Pct,
+        winner_is_cost_winner: winner !== null && winner === costWinner,
+        costWinner,
+        winner,
+        engines_found: {
+          bidirectional_astar: resultsByEngine['bidirectional-astar'].found,
+          adaptive_barrier: resultsByEngine['adaptive-barrier'].found,
+          delta_stepping: resultsByEngine['delta-stepping'].found,
+          ultra_dijkstra: resultsByEngine['ultra-dijkstra'].found,
+        },
+        errors: {
           bidirectional_astar_error: resultsByEngine['bidirectional-astar'].error,
           adaptive_barrier_error: resultsByEngine['adaptive-barrier'].error,
           delta_stepping_error: resultsByEngine['delta-stepping'].error,
           ultra_dijkstra_error: resultsByEngine['ultra-dijkstra'].error,
-          bidirectional_astar_warm_error: resultsByEngine['bidirectional-astar'].warmError,
-          adaptive_barrier_warm_error: resultsByEngine['adaptive-barrier'].warmError,
-          delta_stepping_warm_error: resultsByEngine['delta-stepping'].warmError,
-          ultra_dijkstra_warm_error: resultsByEngine['ultra-dijkstra'].warmError,
-          bidirectional_astar_warm_error_code: resultsByEngine['bidirectional-astar'].warmErrorCode,
-          adaptive_barrier_warm_error_code: resultsByEngine['adaptive-barrier'].warmErrorCode,
-          delta_stepping_warm_error_code: resultsByEngine['delta-stepping'].warmErrorCode,
-          ultra_dijkstra_warm_error_code: resultsByEngine['ultra-dijkstra'].warmErrorCode,
-          bidirectional_astar_result_source: resultsByEngine['bidirectional-astar'].resultSource,
-          adaptive_barrier_result_source: resultsByEngine['adaptive-barrier'].resultSource,
-          delta_stepping_result_source: resultsByEngine['delta-stepping'].resultSource,
-          ultra_dijkstra_result_source: resultsByEngine['ultra-dijkstra'].resultSource,
-          bidirectional_astar_status: resultsByEngine['bidirectional-astar'].status,
-          adaptive_barrier_status: resultsByEngine['adaptive-barrier'].status,
-          delta_stepping_status: resultsByEngine['delta-stepping'].status,
-          ultra_dijkstra_status: resultsByEngine['ultra-dijkstra'].status,
-          bidirectional_astar_timed_error: resultsByEngine['bidirectional-astar'].timedError,
-          adaptive_barrier_timed_error: resultsByEngine['adaptive-barrier'].timedError,
-          delta_stepping_timed_error: resultsByEngine['delta-stepping'].timedError,
-          ultra_dijkstra_timed_error: resultsByEngine['ultra-dijkstra'].timedError,
-          bidirectional_astar_timed_error_code: resultsByEngine['bidirectional-astar'].timedErrorCode,
-          adaptive_barrier_timed_error_code: resultsByEngine['adaptive-barrier'].timedErrorCode,
-          delta_stepping_timed_error_code: resultsByEngine['delta-stepping'].timedErrorCode,
-          ultra_dijkstra_timed_error_code: resultsByEngine['ultra-dijkstra'].timedErrorCode,
-          bidirectional_astar_error_code: resultsByEngine['bidirectional-astar'].warmErrorCode ?? resultsByEngine['bidirectional-astar'].timedErrorCode,
-          adaptive_barrier_error_code: resultsByEngine['adaptive-barrier'].warmErrorCode ?? resultsByEngine['adaptive-barrier'].timedErrorCode,
-          delta_stepping_error_code: resultsByEngine['delta-stepping'].warmErrorCode ?? resultsByEngine['delta-stepping'].timedErrorCode,
-          ultra_dijkstra_error_code: resultsByEngine['ultra-dijkstra'].warmErrorCode ?? resultsByEngine['ultra-dijkstra'].timedErrorCode,
-        };
+        },
+        bidirectional_astar_error: resultsByEngine['bidirectional-astar'].error,
+        adaptive_barrier_error: resultsByEngine['adaptive-barrier'].error,
+        delta_stepping_error: resultsByEngine['delta-stepping'].error,
+        ultra_dijkstra_error: resultsByEngine['ultra-dijkstra'].error,
+        bidirectional_astar_warm_error: resultsByEngine['bidirectional-astar'].warmError,
+        adaptive_barrier_warm_error: resultsByEngine['adaptive-barrier'].warmError,
+        delta_stepping_warm_error: resultsByEngine['delta-stepping'].warmError,
+        ultra_dijkstra_warm_error: resultsByEngine['ultra-dijkstra'].warmError,
+        bidirectional_astar_warm_error_code: resultsByEngine['bidirectional-astar'].warmErrorCode,
+        adaptive_barrier_warm_error_code: resultsByEngine['adaptive-barrier'].warmErrorCode,
+        delta_stepping_warm_error_code: resultsByEngine['delta-stepping'].warmErrorCode,
+        ultra_dijkstra_warm_error_code: resultsByEngine['ultra-dijkstra'].warmErrorCode,
+        bidirectional_astar_result_source: resultsByEngine['bidirectional-astar'].resultSource,
+        adaptive_barrier_result_source: resultsByEngine['adaptive-barrier'].resultSource,
+        delta_stepping_result_source: resultsByEngine['delta-stepping'].resultSource,
+        ultra_dijkstra_result_source: resultsByEngine['ultra-dijkstra'].resultSource,
+        bidirectional_astar_status: resultsByEngine['bidirectional-astar'].status,
+        adaptive_barrier_status: resultsByEngine['adaptive-barrier'].status,
+        delta_stepping_status: resultsByEngine['delta-stepping'].status,
+        ultra_dijkstra_status: resultsByEngine['ultra-dijkstra'].status,
+        bidirectional_astar_timed_error: resultsByEngine['bidirectional-astar'].timedError,
+        adaptive_barrier_timed_error: resultsByEngine['adaptive-barrier'].timedError,
+        delta_stepping_timed_error: resultsByEngine['delta-stepping'].timedError,
+        ultra_dijkstra_timed_error: resultsByEngine['ultra-dijkstra'].timedError,
+        bidirectional_astar_timed_error_code: resultsByEngine['bidirectional-astar'].timedErrorCode,
+        adaptive_barrier_timed_error_code: resultsByEngine['adaptive-barrier'].timedErrorCode,
+        delta_stepping_timed_error_code: resultsByEngine['delta-stepping'].timedErrorCode,
+        ultra_dijkstra_timed_error_code: resultsByEngine['ultra-dijkstra'].timedErrorCode,
+        bidirectional_astar_error_code:
+          resultsByEngine['bidirectional-astar'].warmErrorCode ??
+          resultsByEngine['bidirectional-astar'].timedErrorCode,
+        adaptive_barrier_error_code:
+          resultsByEngine['adaptive-barrier'].warmErrorCode ??
+          resultsByEngine['adaptive-barrier'].timedErrorCode,
+        delta_stepping_error_code:
+          resultsByEngine['delta-stepping'].warmErrorCode ??
+          resultsByEngine['delta-stepping'].timedErrorCode,
+        ultra_dijkstra_error_code:
+          resultsByEngine['ultra-dijkstra'].warmErrorCode ??
+          resultsByEngine['ultra-dijkstra'].timedErrorCode,
+      };
 
-        await saveResultToDB(runId, passIndex, routeIndex, result);
-        // Allow GC of large typed arrays attached to `prepared.metrics` now that
-        // metrics have been persisted and result saved.
-        try {
-          if (prepared) {
-            prepared.metrics = null;
-            try {
-              reportWorkerMemoryPhase('prepared-metrics-nulled', {
-                runId,
-                routeIndex,
-                passIndex,
-                routeLabel,
-                hasMetrics: Boolean(prepared?.metrics),
-                hasSelectorFeatures: Boolean(prepared?.selectorFeatures),
-              });
-            } catch (_e) {}
-          }
-        } catch (_e) {
-          /* ignore */
+      await saveResultToDB(runId, passIndex, routeIndex, result);
+      // Allow GC of large typed arrays attached to `prepared.metrics` now that
+      // metrics have been persisted and result saved.
+      try {
+        if (prepared) {
+          prepared.metrics = null;
+          try {
+            reportWorkerMemoryPhase('prepared-metrics-nulled', {
+              runId,
+              routeIndex,
+              passIndex,
+              routeLabel,
+              hasMetrics: Boolean(prepared?.metrics),
+              hasSelectorFeatures: Boolean(prepared?.selectorFeatures),
+            });
+          } catch (_e) {}
         }
-        postMessage({ type: 'status', status: 'result-saved', runId, routeIndex, passIndex, routeLabel });
+      } catch (_e) {
+        /* ignore */
       }
+      postMessage({
+        type: 'status',
+        status: 'result-saved',
+        runId,
+        routeIndex,
+        passIndex,
+        routeLabel,
+      });
+    }
   } finally {
     if (preparedRouteAcquired) {
       const released = releasePreparedRoute(routeDef, urlTemplate, mode, zoom, costField);
@@ -1212,7 +1452,9 @@ async function benchmarkRouteJob(message) {
       });
     }
     clearRouteSpecificCaches();
-    try { disposeAllRouteResources(); } catch (_e) {}
+    try {
+      disposeAllRouteResources();
+    } catch (_e) {}
     postMessage({ type: 'routeCompleted', runId, routeIndex });
   }
 }
@@ -1224,7 +1466,11 @@ self.addEventListener('message', async (event) => {
       const decoded = new TextDecoder().decode(message);
       message = JSON.parse(decoded);
     } catch (decodeError) {
-      console.warn('[benchmark-route-worker] could not decode binary message', decodeError, message);
+      console.warn(
+        '[benchmark-route-worker] could not decode binary message',
+        decodeError,
+        message
+      );
       return;
     }
   }
@@ -1259,7 +1505,9 @@ self.addEventListener('message', async (event) => {
     console.warn('[benchmark-route-worker] unknown message type', message?.type, message);
   } catch (error) {
     console.error('[benchmark-route-worker] failed to process route job', error);
-    try { disposeAllRouteResources(); } catch (_e) {}
+    try {
+      disposeAllRouteResources();
+    } catch (_e) {}
     postMessage({
       type: 'status',
       status: 'error',
@@ -1275,17 +1523,39 @@ self.addEventListener('message', async (event) => {
 // Global error/unhandledrejection handlers — best-effort cleanup and telemetry.
 try {
   self.addEventListener('unhandledrejection', (ev) => {
-    try { console.warn('[benchmark-route-worker] unhandledrejection', ev?.reason ?? ev); } catch (_e) {}
-    try { forceReleaseAllPowerCaches(); } catch (_e) {}
-    try { reportWorkerMemoryPhase('unhandledrejection', { reason: ev?.reason ? (ev.reason.message ?? String(ev.reason)) : null }); } catch (_e) {}
-    try { postMessage({ type: 'worker:event', event: 'unhandledrejection', memory: getWorkerMemoryUsage() }); } catch (_e) {}
+    try {
+      console.warn('[benchmark-route-worker] unhandledrejection', ev?.reason ?? ev);
+    } catch (_e) {}
+    try {
+      forceReleaseAllPowerCaches();
+    } catch (_e) {}
+    try {
+      reportWorkerMemoryPhase('unhandledrejection', {
+        reason: ev?.reason ? (ev.reason.message ?? String(ev.reason)) : null,
+      });
+    } catch (_e) {}
+    try {
+      postMessage({
+        type: 'worker:event',
+        event: 'unhandledrejection',
+        memory: getWorkerMemoryUsage(),
+      });
+    } catch (_e) {}
   });
 
   self.addEventListener('error', (ev) => {
-    try { console.error('[benchmark-route-worker] error', ev?.message ?? ev); } catch (_e) {}
-    try { forceReleaseAllPowerCaches(); } catch (_e) {}
-    try { reportWorkerMemoryPhase('error', { message: ev?.message ?? null }); } catch (_e) {}
-    try { postMessage({ type: 'worker:event', event: 'error', memory: getWorkerMemoryUsage() }); } catch (_e) {}
+    try {
+      console.error('[benchmark-route-worker] error', ev?.message ?? ev);
+    } catch (_e) {}
+    try {
+      forceReleaseAllPowerCaches();
+    } catch (_e) {}
+    try {
+      reportWorkerMemoryPhase('error', { message: ev?.message ?? null });
+    } catch (_e) {}
+    try {
+      postMessage({ type: 'worker:event', event: 'error', memory: getWorkerMemoryUsage() });
+    } catch (_e) {}
   });
 } catch (_e) {
   /* ignore — adding global handlers is best-effort */
@@ -1300,4 +1570,3 @@ export {
   getRouteCacheStats,
   _routeCache,
 };
-

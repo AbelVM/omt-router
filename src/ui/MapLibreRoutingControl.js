@@ -267,11 +267,21 @@ export class MapLibreRoutingControl {
     this._isolinePanel = this._panel.querySelector('#rp-isoline-panel');
     this._routingPanel = this._panel.querySelector('#rp-routing-panel');
     this._collapseBtn = this._panel.querySelector('#rp-collapse-btn');
-    this._modeButtons = this._routingPanel ? Array.from(this._routingPanel.querySelectorAll('.rp-mode-btn')) : [];
-    this._costButtons = this._routingPanel ? Array.from(this._routingPanel.querySelectorAll('.rp-cost-btn')) : [];
-    this._isolineModeButtons = Array.from(this._isolinePanel?.querySelectorAll('.rp-mode-btn') || []);
-    this._isolineCostButtons = Array.from(this._isolinePanel?.querySelectorAll('.rp-cost-btn') || []);
-    this._isolineDirectionButtons = Array.from(this._panel.querySelectorAll('.rp-isoline-direction-btn'));
+    this._modeButtons = this._routingPanel
+      ? Array.from(this._routingPanel.querySelectorAll('.rp-mode-btn'))
+      : [];
+    this._costButtons = this._routingPanel
+      ? Array.from(this._routingPanel.querySelectorAll('.rp-cost-btn'))
+      : [];
+    this._isolineModeButtons = Array.from(
+      this._isolinePanel?.querySelectorAll('.rp-mode-btn') || []
+    );
+    this._isolineCostButtons = Array.from(
+      this._isolinePanel?.querySelectorAll('.rp-cost-btn') || []
+    );
+    this._isolineDirectionButtons = Array.from(
+      this._panel.querySelectorAll('.rp-isoline-direction-btn')
+    );
     this._isolinePointIconEl = this._panel.querySelector('#rp-isoline-panel .rp-point-icon');
     this._swapBtn = this._panel.querySelector('#rp-swap-btn');
     this._tabRoutingBtn = this._panel.querySelector('#rp-tab-routing');
@@ -541,7 +551,8 @@ export class MapLibreRoutingControl {
     // controls don't accidentally get bound by the routing handlers.
     const routingPanel =
       this._routingPanel || this._panel.querySelector('#rp-routing-panel') || this._panel;
-    const modeButtons = this._modeButtons || Array.from(routingPanel.querySelectorAll('.rp-mode-btn'));
+    const modeButtons =
+      this._modeButtons || Array.from(routingPanel.querySelectorAll('.rp-mode-btn'));
     modeButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const newMode = btn.dataset.mode;
@@ -566,7 +577,8 @@ export class MapLibreRoutingControl {
       });
     });
 
-    const costButtons = this._costButtons || Array.from(routingPanel.querySelectorAll('.rp-cost-btn'));
+    const costButtons =
+      this._costButtons || Array.from(routingPanel.querySelectorAll('.rp-cost-btn'));
     costButtons.forEach((btn) => {
       btn.addEventListener('click', () => {
         const newCost = btn.dataset.costField;
@@ -739,7 +751,8 @@ export class MapLibreRoutingControl {
 
     // Isoline controls
     const isoDirBtns =
-      this._isolineDirectionButtons || Array.from(this._panel.querySelectorAll('.rp-isoline-direction-btn') || []);
+      this._isolineDirectionButtons ||
+      Array.from(this._panel.querySelectorAll('.rp-isoline-direction-btn') || []);
     isoDirBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         const newDir = btn.dataset.direction;
@@ -760,8 +773,14 @@ export class MapLibreRoutingControl {
           void _e;
         }
         if (this._isolinePointIconEl && this._isolinePointIconEl.classList) {
-          this._isolinePointIconEl.classList.toggle('rp-point-icon--origin', this._isoline.direction === 'from');
-          this._isolinePointIconEl.classList.toggle('rp-point-icon--dest', this._isoline.direction === 'to');
+          this._isolinePointIconEl.classList.toggle(
+            'rp-point-icon--origin',
+            this._isoline.direction === 'from'
+          );
+          this._isolinePointIconEl.classList.toggle(
+            'rp-point-icon--dest',
+            this._isoline.direction === 'to'
+          );
         }
 
         if (!wasSame && this._isoline.point) this._tryIsoline();
@@ -896,11 +915,23 @@ export class MapLibreRoutingControl {
       if (show) {
         // Prefer isoline label when an isoline exists (click handler clears isoline first)
         if (hasIsoline) {
-          this._removeBtn.setAttribute('aria-label', this._text.removeIsoline || this._text.removeRoute);
-          this._removeBtn.setAttribute('title', this._text.removeIsolineTooltip || this._text.removeRouteTooltip || '');
+          this._removeBtn.setAttribute(
+            'aria-label',
+            this._text.removeIsoline || this._text.removeRoute
+          );
+          this._removeBtn.setAttribute(
+            'title',
+            this._text.removeIsolineTooltip || this._text.removeRouteTooltip || ''
+          );
         } else {
-          this._removeBtn.setAttribute('aria-label', this._text.removeRoute || this._text.removeIsoline);
-          this._removeBtn.setAttribute('title', this._text.removeRouteTooltip || this._text.removeIsolineTooltip || '');
+          this._removeBtn.setAttribute(
+            'aria-label',
+            this._text.removeRoute || this._text.removeIsoline
+          );
+          this._removeBtn.setAttribute(
+            'title',
+            this._text.removeRouteTooltip || this._text.removeIsolineTooltip || ''
+          );
         }
       }
     } catch (_e) {

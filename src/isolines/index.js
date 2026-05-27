@@ -100,7 +100,6 @@ export async function isoline({
     searchThreshold: maxCost * SEARCH_FACTOR,
   });
 
-
   // Use d3-tricontour to build contour geometries. Build a simple
   // points array as `[x, y, value]` entries which tricontour expects.
   const coordsArr = prepared.coordsArr || [];

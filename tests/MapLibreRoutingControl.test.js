@@ -612,14 +612,25 @@ describe('MapLibreRoutingControl', () => {
     expect(sortKeyCall).toBeDefined();
     expect(sortKeyCall[2]).toEqual([
       'coalesce',
-      ['to-number', ['*', -1, [
-        'coalesce',
-        ['coalesce',
-          ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], expect.any(Number)]],
-          expect.any(Number),
+      [
+        'to-number',
+        [
+          '*',
+          -1,
+          [
+            'coalesce',
+            [
+              'coalesce',
+              [
+                'to-number',
+                ['coalesce', ['get', 'valueMax'], ['get', 'break'], expect.any(Number)],
+              ],
+              expect.any(Number),
+            ],
+            expect.any(Number),
+          ],
         ],
-        expect.any(Number),
-      ]]],
+      ],
       0,
     ]);
   });

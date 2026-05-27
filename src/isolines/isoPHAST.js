@@ -55,14 +55,16 @@ function buildPedestrianAdjacency(prepared) {
 
 function getIsoAdjacency(prepared, mode) {
   if (mode === 'pedestrian') {
-    return buildPedestrianAdjacency(prepared) || {
-      adjPtr: prepared.adjPtr,
-      adjTo: prepared.adjTo,
-      adjCost: prepared.adjCost,
-      revAdjPtr: prepared.revAdjPtr,
-      revAdjFrom: prepared.revAdjFrom,
-      revAdjCost: prepared.revAdjCost,
-    };
+    return (
+      buildPedestrianAdjacency(prepared) || {
+        adjPtr: prepared.adjPtr,
+        adjTo: prepared.adjTo,
+        adjCost: prepared.adjCost,
+        revAdjPtr: prepared.revAdjPtr,
+        revAdjFrom: prepared.revAdjFrom,
+        revAdjCost: prepared.revAdjCost,
+      }
+    );
   }
 
   return {

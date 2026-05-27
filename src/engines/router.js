@@ -20,11 +20,7 @@ import { PowerLogger } from 'performance-helpers/powerLogger';
 import { PowerCache } from 'performance-helpers/powerCache';
 import { PowerPool } from 'performance-helpers/powerPool';
 import { haversineDistance as haversine } from '../utils/misc.js';
-import {
-  DEFAULT_ENGINE_ID,
-  ENGINE_ID_ALIASES,
-  normalizeEngineId,
-} from './constants.js';
+import { DEFAULT_ENGINE_ID, ENGINE_ID_ALIASES, normalizeEngineId } from './constants.js';
 import { isRoutableGraph } from '../graphs/graphValidation.js';
 import {
   DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
@@ -833,8 +829,7 @@ async function runEngineInWorkerPool(
 
   const requestId = `request-${++_engineWorkerRequestId}`;
   const preparedId = getEngineWorkerPreparedId(prepared);
-  const poolCanReusePrepared =
-    _engineWorkerPoolSize <= 1 && _poolPreparedIds.has(preparedId);
+  const poolCanReusePrepared = _engineWorkerPoolSize <= 1 && _poolPreparedIds.has(preparedId);
 
   let response;
   if (poolCanReusePrepared) {
@@ -1428,17 +1423,10 @@ export async function queryRoute(
       logger.warn(
         `engine worker unavailable (${error?.code ?? 'unknown_error'}), falling back to main thread execution`
       );
-      result = await runEngineDirect(
-        normalizedSelectedEngine,
-        startId,
-        endId,
-        prepared,
-        beelineM,
-        {
-          forceSerialRouting: resolvedForceSerialRouting,
-          parallelPolicy,
-        }
-      );
+      result = await runEngineDirect(normalizedSelectedEngine, startId, endId, prepared, beelineM, {
+        forceSerialRouting: resolvedForceSerialRouting,
+        parallelPolicy,
+      });
     }
   } else {
     try {

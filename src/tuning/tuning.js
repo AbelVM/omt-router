@@ -358,7 +358,14 @@ export function resolveMlFeatureValues(features = {}) {
  * @param {string[]} classes Ordered engine class labels.
  * @returns {number[]|null} Probability vector for each class or null for invalid input.
  */
-function inferDistanceEngineWithRuntimeLinear(regressors, featureValues, runtimeFeatureOrder, means, scales, classes) {
+function inferDistanceEngineWithRuntimeLinear(
+  regressors,
+  featureValues,
+  runtimeFeatureOrder,
+  means,
+  scales,
+  classes
+) {
   if (
     !regressors ||
     typeof regressors !== 'object' ||

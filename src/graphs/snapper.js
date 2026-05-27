@@ -262,7 +262,8 @@ export function findClosestSegmentProjection(
 ) {
   const nodeIds = getNearbyNodeIds(graph, coords, maxDistM + SEGMENT_SNAP_EXTRA_M);
   const incident = buildIncidentEdgeIndex(graph);
-  const candidateEdges = graph._segmentSnapCandidateReuse ?? (graph._segmentSnapCandidateReuse = new Set());
+  const candidateEdges =
+    graph._segmentSnapCandidateReuse ?? (graph._segmentSnapCandidateReuse = new Set());
   candidateEdges.clear();
 
   for (const nodeId of nodeIds) {
@@ -585,10 +586,7 @@ export function resolveRouteEndpoints(
   graph,
   startCoords,
   endCoords,
-  {
-    snapDistancesM,
-    maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M,
-  } = {}
+  { snapDistancesM, maxAcceptableSnapDistanceM = DEFAULT_MAX_ACCEPTABLE_SNAP_DISTANCE_M } = {}
 ) {
   const distances =
     Array.isArray(snapDistancesM) && snapDistancesM.length > 0 ? snapDistancesM : [250, 500, 800];

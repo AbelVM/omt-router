@@ -99,7 +99,9 @@ document.addEventListener('DOMContentLoaded', function () {
       requestAnimationFrame(function () {
         scrollHint.classList.add('visible');
         // start listening for mouse movement only after the hint is visible
-        postShowInteractionEvents.forEach(function (ev) { window.addEventListener(ev, onUserInteraction, { passive: true }); });
+        postShowInteractionEvents.forEach(function (ev) {
+          window.addEventListener(ev, onUserInteraction, { passive: true });
+        });
       });
       scrollHint.setAttribute('aria-hidden', 'false');
     }
@@ -108,12 +110,22 @@ document.addEventListener('DOMContentLoaded', function () {
       // ignore synthetic events (script-dispatched) so initialization scroll doesn't cancel the hint
       if (e && e.isTrusted === false) return;
       interacted = true;
-      if (hintTimeout) { clearTimeout(hintTimeout); hintTimeout = null; }
+      if (hintTimeout) {
+        clearTimeout(hintTimeout);
+        hintTimeout = null;
+      }
       hideScrollHint();
       removeInteractionListeners();
     }
 
-    var initialInteractionEvents = ['scroll','touchstart','wheel','keydown','mousedown','pointerdown'];
+    var initialInteractionEvents = [
+      'scroll',
+      'touchstart',
+      'wheel',
+      'keydown',
+      'mousedown',
+      'pointerdown',
+    ];
     var postShowInteractionEvents = ['mousemove'];
 
     function removeInteractionListeners() {
@@ -130,15 +142,21 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     addInteractionListeners();
-    hintTimeout = setTimeout(function () { if (!interacted) showScrollHint(); }, INACTIVITY_MS);
+    hintTimeout = setTimeout(function () {
+      if (!interacted) showScrollHint();
+    }, INACTIVITY_MS);
 
     // Hide as soon as the user starts scrolling (ignore synthetic scroll events)
-    window.addEventListener('scroll', function onScrollForHint(e) {
-      if (e && e.isTrusted === false) return;
-      hideScrollHint();
-      removeInteractionListeners();
-      window.removeEventListener('scroll', onScrollForHint);
-    }, { passive: true });
+    window.addEventListener(
+      'scroll',
+      function onScrollForHint(e) {
+        if (e && e.isTrusted === false) return;
+        hideScrollHint();
+        removeInteractionListeners();
+        window.removeEventListener('scroll', onScrollForHint);
+      },
+      { passive: true }
+    );
 
     // Clicking the hint smooth-scrolls slightly down and hides the hint
     scrollHint.addEventListener('click', function () {
@@ -150,37 +168,54 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Animations: reveal + subtle hero parallax (respect prefers-reduced-motion)
   if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-    var selectors = 'h1,h2,h3,.hero-copy,.feature-card,.usecase-card,.panel-content,.code-block,.control-card';
-    document.querySelectorAll(selectors).forEach(function (el) { el.classList.add('reveal'); });
+    var selectors =
+      'h1,h2,h3,.hero-copy,.feature-card,.usecase-card,.panel-content,.code-block,.control-card';
+    document.querySelectorAll(selectors).forEach(function (el) {
+      el.classList.add('reveal');
+    });
     // staggers: set small per-element CSS delay using --reveal-delay
     document.querySelectorAll('.reveal').forEach(function (el, i) {
-      el.style.setProperty('--reveal-delay', (i * 20) + 'ms');
+      el.style.setProperty('--reveal-delay', i * 20 + 'ms');
     });
 
-    var io = new IntersectionObserver(function (entries, obs) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) { entry.target.classList.add('is-visible'); obs.unobserve(entry.target); }
-      });
-    }, { threshold: 0.15 });
-    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+    var io = new IntersectionObserver(
+      function (entries, obs) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+    document.querySelectorAll('.reveal').forEach(function (el) {
+      io.observe(el);
+    });
 
     var heroVisuals = document.querySelectorAll('.hero-visual');
     if (heroVisuals.length) {
       var ticking = false;
-      window.addEventListener('scroll', function () {
-        if (!ticking) {
-          ticking = true;
-          requestAnimationFrame(function () {
-            heroVisuals.forEach(function (el) {
-              var rect = el.getBoundingClientRect();
-              var offset = ((rect.top + rect.height / 2) - (window.innerHeight / 2)) / window.innerHeight;
-              if (offset > 1) offset = 1; if (offset < -1) offset = -1;
-              el.style.transform = 'translateY(' + (offset * 10) + 'px)';
+      window.addEventListener(
+        'scroll',
+        function () {
+          if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(function () {
+              heroVisuals.forEach(function (el) {
+                var rect = el.getBoundingClientRect();
+                var offset =
+                  (rect.top + rect.height / 2 - window.innerHeight / 2) / window.innerHeight;
+                if (offset > 1) offset = 1;
+                if (offset < -1) offset = -1;
+                el.style.transform = 'translateY(' + offset * 10 + 'px)';
+              });
+              ticking = false;
             });
-            ticking = false;
-          });
-        }
-      }, { passive: true });
+          }
+        },
+        { passive: true }
+      );
       window.dispatchEvent(new Event('scroll'));
     }
   }

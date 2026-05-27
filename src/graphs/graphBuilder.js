@@ -7,7 +7,7 @@
  * utilities used by the router and worker layers.
  */
 import { VectorTile } from '@mapbox/vector-tile';
-import Pbf from 'pbf';
+import { PbfReader } from 'pbf';
 import { u82o } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
 import { ways, getDefaultSpeedKmh } from '../utils/ways_defaults.js';
@@ -129,7 +129,7 @@ export function isAccessible(props, mode) {
  *    c1boundary, c2boundary, clipped]
  */
 export function parseTile(buffer, x, y, z, mode) {
-  const tile = new VectorTile(new Pbf(buffer));
+  const tile = new VectorTile(new PbfReader(buffer));
   const layer = tile.layers['transportation'];
   if (!layer) return [];
 
@@ -159,7 +159,15 @@ export function parseTile(buffer, x, y, z, mode) {
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
     if (feature.type !== 2) continue;
-    const { class: rawClass, subclass, access, foot, bicycle, oneway: rawOneway, maxspeed: rawMaxspeed } = feature.properties;
+    const {
+      class: rawClass,
+      subclass,
+      access,
+      foot,
+      bicycle,
+      oneway: rawOneway,
+      maxspeed: rawMaxspeed,
+    } = feature.properties;
     const normalizedClass = normalizeTagValue(rawClass);
     const props = Object.freeze({
       access: normalizeTagValue(access),
@@ -291,7 +299,9 @@ function splitSegmentsAtEndpoints(segments) {
 
   const assertFiniteNumber = (value, label, segmentIndex) => {
     if (!Number.isFinite(value)) {
-      throw new Error(`splitSegmentsAtEndpoints: invalid ${label} in segment ${segmentIndex}: ${value}`);
+      throw new Error(
+        `splitSegmentsAtEndpoints: invalid ${label} in segment ${segmentIndex}: ${value}`
+      );
     }
   };
 
@@ -352,10 +362,16 @@ function splitSegmentsAtEndpoints(segments) {
 
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
-          const bucket = segmentBuckets.get(getBucketKey(endpointBucketX + dx, endpointBucketY + dy));
+          const bucket = segmentBuckets.get(
+            getBucketKey(endpointBucketX + dx, endpointBucketY + dy)
+          );
           if (!bucket) continue;
           for (const candidateIndex of bucket) {
-            if (candidateIndex === currentSegmentIndex || visitedSegmentStamps[candidateIndex] === visitId) continue;
+            if (
+              candidateIndex === currentSegmentIndex ||
+              visitedSegmentStamps[candidateIndex] === visitId
+            )
+              continue;
             visitedSegmentStamps[candidateIndex] = visitId;
 
             const base = candidateIndex * SEGMENT_STRIDE;
@@ -384,7 +400,9 @@ function splitSegmentsAtEndpoints(segments) {
             );
             if (!projection) continue;
             if (!Number.isFinite(projection.t) || projection.t <= 0 || projection.t >= 1) {
-              throw new Error(`splitSegmentsAtEndpoints: invalid projection.t=${projection.t} for segment ${candidateIndex}`);
+              throw new Error(
+                `splitSegmentsAtEndpoints: invalid projection.t=${projection.t} for segment ${candidateIndex}`
+              );
             }
 
             const splitKey = coordKey(endpointLng, endpointLat);
@@ -454,7 +472,8 @@ function splitSegmentsAtEndpoints(segments) {
       continue;
     }
 
-    const splits = candidateSplits.length > 1 ? candidateSplits.sort((a, b) => a[1] - b[1]) : candidateSplits;
+    const splits =
+      candidateSplits.length > 1 ? candidateSplits.sort((a, b) => a[1] - b[1]) : candidateSplits;
 
     let previousLng = c1lng;
     let previousLat = c1lat;
@@ -686,7 +705,7 @@ function appendSegments(acc, segments) {
         properties: props,
       };
 
-        if (acc.classToFibonacciScore) {
+      if (acc.classToFibonacciScore) {
         const roadClass = props.class ?? '';
         edge.fibonacciScore = acc.classToFibonacciScore[roadClass] ?? 1;
       }
@@ -938,7 +957,9 @@ export async function buildGraphAsync(
     for (const result of settled) {
       if (result.status === 'rejected') {
         hasMissingTiles = true;
-        logger.warn(() => `tile fetch failed, skipping: ${result.reason?.message ?? result.reason}`);
+        logger.warn(
+          () => `tile fetch failed, skipping: ${result.reason?.message ?? result.reason}`
+        );
         missingTileErrors.push({
           code: result.reason?.code ?? 'TileFetchFailed',
           message: result.reason?.message ?? String(result.reason),

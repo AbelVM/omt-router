@@ -91,7 +91,12 @@ describe('fastPointInRing', () => {
 
     expect(emptyPrepared.n).toBe(0);
     expect(pointInPreparedRing(0, 0, emptyPrepared)).toBe(false);
-    expect(findInteriorPoint([[0, 0], [1, 0]])).toBe(null);
+    expect(
+      findInteriorPoint([
+        [0, 0],
+        [1, 0],
+      ])
+    ).toBe(null);
   });
 
   it('accepts a prepared ring object in findInteriorPoint', () => {

@@ -81,9 +81,13 @@ describe('index module route and tile URL helpers', () => {
 
   it('uses tileUrlTransform when it returns a valid string', () => {
     const raw = 'https://example.com/{z}/{x}/{y}.pbf';
-    const result = buildTileURL(raw, { z: 14, x: 1, y: 2 }, {
-      tileUrlTransform: (url, tile) => `${url}?source=${tile.x},${tile.y}`,
-    });
+    const result = buildTileURL(
+      raw,
+      { z: 14, x: 1, y: 2 },
+      {
+        tileUrlTransform: (url, tile) => `${url}?source=${tile.x},${tile.y}`,
+      }
+    );
 
     expect(result).toBe('https://example.com/14/1/2.pbf?source=1,2');
   });
@@ -275,9 +279,9 @@ describe('index module route and tile URL helpers', () => {
   });
 
   it('throws when routeBatch is called with an invalid urlTemplate', async () => {
-    await expect(
-      routeBatch([{ start: [0, 0], end: [0.001, 0], mode: 'car' }], '')
-    ).rejects.toThrow(/routeBatch requires a valid urlTemplate string/);
+    await expect(routeBatch([{ start: [0, 0], end: [0.001, 0], mode: 'car' }], '')).rejects.toThrow(
+      /routeBatch requires a valid urlTemplate string/
+    );
   });
 
   it('throws when a routeBatch request is not an object', async () => {
@@ -306,7 +310,10 @@ describe('index module route and tile URL helpers', () => {
 
   it('throws when a routeBatch request is missing a valid mode', async () => {
     await expect(
-      routeBatch([{ start: [0, 0], end: [0.001, 0], mode: '' }], 'https://example.com/{z}/{x}/{y}.pbf')
+      routeBatch(
+        [{ start: [0, 0], end: [0.001, 0], mode: '' }],
+        'https://example.com/{z}/{x}/{y}.pbf'
+      )
     ).rejects.toThrow(/must include a valid mode/);
   });
 

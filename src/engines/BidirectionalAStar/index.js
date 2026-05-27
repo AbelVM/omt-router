@@ -209,8 +209,15 @@ export function bidirectionalAStar(startId, endId, prepared) {
     ? (id) => Math.round(distanceHeuristic(coordsArr[id], startCoords) * DIST_SCALE)
     : () => 0;
 
-  const { distFwd, distBwd, prevFwd, nextBwd, settled, heapFwd: pqFwd, heapBwd: pqBwd } =
-    ensureWorkspace(prepared, N);
+  const {
+    distFwd,
+    distBwd,
+    prevFwd,
+    nextBwd,
+    settled,
+    heapFwd: pqFwd,
+    heapBwd: pqBwd,
+  } = ensureWorkspace(prepared, N);
 
   distFwd[startId] = 0;
   distBwd[endId] = 0;

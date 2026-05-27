@@ -61,7 +61,7 @@ export default defineConfig({
     'import.meta.env.PROD': 'true',
     'import.meta.env.DEV': 'false',
     'process.env.NODE_ENV': JSON.stringify('production'),
-    'import.meta.url': '""' 
+    'import.meta.url': '""',
   },
   build: {
     target: 'es2020',
@@ -78,7 +78,7 @@ export default defineConfig({
         globals: {
           fs: '{}',
           crypto: '{}',
-          perf_hooks: '{}'
+          perf_hooks: '{}',
         },
         codeSplitting: false,
       },
@@ -87,7 +87,7 @@ export default defineConfig({
         moduleSideEffects: false,
         propertyReadSideEffects: false,
       },
-    }
+    },
   },
   worker: {
     format: 'iife',
@@ -97,7 +97,7 @@ export default defineConfig({
         annotations: true,
         moduleSideEffects: false,
         propertyReadSideEffects: false,
-      }
-    }
-  }
+      },
+    },
+  },
 });

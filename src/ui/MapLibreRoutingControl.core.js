@@ -492,11 +492,11 @@ export async function tryIsoline(ctrl) {
               'fill-outline-color',
               expr
             );
-            ctrl._map.setLayoutProperty(
-              ctrl._options.isolineFillLayerId,
-              'fill-sort-key',
-              ['coalesce', ['to-number', ['*', -1, safeValueExpr]], 0]
-            );
+            ctrl._map.setLayoutProperty(ctrl._options.isolineFillLayerId, 'fill-sort-key', [
+              'coalesce',
+              ['to-number', ['*', -1, safeValueExpr]],
+              0,
+            ]);
           }
           if (ctrl._map.getLayer(ctrl._options.isolineOutlineLayerId)) {
             ctrl._map.setPaintProperty(ctrl._options.isolineOutlineLayerId, 'text-color', expr);
@@ -529,7 +529,6 @@ export async function tryIsoline(ctrl) {
       void _e;
     }
     if (ctrl._mounted) ctrl._setStatus(ctrl._text.status?.noRoute || 'Isoline failed', 'error');
-
   }
 }
 

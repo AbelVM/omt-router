@@ -82,7 +82,9 @@ function createSharedPoolFallback() {
         if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
           return Promise.race([
             resultPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('tile_pool_timeout')), timeoutMs)),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('tile_pool_timeout')), timeoutMs)
+            ),
           ]);
         }
         return resultPromise;
@@ -126,7 +128,10 @@ export function getSharedPool() {
         idleTimeout: 600_000,
       });
     } catch (err) {
-      console.warn('[benchmark] Shared tile worker pool unavailable, falling back to inline tile parser:', err);
+      console.warn(
+        '[benchmark] Shared tile worker pool unavailable, falling back to inline tile parser:',
+        err
+      );
       _pool = createSharedPoolFallback();
     }
   }
@@ -277,8 +282,6 @@ function round4(x) {
   return Math.round(x * 10000) / 10000;
 }
 
- 
-
 export function summarizeSamples(samples) {
   if (!Array.isArray(samples) || samples.length === 0) {
     return {
@@ -373,9 +376,10 @@ function normalizeEngineErrorCode(error) {
   return null;
 }
 
-const ENGINE_WORKER_POOL_DEFAULT_SIZE = typeof navigator !== 'undefined'
-  ? Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 5) - 1))
-  : 4;
+const ENGINE_WORKER_POOL_DEFAULT_SIZE =
+  typeof navigator !== 'undefined'
+    ? Math.min(8, Math.max(1, (navigator.hardwareConcurrency ?? 5) - 1))
+    : 4;
 
 function normalizeEngineError(error) {
   return normalizeEngineErrorMessage(error);
@@ -1177,11 +1181,9 @@ export async function runBenchmark(config, onProgress = () => {}) {
 
   // Group routes by city/category
   let prevCategory = null;
-  const maxConcurrentRoutes = Math.max(
-    1,
-    Math.min(routes.length, pool?.maxSize ?? routes.length)
-  );
-  const shouldUseSharedCategoryCache = shouldClearCachesOnCategoryBoundary && maxConcurrentRoutes === 1;
+  const maxConcurrentRoutes = Math.max(1, Math.min(routes.length, pool?.maxSize ?? routes.length));
+  const shouldUseSharedCategoryCache =
+    shouldClearCachesOnCategoryBoundary && maxConcurrentRoutes === 1;
   const shouldUseIsolatedCache = shouldClearCachesAfterEachRoute || !shouldUseSharedCategoryCache;
 
   const waitForResumeIfPaused = async () => {
@@ -1802,5 +1804,3 @@ export function generateCopilotReport(results, context = {}) {
 
   return lines.join('\n');
 }
-
- 

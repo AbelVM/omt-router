@@ -37,7 +37,10 @@
   color: var(--rp-text);
   pointer-events: all;
   color-scheme: light;
-  transition: inline-size 0.2s ease, max-inline-size 0.2s ease, padding 0.2s ease;
+  transition:
+    inline-size 0.2s ease,
+    max-inline-size 0.2s ease,
+    padding 0.2s ease;
 }
 
 .rp-panel-toolbar {
@@ -68,7 +71,10 @@
   overflow: visible;
   position: relative;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
 }
 
 .rp-collapse-btn:hover,
@@ -95,7 +101,10 @@
   top: calc(100% + 8px);
   right: 12px;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
   z-index: 9; /* below .rp-swap-btn (z-index:10) */
   box-shadow: var(--rp-shadow);
 }
@@ -932,7 +941,6 @@
 }
 
 @media (max-width: 380px) {
-
   .rp-modes,
   .rp-costs {
     grid-template-columns: 1fr;

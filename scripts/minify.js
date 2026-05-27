@@ -28,18 +28,18 @@ async function compressFile(filePath) {
       keep_fargs: false,
       loops: true,
       side_effects: true,
-      switches: true
+      switches: true,
     },
     mangle: {
       toplevel: true,
       eval: true,
       module: true,
-      properties: false
+      properties: false,
     },
     format: {
       comments: false,
-      ecma: 2020
-    }
+      ecma: 2020,
+    },
   });
 
   fs.writeFileSync(filePath, result.code, 'utf8');

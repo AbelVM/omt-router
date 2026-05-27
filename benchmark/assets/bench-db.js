@@ -57,7 +57,7 @@ function openDB() {
           store.createIndex('updatedAt', 'updatedAt', { unique: false });
         }
       }
-      
+
       // add metrics store for persisting typed-array-backed graph metrics
       if (!db.objectStoreNames.contains(STORE_METRICS)) {
         const store = db.createObjectStore(STORE_METRICS, { autoIncrement: true });
@@ -103,7 +103,11 @@ function openDB() {
             const tx2 = db.transaction(STORE_RUNS, 'readonly');
             const store2 = tx2.objectStore(STORE_RUNS);
             if (store2.keyPath !== 'runId') needsRepair = true;
-            if (!store2.indexNames.contains('completed') || !store2.indexNames.contains('updatedAt')) needsRepair = true;
+            if (
+              !store2.indexNames.contains('completed') ||
+              !store2.indexNames.contains('updatedAt')
+            )
+              needsRepair = true;
           }
 
           // Validate STORE_METRICS: expect no keyPath (autoIncrement) but ensure index exists
@@ -176,7 +180,8 @@ function _payloadShapeSummary(obj) {
       const v = obj[k];
       try {
         if (v == null) out[k] = null;
-        else if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(v)) out[k] = `${v.constructor?.name}@${v.length}`;
+        else if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(v))
+          out[k] = `${v.constructor?.name}@${v.length}`;
         else if (v instanceof ArrayBuffer) out[k] = `ArrayBuffer@${v.byteLength}`;
         else if (Array.isArray(v)) out[k] = `array(${v.length})`;
         else if (typeof v === 'object') out[k] = `object(${Object.keys(v).length})`;
@@ -299,7 +304,9 @@ export async function saveResultToDB(runId, passIndex, routeIndex, result) {
             };
             putReq.onerror = () => {
               // Let tx.onerror/abort surface the final error
-              deferred.reject(putReq.error || request.error || new Error('IndexedDB add/put error'));
+              deferred.reject(
+                putReq.error || request.error || new Error('IndexedDB add/put error')
+              );
             };
           } catch (e2) {
             deferred.reject(e2);
@@ -412,11 +419,15 @@ export async function savePreparedMetricsToDB(metrics) {
               keyPath: store.keyPath,
               payloadSummary: summary,
               // If metrics object contains common summary fields, include them.
-              metricsSnippet: payload && payload.metrics ? {
-                nodeCount: payload.metrics.nodeCount ?? payload.metrics.safeN ?? null,
-                edgeCount: payload.metrics.edgeCount ?? payload.metrics.safeE ?? null,
-                haversine: payload.metrics.haversineDistance ?? payload.metrics.safeBeelineKm ?? null,
-              } : null,
+              metricsSnippet:
+                payload && payload.metrics
+                  ? {
+                      nodeCount: payload.metrics.nodeCount ?? payload.metrics.safeN ?? null,
+                      edgeCount: payload.metrics.edgeCount ?? payload.metrics.safeE ?? null,
+                      haversine:
+                        payload.metrics.haversineDistance ?? payload.metrics.safeBeelineKm ?? null,
+                    }
+                  : null,
               error: request.error?.message ?? String(request.error),
             });
           } catch (_e) {}
@@ -427,7 +438,9 @@ export async function savePreparedMetricsToDB(metrics) {
               generatedId = e2.target.result;
             };
             putReq.onerror = () => {
-              deferred.reject(putReq.error || request.error || new Error('IndexedDB add/put error'));
+              deferred.reject(
+                putReq.error || request.error || new Error('IndexedDB add/put error')
+              );
             };
           } catch (e2) {
             deferred.reject(e2);
@@ -499,7 +512,10 @@ export async function getRunRecordCount(runId) {
   });
 }
 
-export async function getRecordsForRunPage(runId, { page = 1, pageSize = 250, sortCol = '_insertedAt', sortAsc = false } = {}) {
+export async function getRecordsForRunPage(
+  runId,
+  { page = 1, pageSize = 250, sortCol = '_insertedAt', sortAsc = false } = {}
+) {
   if (!HAS_INDEXED_DB) {
     const offset = Math.max(0, (page - 1) * pageSize);
     const rowsAll = _memResults.filter((r) => r.runId === runId).slice();
@@ -570,9 +586,7 @@ export async function streamRunRecords(runId, onRecord) {
     const tx = db.transaction(STORE_RESULTS, 'readonly');
     const store = tx.objectStore(STORE_RESULTS);
     const idx = store.indexNames.contains('runId') ? store.index('runId') : null;
-    const cursorReq = idx
-      ? idx.openCursor(IDBKeyRange.only(runId))
-      : store.openCursor();
+    const cursorReq = idx ? idx.openCursor(IDBKeyRange.only(runId)) : store.openCursor();
 
     cursorReq.onsuccess = (e) => {
       const c = e.target.result;
@@ -647,7 +661,7 @@ export async function saveRunMetadata(runId, metadata = {}) {
         completedAt: metadata.completedAt ?? existing.completedAt ?? null,
         artifactPaths: Array.isArray(metadata.artifactPaths)
           ? metadata.artifactPaths
-          : existing.artifactPaths ?? [],
+          : (existing.artifactPaths ?? []),
         ...existing,
         ...metadata,
         updatedAt: Math.max(existing.updatedAt ?? 0, now) + 1,

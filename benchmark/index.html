@@ -6,17 +6,78 @@
     <title>omt-router — Multi-Engine Benchmark</title>
     <style>
       /* Minimal fallback styles — overridden by ./assets/benchmark.css when present */
-      :root{--text:#0f172a;--subtext:#64748b;--border:#e6eaf0;--surface:#ffffff;--bg:#f8fafc;--accent:#2563eb;--radius:8px}
-      body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:var(--text);background:var(--bg);}
-      .page{max-width:1100px;margin:0 auto;padding:20px}
-      .header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:18px}
-      .config-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px 20px}
-      .actions{display:flex;gap:10px;margin-top:16px}
-      .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600}
-      .btn-primary{background:var(--accent);color:#fff}
-      .btn-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}
-      .summary-cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-      [hidden]{display:none!important}
+      :root {
+        --text: #0f172a;
+        --subtext: #64748b;
+        --border: #e6eaf0;
+        --surface: #ffffff;
+        --bg: #f8fafc;
+        --accent: #2563eb;
+        --radius: 8px;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          'Helvetica Neue',
+          Arial,
+          sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 18px;
+      }
+      .config-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px 20px;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 18px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-secondary {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .summary-cards {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      [hidden] {
+        display: none !important;
+      }
     </style>
     <link rel="stylesheet" href="./assets/benchmark.css" />
   </head>
@@ -94,9 +155,20 @@
             style="align-self: center; font-size: 12px; color: var(--subtext)"
           ></span>
         </div>
-        <div id="pending-run-prompt" class="pending-run-prompt" hidden style="margin-top: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface);">
-          <div id="pending-run-message" style="margin-bottom: 12px; color: var(--subtext);"></div>
-          <div class="actions" style="gap: 8px; flex-wrap: wrap;">
+        <div
+          id="pending-run-prompt"
+          class="pending-run-prompt"
+          hidden
+          style="
+            margin-top: 16px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+          "
+        >
+          <div id="pending-run-message" style="margin-bottom: 12px; color: var(--subtext)"></div>
+          <div class="actions" style="gap: 8px; flex-wrap: wrap">
             <button class="btn btn-primary" id="resume-run-btn">Resume pending run</button>
             <button class="btn btn-secondary" id="restart-run-btn">Restart fresh</button>
           </div>

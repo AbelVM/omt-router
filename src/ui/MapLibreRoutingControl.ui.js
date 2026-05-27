@@ -156,7 +156,7 @@ export function buildPanelMarkup(ctrl) {
       </div>
       <div class="rp-panel-body">
     `;
-    const collapseFooter = `</div>
+  const collapseFooter = `</div>
       <button id="rp-remove-btn" class="rp-remove-fab" aria-label="${ctrl._text.removeRoute}" title="${ctrl._text.removeRouteTooltip}" hidden><span class="rp-btn-label"><span class="rp-label-visible">✕</span></span></button>`;
 
   if (ctrl._features === 'both') {
@@ -190,7 +190,8 @@ export function buildPanelMarkup(ctrl) {
  */
 export function updateIsolineThresholdUI(ctrl) {
   try {
-    const isoPanel = ctrl._isolinePanel || ctrl._panel?.querySelector('#rp-isoline-panel') || ctrl._panel || null;
+    const isoPanel =
+      ctrl._isolinePanel || ctrl._panel?.querySelector('#rp-isoline-panel') || ctrl._panel || null;
     const isoThreshold =
       ctrl._isolineThresholdInput || isoPanel?.querySelector('#rp-isoline-threshold');
     const isoUnit =
@@ -329,17 +330,18 @@ export function syncModeAndCostUI(ctrl) {
         ...(ctrl._modeButtons || []),
         ...(ctrl._isolineModeButtons || []),
         ...Array.from(ctrl._panel.querySelectorAll('.rp-mode-btn')),
-      ]),
+      ])
     );
     const costBtns = Array.from(
       new Set([
         ...(ctrl._costButtons || []),
         ...(ctrl._isolineCostButtons || []),
         ...Array.from(ctrl._panel.querySelectorAll('.rp-cost-btn')),
-      ]),
+      ])
     );
     const isoDirBtns =
-      ctrl._isolineDirectionButtons || Array.from(ctrl._panel.querySelectorAll('.rp-isoline-direction-btn'));
+      ctrl._isolineDirectionButtons ||
+      Array.from(ctrl._panel.querySelectorAll('.rp-isoline-direction-btn'));
 
     modeBtns.forEach((b) => {
       const isActive = b.dataset.mode === ctrl._mode;
@@ -412,7 +414,8 @@ export function resetOtherUI(ctrl, activeTab) {
         }
       }
 
-      const isoDirBtns = ctrl._isolineDirectionButtons ||
+      const isoDirBtns =
+        ctrl._isolineDirectionButtons ||
         Array.from(isoPanel?.querySelectorAll('.rp-isoline-direction-btn') || []);
       isoDirBtns.forEach((b) => {
         const isActive = b.dataset.direction === 'from';
@@ -425,7 +428,8 @@ export function resetOtherUI(ctrl, activeTab) {
         ctrl._isolinePointIconEl.classList.toggle('rp-point-icon--dest', false);
       }
 
-      const statusIso = ctrl._statusElIsoline || isoPanel?.querySelector('#rp-status-isoline') || null;
+      const statusIso =
+        ctrl._statusElIsoline || isoPanel?.querySelector('#rp-status-isoline') || null;
       if (statusIso) {
         statusIso.textContent = '';
         statusIso.hidden = true;

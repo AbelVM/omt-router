@@ -1,21 +1,27 @@
 <!doctype html>
 <html lang="en">
-
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OMT Router — Client-side routing & isolines for OpenMapTiles</title>
-    <meta name="description"
-        content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control." />
+    <meta
+      name="description"
+      content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control."
+    />
     <meta name="author" content="Abel Vázquez Montoro" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://abelvm.github.io/omt-router/" />
     <meta name="theme-color" content="#0b1114" />
 
     <!-- Open Graph / Facebook -->
-    <meta property="og:title" content="OMT Router — Client-side routing & isolines for OpenMapTiles" />
-    <meta property="og:description"
-        content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control." />
+    <meta
+      property="og:title"
+      content="OMT Router — Client-side routing & isolines for OpenMapTiles"
+    />
+    <meta
+      property="og:description"
+      content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://abelvm.github.io/omt-router/" />
     <meta property="og:site_name" content="OMT Router" />
@@ -23,7 +29,10 @@
     <meta property="og:image" content="https://abelvm.github.io/omt-router/landing/card.webp" />
     <meta property="og:image:alt" content="Map route illustration — OMT Router" />
     <meta property="og:image:type" content="image/webp" />
-    <meta property="og:image:secure_url" content="https://abelvm.github.io/omt-router/landing/card.webp" />
+    <meta
+      property="og:image:secure_url"
+      content="https://abelvm.github.io/omt-router/landing/card.webp"
+    />
     <meta property="og:image:width" content="1400" />
     <meta property="og:image:height" content="700" />
 
@@ -31,659 +40,859 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@abel_vm" />
     <meta name="twitter:creator" content="@abel_vm" />
-    <meta name="twitter:title" content="OMT Router — Client-side routing & isolines for OpenMapTiles" />
-    <meta name="twitter:description"
-        content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control." />
-    <meta name="twitter:image" content="https://abelvm.github.io/omt-router/landing/card.webp?v=1" />
+    <meta
+      name="twitter:title"
+      content="OMT Router — Client-side routing & isolines for OpenMapTiles"
+    />
+    <meta
+      name="twitter:description"
+      content="OMT Router runs routing and isolines entirely in-browser from OpenMapTiles—no server required; includes a drop-in MapLibre control."
+    />
+    <meta
+      name="twitter:image"
+      content="https://abelvm.github.io/omt-router/landing/card.webp?v=1"
+    />
     <meta name="twitter:image:alt" content="Map route illustration — OMT Router" />
 
     <script type="application/ld+json">
-        {
-            "@context":"https://schema.org",
-            "@type":"SoftwareApplication",
-            "@id":"https://abelvm.github.io/omt-router/#software",
-            "name":"OMT Router",
-            "url":"https://abelvm.github.io/omt-router/",
-            "description":"OMT Router is a JavaScript library that computes routes and isolines client-side from OpenMapTiles—no routing server required.",
-            "image": {
-                "@type": "ImageObject",
-                "url": "https://abelvm.github.io/omt-router/landing/card.webp",
-                "width": 1200,
-                "height": 600
-            },
-            "author": {
-                "@type":"Person",
-                "name":"Abel Vázquez Montoro",
-                "sameAs":[ "https://www.linkedin.com/in/abelvazquez/" ]
-            },
-            "applicationCategory":"DeveloperTool",
-            "operatingSystem":"All",
-            "codeRepository":"https://github.com/AbelVM/omt-router",
-            "inLanguage":"en",
-            "license":"https://www.gnu.org/licenses/agpl-3.0.html",
-            "keywords":"OpenMapTiles,routing,client-side,MapLibre,isolines",
-            "datePublished":"2026-05-25",
-            "softwareVersion":"1.0.0",
-            "downloadUrl":"https://www.npmjs.com/package/omt-router",
-            "dateModified":"2026-05-25"
-        }
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "@id": "https://abelvm.github.io/omt-router/#software",
+        "name": "OMT Router",
+        "url": "https://abelvm.github.io/omt-router/",
+        "description": "OMT Router is a JavaScript library that computes routes and isolines client-side from OpenMapTiles—no routing server required.",
+        "image": {
+          "@type": "ImageObject",
+          "url": "https://abelvm.github.io/omt-router/landing/card.webp",
+          "width": 1200,
+          "height": 600
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Abel Vázquez Montoro",
+          "sameAs": ["https://www.linkedin.com/in/abelvazquez/"]
+        },
+        "applicationCategory": "DeveloperTool",
+        "operatingSystem": "All",
+        "codeRepository": "https://github.com/AbelVM/omt-router",
+        "inLanguage": "en",
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "keywords": "OpenMapTiles,routing,client-side,MapLibre,isolines",
+        "datePublished": "2026-05-25",
+        "softwareVersion": "1.0.0",
+        "downloadUrl": "https://www.npmjs.com/package/omt-router",
+        "dateModified": "2026-05-25"
+      }
     </script>
 
     <script type="application/ld+json">
-        {
-            "@context":"https://schema.org",
-            "@type":"HowTo",
-            "name":"Quickstart — compute a route",
-            "totalTime":"PT5M",
-            "step":[
-                {"@type":"HowToStep","name":"Install","text":"npm install omt-router"},
-                {"@type":"HowToStep","name":"Import & call","text":"import { route } from 'omt-router'; await route(src, dst, 'car', TILE_URL);"},
-                {"@type":"HowToStep","name":"MapLibre control","text":"map.addControl(new MapLibreRoutingControl({ routeFunction: route }));"}
-            ]
-        }
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "Quickstart — compute a route",
+        "totalTime": "PT5M",
+        "step": [
+          { "@type": "HowToStep", "name": "Install", "text": "npm install omt-router" },
+          {
+            "@type": "HowToStep",
+            "name": "Import & call",
+            "text": "import { route } from 'omt-router'; await route(src, dst, 'car', TILE_URL);"
+          },
+          {
+            "@type": "HowToStep",
+            "name": "MapLibre control",
+            "text": "map.addControl(new MapLibreRoutingControl({ routeFunction: route }));"
+          }
+        ]
+      }
     </script>
 
     <script type="application/ld+json">
-        {
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            "mainEntity": [
-                {
-                    "@type": "Question",
-                    "name": "Which tiles work?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "Any OpenMapTiles-compatible vector tile source. CORS or proxying may be required; examples include OpenFreeMap, MapTiler, or self-hosted tiles."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "What's an 'optimal' route?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "It's the fastest route, but weighting by road hierarchy. It's logical to prefer highways for long trips and local roads for short ones, even if the latter are faster in absolute terms. This is a common approach in routing engines to provide more intuitive and practical routes."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "Why no_node / poor_snap errors?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "The endpoint is outside the snap radius or road data is missing. Choose a closer endpoint or check the map data."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "When does engine fallback happen?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "When the selected engine cannot return a safe route; deterministic fallback selects an alternative engine to ensure correctness."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "Results are weird in certain areas",
-                    "acceptedAnswer": {"@type": "Answer", "text": "Results quality depends on OpenStreetMap data accuracy; contribute fixes to OSM or choose higher-quality local tiles."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "Routing is way slower than advertised",
-                    "acceptedAnswer": {"@type": "Answer", "text": "Data preparation (fetching/parsing tiles and building the graph) usually dominates; route calculation itself is millisecond-scale. Use local or cached tiles to reduce preparation time."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "How can I contribute?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "Improve OSM data, report issues, or open issues/PRs on the project repository."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "What is the license?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "OMT Router is licensed under AGPL-3.0-only; modifications served over a network must be shared publicly."}
-                },
-                {
-                    "@type": "Question",
-                    "name": "Why this license?",
-                    "acceptedAnswer": {"@type": "Answer", "text": "AGPL ensures improvements are shared with the community and protects user freedoms for networked software."}
-                }
-            ]
-        }
-        </script>
-
-    <script type="application/ld+json">
-            {
-                "@context": "https://schema.org",
-                "@type": "Organization",
-                "@id": "https://abelvm.github.io/omt-router/#org",
-                "name": "OMT Router",
-                "url": "https://abelvm.github.io/omt-router/",
-                "logo": "https://abelvm.github.io/omt-router/landing/route.webp",
-                "sameAs": [
-                    "https://github.com/AbelVM/omt-router",
-                    "https://www.linkedin.com/in/abelvazquez/"
-                ]
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Which tiles work?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Any OpenMapTiles-compatible vector tile source. CORS or proxying may be required; examples include OpenFreeMap, MapTiler, or self-hosted tiles."
             }
-        </script>
-
-    <script type="application/ld+json">
-            {
-                "@context": "https://schema.org",
-                "@type": "BreadcrumbList",
-                "itemListElement": [
-                    {
-                        "@type": "ListItem",
-                        "position": 1,
-                        "name": "Home",
-                        "item": {
-                            "@id": "https://abelvm.github.io/omt-router/",
-                            "name": "Home"
-                        }
-                    },
-                    {
-                        "@type": "ListItem",
-                        "position": 2,
-                        "name": "Demo",
-                        "item": {
-                            "@id": "https://abelvm.github.io/omt-router/#demo",
-                            "name": "Demo"
-                        }
-                    },
-                    {
-                        "@type": "ListItem",
-                        "position": 3,
-                        "name": "Quickstart",
-                        "item": {
-                            "@id": "https://abelvm.github.io/omt-router/#quickstart",
-                            "name": "Quickstart"
-                        }
-                    },
-                    {
-                        "@type": "ListItem",
-                        "position": 4,
-                        "name": "API",
-                        "item": {
-                            "@id": "https://abelvm.github.io/omt-router/#api",
-                            "name": "API"
-                        }
-                    },
-                    {
-                        "@type": "ListItem",
-                        "position": 5,
-                        "name": "FAQ",
-                        "item": {
-                            "@id": "https://abelvm.github.io/omt-router/#faq",
-                            "name": "FAQ"
-                        }
-                    }
-                ]
+          },
+          {
+            "@type": "Question",
+            "name": "What's an 'optimal' route?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "It's the fastest route, but weighting by road hierarchy. It's logical to prefer highways for long trips and local roads for short ones, even if the latter are faster in absolute terms. This is a common approach in routing engines to provide more intuitive and practical routes."
             }
-        </script>
+          },
+          {
+            "@type": "Question",
+            "name": "Why no_node / poor_snap errors?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "The endpoint is outside the snap radius or road data is missing. Choose a closer endpoint or check the map data."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "When does engine fallback happen?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "When the selected engine cannot return a safe route; deterministic fallback selects an alternative engine to ensure correctness."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Results are weird in certain areas",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Results quality depends on OpenStreetMap data accuracy; contribute fixes to OSM or choose higher-quality local tiles."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Routing is way slower than advertised",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Data preparation (fetching/parsing tiles and building the graph) usually dominates; route calculation itself is millisecond-scale. Use local or cached tiles to reduce preparation time."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How can I contribute?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Improve OSM data, report issues, or open issues/PRs on the project repository."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the license?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "OMT Router is licensed under AGPL-3.0-only; modifications served over a network must be shared publicly."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why this license?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "AGPL ensures improvements are shared with the community and protects user freedoms for networked software."
+            }
+          }
+        ]
+      }
+    </script>
 
     <script type="application/ld+json">
-        {
-            "@context":"https://schema.org",
-            "@type":"WebPage",
-            "@id":"https://abelvm.github.io/omt-router/#webpage",
-            "url":"https://abelvm.github.io/omt-router/",
-            "name":"OMT Router",
-            "inLanguage":"en",
-            "mainEntity": {"@id":"https://abelvm.github.io/omt-router/#software"},
-            "publisher": {"@id":"https://abelvm.github.io/omt-router/#org"},
-            "speakable": {"@type":"SpeakableSpecification","cssSelector":[".hero-answer"]}
-        }
-        </script>
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": "https://abelvm.github.io/omt-router/#org",
+        "name": "OMT Router",
+        "url": "https://abelvm.github.io/omt-router/",
+        "logo": "https://abelvm.github.io/omt-router/landing/route.webp",
+        "sameAs": [
+          "https://github.com/AbelVM/omt-router",
+          "https://www.linkedin.com/in/abelvazquez/"
+        ]
+      }
+    </script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": {
+              "@id": "https://abelvm.github.io/omt-router/",
+              "name": "Home"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Demo",
+            "item": {
+              "@id": "https://abelvm.github.io/omt-router/#demo",
+              "name": "Demo"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Quickstart",
+            "item": {
+              "@id": "https://abelvm.github.io/omt-router/#quickstart",
+              "name": "Quickstart"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "API",
+            "item": {
+              "@id": "https://abelvm.github.io/omt-router/#api",
+              "name": "API"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 5,
+            "name": "FAQ",
+            "item": {
+              "@id": "https://abelvm.github.io/omt-router/#faq",
+              "name": "FAQ"
+            }
+          }
+        ]
+      }
+    </script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "@id": "https://abelvm.github.io/omt-router/#webpage",
+        "url": "https://abelvm.github.io/omt-router/",
+        "name": "OMT Router",
+        "inLanguage": "en",
+        "mainEntity": { "@id": "https://abelvm.github.io/omt-router/#software" },
+        "publisher": { "@id": "https://abelvm.github.io/omt-router/#org" },
+        "speakable": { "@type": "SpeakableSpecification", "cssSelector": [".hero-answer"] }
+      }
+    </script>
 
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-    <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js"
-        crossorigin />
+    <link
+      rel="preload"
+      as="script"
+      href="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js"
+      crossorigin
+    />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="preload" as="image" href="landing/route.webp" />
     <link
-        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-        rel="stylesheet" />
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="landing/style.css" />
-</head>
+  </head>
 
-<body>
+  <body>
     <!-- <a class="skip-link" href="#main-content">Skip to main content</a> -->
     <div class="page-shell">
-        <header class="site-header">
-            <div class="container">
-                <a class="brand" href="#top">
-                    <span class="brand-mark"><span class="brand-mark-glyph">╬</span></span>
-                    <span class="brand-name">OMT Router</span>
-                </a>
-                <button id="menu-toggle" class="menu-button" aria-label="Toggle navigation" aria-expanded="false"
-                    aria-controls="primary-nav">
-                    <span class="menu-bar"></span>
-                    <span class="menu-bar"></span>
-                    <span class="menu-bar"></span>
-                </button>
-                <nav id="primary-nav" class="primary-nav">
-                    <a href="#why">Why it matters</a>
-                    <a href="#demo">Live demo</a>
-                    <a href="#quickstart">Quick-start</a>
-                    <a href="#api">MapLibre Control</a>
-                    <a href="#faq">FAQ</a>
-                </nav>
-                <div class="nav-actions">
-                    <a href="example/" class="btn btn-secondary">Open Demo</a>
-                    <a href="https://github.com/AbelVM/omt-router" class="btn btn-secondary">Source code</a>
-                </div>
+      <header class="site-header">
+        <div class="container">
+          <a class="brand" href="#top">
+            <span class="brand-mark"><span class="brand-mark-glyph">╬</span></span>
+            <span class="brand-name">OMT Router</span>
+          </a>
+          <button
+            id="menu-toggle"
+            class="menu-button"
+            aria-label="Toggle navigation"
+            aria-expanded="false"
+            aria-controls="primary-nav"
+          >
+            <span class="menu-bar"></span>
+            <span class="menu-bar"></span>
+            <span class="menu-bar"></span>
+          </button>
+          <nav id="primary-nav" class="primary-nav">
+            <a href="#why">Why it matters</a>
+            <a href="#demo">Live demo</a>
+            <a href="#quickstart">Quick-start</a>
+            <a href="#api">MapLibre Control</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+          <div class="nav-actions">
+            <a href="example/" class="btn btn-secondary">Open Demo</a>
+            <a href="https://github.com/AbelVM/omt-router" class="btn btn-secondary">Source code</a>
+          </div>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section id="top" class="hero-section">
+          <div class="container hero-grid">
+            <div class="hero-copy">
+              <span class="eyebrow">Backend-less routing</span>
+              <h1>
+                <span class="brand-highlight">OMT Router</span> — Fast, accurate client-side routing
+                engine for OpenMapTiles
+              </h1>
+              <p class="hero-answer">
+                Client-side JavaScript library for routing and isolines from OpenMapTiles—no routing
+                server required.
+              </p>
+              <p>⠀</p>
+
+              <div class="hero-actions">
+                <a href="example/" class="btn btn-primary">Try Live Demo</a>
+                <a href="https://www.npmjs.com/package/omt-router" class="btn btn-secondary"
+                  >Install via npm</a
+                >
+              </div>
+              <div class="hero-badges">
+                <div><strong>Millisecond-scale</strong> client-side route computation</div>
+                <div><strong>Backend-less</strong>, pure client-side solution</div>
+                <div><strong>Privacy-first</strong>, no data sent to servers</div>
+              </div>
             </div>
-        </header>
 
-        <main id="main-content">
-            <section id="top" class="hero-section">
-                <div class="container hero-grid">
-                    <div class="hero-copy">
-                        <span class="eyebrow">Backend-less routing</span>
-                        <h1><span class="brand-highlight">OMT Router</span> — Fast, accurate client-side routing engine
-                            for OpenMapTiles</h1>
-                        <p class="hero-answer">Client-side JavaScript library for routing and isolines from
-                            OpenMapTiles—no routing server required.</p>
-                        <p>⠀</p>
-
-                        <div class="hero-actions">
-                            <a href="example/" class="btn btn-primary">Try Live Demo</a>
-                            <a href="https://www.npmjs.com/package/omt-router" class="btn btn-secondary">Install via
-                                npm</a>
-                        </div>
-                        <div class="hero-badges">
-                            <div><strong>Millisecond-scale</strong> client-side route computation</div>
-                            <div><strong>Backend-less</strong>, pure client-side solution</div>
-                            <div><strong>Privacy-first</strong>, no data sent to servers</div>
-                        </div>
-                    </div>
-
-                    <div class="hero-visual" aria-hidden="true">
-                        <div class="map-card">
-                            <div class="chip"><span class="chip-dot"></span>UltraDijkstra</div>
-                            <div class="map-preview-1"></div>
-                            <div class="map-footer">
-                                <div>
-                                    <p class="map-label">Route profile</p>
-                                    <p class="map-value">Car · Fastest · 16.4 km · 19 min</p>
-                                </div>
-                                <div class="map-tags">
-                                    <span>Accuracy</span>
-                                    <span>Low latency</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            <div class="hero-visual" aria-hidden="true">
+              <div class="map-card">
+                <div class="chip"><span class="chip-dot"></span>UltraDijkstra</div>
+                <div class="map-preview-1"></div>
+                <div class="map-footer">
+                  <div>
+                    <p class="map-label">Route profile</p>
+                    <p class="map-value">Car · Fastest · 16.4 km · 19 min</p>
+                  </div>
+                  <div class="map-tags">
+                    <span>Accuracy</span>
+                    <span>Low latency</span>
+                  </div>
                 </div>
-                <div id="scroll-hint" class="scroll-hint" aria-hidden="true">
-                    <i data-lucide="chevron-down" class="scroll-hint-icon"></i>
-                    <span class="visually-hidden">More content below</span>
+              </div>
+            </div>
+          </div>
+          <div id="scroll-hint" class="scroll-hint" aria-hidden="true">
+            <i data-lucide="chevron-down" class="scroll-hint-icon"></i>
+            <span class="visually-hidden">More content below</span>
+          </div>
+        </section>
+
+        <section id="why" class="section-panel">
+          <div class="container">
+            <div class="section-head">
+              <div class="icon-badge"><i data-lucide="layout-dashboard"></i></div>
+              <div>
+                <h2>Fewer servers. Faster interactions. More control.</h2>
+                <p>
+                  Reduce hosting and API costs with fully client-side routing, while keeping
+                  reliability, deterministic accuracy and fast developer iteration.
+                </p>
+              </div>
+            </div>
+            <div class="feature-grid">
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="cloud-off"></i></div>
+                <h3>Lower cost</h3>
+                <p>
+                  Run routing without dedicated servers or 3rd-party APIs and keep your deployment
+                  footprint minimal.
+                </p>
+              </article>
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="zap"></i></div>
+                <h3>Instant UX</h3>
+                <p>
+                  Lightning-fast interactions with minimal latency. Fluid animations and responsive
+                  controls.
+                </p>
+              </article>
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="battery-full"></i></div>
+                <h3>Batteries included</h3>
+                <p>
+                  Everything you need to get started, from routing to isolines, all in one package.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="demo" class="section-split">
+          <div class="container split-grid">
+            <div class="panel-content">
+              <span class="eyebrow">Live Demo</span>
+              <h2>Try routing and isolines on real tiles with the included MapLibre control.</h2>
+              <p>
+                Interactive routing and catchment area analysis in a browser-friendly fully-featured
+                demo.
+              </p>
+              <ul class="checklist">
+                <li>Optimal route? Catchment area? Inbound or outbound catchment area?</li>
+                <li>Walking or driving?</li>
+                <li>Optimize distance or time?</li>
+              </ul>
+              <a href="example/" class="btn btn-primary">Open Demo</a>
+            </div>
+
+            <div class="hero-visual" aria-hidden="true">
+              <div class="map-card">
+                <div class="chip"><span class="chip-dot"></span>isoPHAST</div>
+                <div class="map-preview-2"></div>
+                <div class="map-footer">
+                  <div>
+                    <p class="map-label">Isoline profile</p>
+                    <p class="map-value">Walking · Travel Time · 15 min</p>
+                  </div>
+                  <div class="map-tags">
+                    <span>Detailed</span>
+                    <span>Visually appealing</span>
+                  </div>
                 </div>
-            </section>
+              </div>
+            </div>
+          </div>
+        </section>
 
-            <section id="why" class="section-panel">
-                <div class="container">
-                    <div class="section-head">
-                        <div class="icon-badge"><i data-lucide="layout-dashboard"></i></div>
-                        <div>
-                            <h2>Fewer servers. Faster interactions. More control.</h2>
-                            <p>Reduce hosting and API costs with fully client-side routing, while keeping reliability,
-                                deterministic accuracy and fast developer iteration.</p>
-                        </div>
-                    </div>
-                    <div class="feature-grid">
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="cloud-off"></i></div>
-                            <h3>Lower cost</h3>
-                            <p>Run routing without dedicated servers or 3rd-party APIs and keep your deployment
-                                footprint
-                                minimal.</p>
-                        </article>
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="zap"></i></div>
-                            <h3>Instant UX</h3>
-                            <p>Lightning-fast interactions with minimal latency. Fluid animations and responsive
-                                controls.</p>
-                        </article>
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="battery-full"></i></div>
-                            <h3>Batteries included</h3>
-                            <p>Everything you need to get started, from routing to isolines, all in one package.</p>
-                        </article>
-                    </div>
-                </div>
-            </section>
+        <section id="quickstart" class="section-panel section-muted">
+          <div class="container">
+            <div class="section-head">
+              <div class="icon-badge"><i data-lucide="code"></i></div>
+              <div>
+                <h2>Get it running in three lines.</h2>
+                <p>
+                  Embed the router with a single import, a tile URL, and a route call. Or just add
+                  it as a MapLibre control.
+                </p>
+              </div>
+            </div>
 
-            <section id="demo" class="section-split">
-                <div class="container split-grid">
-                    <div class="panel-content">
-                        <span class="eyebrow">Live Demo</span>
-                        <h2>Try routing and isolines on real tiles with the included MapLibre control.</h2>
-                        <p>Interactive routing and catchment area analysis in a browser-friendly
-                            fully-featured demo.</p>
-                        <ul class="checklist">
-                            <li>Optimal route? Catchment area? Inbound or outbound catchment area?</li>
-                            <li>Walking or driving?</li>
-                            <li>Optimize distance or time?</li>
-                        </ul>
-                        <a href="example/" class="btn btn-primary">Open Demo</a>
-                    </div>
-
-                    <div class="hero-visual" aria-hidden="true">
-                        <div class="map-card">
-                            <div class="chip"><span class="chip-dot"></span>isoPHAST</div>
-                            <div class="map-preview-2"></div>
-                            <div class="map-footer">
-                                <div>
-                                    <p class="map-label">Isoline profile</p>
-                                    <p class="map-value">Walking · Travel Time · 15 min</p>
-                                </div>
-                                <div class="map-tags">
-                                    <span>Detailed</span>
-                                    <span>Visually appealing</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            </section>
-
-            <section id="quickstart" class="section-panel section-muted">
-                <div class="container">
-                    <div class="section-head">
-                        <div class="icon-badge"><i data-lucide="code"></i></div>
-                        <div>
-                            <h2>Get it running in three lines.</h2>
-                            <p>Embed the router with a single import, a tile URL, and a route call. Or just add it as a
-                                MapLibre control.</p>
-                        </div>
-                    </div>
-
-                    <div class="code-block">
-                        <div class="code-title">In your code</div>
-                        <pre><code><span class="token keyword">import</span> <span class="token punctuation">{</span> route <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">'omt-router'</span>;<br>
+            <div class="code-block">
+              <div class="code-title">In your code</div>
+              <pre><code><span class="token keyword">import</span> <span class="token punctuation">{</span> route <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">'omt-router'</span>;<br>
 <span class="token keyword">const</span> url = <span class="token string">'https://api.maptiler.com/tiles/v3-openmaptiles/{z}/{x}/{y}.pbf?key=YOUR_KEY'</span>;<br>
 <span class="token keyword">const</span> r = <span class="token keyword">await</span> route(<span class="token punctuation">[-3.7038, 40.4168]</span>, <span class="token punctuation">[-3.6937, 40.4101]</span>, <span class="token string">'car'</span>, url, <span class="token punctuation">{</span> costField: <span class="token string">'travelTime'</span> <span class="token punctuation">}</span>);<br>
 <span class="token function">console.log</span>(r.found, r.cost);</code></pre>
-                    </div>
-
-                    <div class="code-block">
-                        <div class="code-title">In your MapLibre GL JS map</div>
-                        <pre><code><span class="token keyword">import</span> <span class="token punctuation">{</span> MapLibreRoutingControl <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">'omt-router'</span>;<br>
-<span class="token keyword">map</span>.addControl(<span class="token keyword">new</span> MapLibreRoutingControl(<span class="token punctuation">{</span> routeFunction: route, tileJsonUrl: <span class="token string">'https://tiles.openfreemap.org/planet'</span> <span class="token punctuation">}</span>));</code></pre>
-                    </div>
-                </div>
-            </section>
-
-            <section class="section-panel section-alt">
-                <div class="container">
-                    <div class="section-head">
-                        <div class="icon-badge"><i data-lucide="gauge"></i></div>
-                        <div>
-                            <h2>Fast by default — smart when it matters.</h2>
-                            <p>Always use the fastest safe engine for each query while preserving
-                                deterministic fallback.</p>
-                        </div>
-                    </div>
-                    <div class="metric-grid">
-                        <article class="metric-card">
-                            <p class="metric-label">Average route latency</p>
-                            <p class="metric-value">7 ms</p>
-                        </article>
-                        <article class="metric-card">
-                            <p class="metric-label">Engine choices</p>
-                            <p class="metric-value">4</p>
-                        </article>
-                        <article class="metric-card">
-                            <p class="metric-label">Deterministic</p>
-                            <p class="metric-value">100%</p>
-                        </article>
-                    </div>
-                    <div class="feature-grid">
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="cpu"></i></div>
-                            <h3>Bleeding edge algorithms</h3>
-                            <ul>
-                                <li>Bidirectional A* with geographic heuristic</li>
-                                <li>Adaptive Barrier SSSP</li>
-                                <li>Delta-Stepping SSSP</li>
-                                <li>Ultra Dijkstra</li>
-                                <li>IsoPHAST (isolines only)</li>
-                            </ul>
-                        </article>
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="bot"></i></div>
-                            <h3>AI-driven algorithm selector</h3>
-                            <p>Light inference engine picks the best algorithm per query without compromising the
-                                overall performance.</p>
-                            <p>Analyzes graph metrics and endpoints surrounding properties to
-                                ensure optimal selection every time.</p>
-                        </article>
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="layers"></i></div>
-                            <h3>From tiles to graph</h3>
-                            <p>Highly optimized tile parsing and graph construction for fast and reliable routing.</p>
-                            <p>Fast and robust graph building ensures minimal latency and high accuracy.</p>
-                        </article>
-                        <article class="feature-card">
-                            <div class="feature-icon"><i data-lucide="globe"></i></div>
-                            <h3>GeoJSON-ready</h3>
-                            <p>Export routes and isolines as GeoJSON for mapping, analysis, or publishable outputs.</p>
-                        </article>
-                    </div>
-                </div>
-            </section>
-
-            <section id="api" class="section-panel">
-                <div class="container split-grid">
-                    <div>
-                        <span class="eyebrow">MapLibre Integration</span>
-                        <h2>Drop-in MapLibre control — integrate in minutes.</h2>
-                        <p>Add client-side routing to your MapLibre GL JS map with the included MapLibreRoutingControl.
-                            It’s a
-                            plug-and-play solution for interactive maps, prototypes, and geospatial tools.</p>
-                        <p>Just import the control, add it to your map with a tile source, and you’re ready to route.
-                        </p>
-                        <h3>Multilingual and themeable.</h3>
-                        <p>Built with accessibility and customization in mind, the control supports
-                            internationalization, light/dark modes,
-                            and theming to fit your app’s style.</p>
-                        <p>Out-of-the-box languages include English, Spanish, Catalan, Euskera, Galician, French,
-                            German, Russian, Japanese, and Chinese.</p>
-                    </div>
-                    <div class="control-visual" aria-hidden="true">
-                        <div class="control-card">
-                            <div class="control-preview"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="section-split section-alt">
-                <div class="container split-grid">
-                    <div class="panel-content">
-                        <span class="eyebrow">Spatial Accuracy</span>
-                        <h2>Robust graph building and snapping.</h2>
-                        <p>Fine-tuned clipping algorithm and node deduplication prevent seam artifacts at tile
-                            boundaries. Spatial-index-based snapping keeps endpoints stable within configurable
-                            thresholds.</p>
-                        <a href="https://github.com/AbelVM/omt-router/blob/main/README.md" target="_blank"
-                            rel="noopener noreferrer" class="btn btn-secondary">Read Technical Notes</a>
-                    </div>
-                    <div class="panel-visual accuracy-card">
-                        <div class="accuracy-icon"><i data-lucide="text-search"></i></div>
-                        <p class="accuracy-copy">Using well-known OpenMapTiles data schema, its <i>transportation</i>
-                            layer provides all the necessary information for accurate routing and snapping.</p>
-                    </div>
-                </div>
-            </section>
-
-            <section class="section-panel section-muted">
-                <div class="container feature-grid">
-                    <article class="feature-card">
-                        <div class="feature-icon"><i data-lucide="radar"></i></div>
-                        <h3>Isolines</h3>
-                        <p>Usually provided by expensive third-party APIs, isolines are fully integrated and return
-                            inner "pretty-breaks" isolines for context.</p>
-                    </article>
-                    <article class="feature-card">
-                        <div class="feature-icon"><i data-lucide="wrench"></i></div>
-                        <h3>Friendly API</h3>
-                        <p>Inspect engine choice, fallback conditions, snap distances, and missing tile signals for
-                            every route.</p>
-                    </article>
-                    <article class="feature-card">
-                        <div class="feature-icon"><i data-lucide="rabbit"></i></div>
-                        <h3>Fastest core</h3>
-                        <p>Powered by <b><a href="https://abelvm.github.io/performance-helpers" target="_blank"
-                                    rel="noopener noreferrer">performance-helpers</a></b></p>
-                    </article>
-                </div>
-            </section>
-
-            <section class="section-panel">
-                <div class="container">
-                    <div class="section-head">
-                        <div class="icon-badge"><i data-lucide="users"></i></div>
-                        <div>
-                            <h2>Built for developers, product teams, and enthusiasts.</h2>
-                            <p>Use OMT Router for offline routing prototypes, delivery catchments, reproducible
-                                isolines, and low-cost geospatial UX.</p>
-                        </div>
-                    </div>
-                    <div class="usecase-grid">
-                        <article class="usecase-card"><span class="usecase-icon"><i
-                                    data-lucide="git-pull-request"></i></span>
-                            <p><b>Developers:</b> offline routing and custom penalty support.</p>
-                        </article>
-                        <article class="usecase-card"><span class="usecase-icon"><i data-lucide="briefcase"></i></span>
-                            <p><b>Product:</b> fast prototypes and cost-conscious delivery UX.</p>
-                        </article>
-                        <article class="usecase-card"><span class="usecase-icon"><i data-lucide="map"></i></span>
-                            <p><b>Enthusiasts:</b> easily add advanced functionality to your hobby projects.</p>
-                        </article>
-                    </div>
-                </div>
-            </section>
-
-            <section id="faq" class="section-panel section-muted">
-                <div class="container">
-                    <div class="section-head">
-                        <div class="icon-badge"><i data-lucide="help-circle"></i></div>
-                        <div>
-                            <h2>FAQ</h2>
-                            <p>Short answers for common questions.</p>
-                        </div>
-                    </div>
-                    <div class="faq-list">
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-1">
-                            <span>Which tiles work?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-1" class="faq-panel">Any <a href="https://www.openmaptiles.org/"
-                                target="_blank" rel="noopener noreferrer">OpenMapTiles</a>-compatible vector tile
-                            source. CORS or proxying might
-                            be required for browser fetches. You can use third-party servers like <a
-                                href="https://openfreemap.org/" target="_blank"
-                                rel="noopener noreferrer">OpenFreeMap</a> or <a href="https://www.maptiler.com/"
-                                target="_blank" rel="noopener noreferrer">Maptiler</a> or host your own tiles.
-                        </div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-1">
-                            <span>What's an "optimal" route?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-1" class="faq-panel">
-                            It's the fastest route, but weighting by road hierarchy. It's logical to prefer highways
-                            for long trips and local roads for short ones, even if the latter are faster in absolute
-                            terms. This is a common approach in routing engines to provide more intuitive and practical
-                            routes.
-                        </div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-2">
-                            <span>Why <i>no_node</i> / <i>poor_snap</i> errors?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-2" class="faq-panel">It means the endpoint is outside the maximum snap radius
-                            or road data is missing at the target location. Choose a different endpoint closer to a road
-                            or check the map data.</div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-3">
-                            <span>When does engine fallback happen?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-3" class="faq-panel">Fallback occurs when the selected engine cannot return a
-                            safe route; deterministic fallback ensures correctness.</div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-4">
-                            <span>Results are weird in certain areas</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-4" class="faq-panel">Results quality relies on the accuracy and completeness
-                            of the underlying OpenStreetMap data. If you feel it lacks detail in certain areas,
-                            contributions to OSM are welcome.</div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-5">
-                            <span>Routing is way slower than advertised</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-5" class="faq-panel">There are two steps involved in routing: data
-                            preparation and route calculation. Route calculation takes a few milliseconds, but data
-                            preparation depends on beeline distance between points and the complexity of the network. To
-                            build the graph needed for calculations, the system must fetch the needed tiles and that's
-                            the most time-consuming part. So, if you requests the route for points far apart or in areas
-                            with dense networks, it may take longer.</div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-6">
-                            <span>How can I contribute?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-6" class="faq-panel">You can contribute by improving the underlying
-                            OpenStreetMap data, reporting issues, or suggesting enhancements to the <a
-                                href="https://github.com/AbelVM/omt-router" target="_blank"
-                                rel="noopener noreferrer">OMT Router project</a>.
-                        </div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-7">
-                            <span>What is the license?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-7" class="faq-panel">OMT Router is <a
-                                href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank"
-                                rel="noopener noreferrer">AGPL-3.0-only</a>. The
-                            <b>GNU Affero General Public License version 3 (AGPLv3)</b> lets you use, modify, and share
-                            this library for free. However, if you modify the code and run it over a network (like a
-                            cloud service or website), you must share your modified source code publicly. If you want to
-                            use this library in a closed-source or proprietary product without these open-source
-                            obligations, please contact <a href="https://www.linkedin.com/in/abelvazquez/"
-                                target="_blank" rel="noopener noreferrer">me</a> for a commercial license.
-                        </div>
-
-                        <button class="faq-item" type="button" aria-expanded="false" aria-controls="faq-panel-8">
-                            <span>Why this license?</span>
-                            <span class="faq-toggle">+</span>
-                        </button>
-                        <div id="faq-panel-8" class="faq-panel">The AGPL-3.0-only license ensures that improvements to
-                            the software are shared with the community, promoting transparency and collaboration. It
-                            also protects users' freedoms by requiring that modifications made available over a network
-                            are shared publicly.</div>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <footer class="site-footer">
-            <div class="container footer-grid">
-                <div>
-                    <p class="footer-brand">OMT Router</p>
-                    <p class="footer-copy">Client-side routing for OpenMapTiles with engine selection, isolines, and map
-                        integration.</p>
-                    <p class="footer-copy">Made with <span class="as-hot">❤︎
-                        </span> by <a href="https://www.linkedin.com/in/abelvazquez/" target="_blank"
-                            rel="noopener noreferrer">Abel Vázquez
-                            Montoro</a></p>
-                </div>
-                <div class="footer-links">
-                    <a href="#demo">Demo</a>
-                    <a href="#api">MapLibre control</a>
-                    <a href="https://github.com/AbelVM/omt-router" target="_blank" rel="noopener noreferrer">Source
-                        code</a>
-                    <a href="#faq">FAQ</a>
-                </div>
             </div>
-        </footer>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-    <script src="landing/script.js"></script>
-</body>
 
+            <div class="code-block">
+              <div class="code-title">In your MapLibre GL JS map</div>
+              <pre><code><span class="token keyword">import</span> <span class="token punctuation">{</span> MapLibreRoutingControl <span class="token punctuation">}</span> <span class="token keyword">from</span> <span class="token string">'omt-router'</span>;<br>
+<span class="token keyword">map</span>.addControl(<span class="token keyword">new</span> MapLibreRoutingControl(<span class="token punctuation">{</span> routeFunction: route, tileJsonUrl: <span class="token string">'https://tiles.openfreemap.org/planet'</span> <span class="token punctuation">}</span>));</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-panel section-alt">
+          <div class="container">
+            <div class="section-head">
+              <div class="icon-badge"><i data-lucide="gauge"></i></div>
+              <div>
+                <h2>Fast by default — smart when it matters.</h2>
+                <p>
+                  Always use the fastest safe engine for each query while preserving deterministic
+                  fallback.
+                </p>
+              </div>
+            </div>
+            <div class="metric-grid">
+              <article class="metric-card">
+                <p class="metric-label">Average route latency</p>
+                <p class="metric-value">7 ms</p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-label">Engine choices</p>
+                <p class="metric-value">4</p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-label">Deterministic</p>
+                <p class="metric-value">100%</p>
+              </article>
+            </div>
+            <div class="feature-grid">
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="cpu"></i></div>
+                <h3>Bleeding edge algorithms</h3>
+                <ul>
+                  <li>Bidirectional A* with geographic heuristic</li>
+                  <li>Adaptive Barrier SSSP</li>
+                  <li>Delta-Stepping SSSP</li>
+                  <li>Ultra Dijkstra</li>
+                  <li>IsoPHAST (isolines only)</li>
+                </ul>
+              </article>
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="bot"></i></div>
+                <h3>AI-driven algorithm selector</h3>
+                <p>
+                  Light inference engine picks the best algorithm per query without compromising the
+                  overall performance.
+                </p>
+                <p>
+                  Analyzes graph metrics and endpoints surrounding properties to ensure optimal
+                  selection every time.
+                </p>
+              </article>
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="layers"></i></div>
+                <h3>From tiles to graph</h3>
+                <p>
+                  Highly optimized tile parsing and graph construction for fast and reliable
+                  routing.
+                </p>
+                <p>Fast and robust graph building ensures minimal latency and high accuracy.</p>
+              </article>
+              <article class="feature-card">
+                <div class="feature-icon"><i data-lucide="globe"></i></div>
+                <h3>GeoJSON-ready</h3>
+                <p>
+                  Export routes and isolines as GeoJSON for mapping, analysis, or publishable
+                  outputs.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="api" class="section-panel">
+          <div class="container split-grid">
+            <div>
+              <span class="eyebrow">MapLibre Integration</span>
+              <h2>Drop-in MapLibre control — integrate in minutes.</h2>
+              <p>
+                Add client-side routing to your MapLibre GL JS map with the included
+                MapLibreRoutingControl. It’s a plug-and-play solution for interactive maps,
+                prototypes, and geospatial tools.
+              </p>
+              <p>
+                Just import the control, add it to your map with a tile source, and you’re ready to
+                route.
+              </p>
+              <h3>Multilingual and themeable.</h3>
+              <p>
+                Built with accessibility and customization in mind, the control supports
+                internationalization, light/dark modes, and theming to fit your app’s style.
+              </p>
+              <p>
+                Out-of-the-box languages include English, Spanish, Catalan, Euskera, Galician,
+                French, German, Russian, Japanese, and Chinese.
+              </p>
+            </div>
+            <div class="control-visual" aria-hidden="true">
+              <div class="control-card">
+                <div class="control-preview"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-split section-alt">
+          <div class="container split-grid">
+            <div class="panel-content">
+              <span class="eyebrow">Spatial Accuracy</span>
+              <h2>Robust graph building and snapping.</h2>
+              <p>
+                Fine-tuned clipping algorithm and node deduplication prevent seam artifacts at tile
+                boundaries. Spatial-index-based snapping keeps endpoints stable within configurable
+                thresholds.
+              </p>
+              <a
+                href="https://github.com/AbelVM/omt-router/blob/main/README.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary"
+                >Read Technical Notes</a
+              >
+            </div>
+            <div class="panel-visual accuracy-card">
+              <div class="accuracy-icon"><i data-lucide="text-search"></i></div>
+              <p class="accuracy-copy">
+                Using well-known OpenMapTiles data schema, its <i>transportation</i> layer provides
+                all the necessary information for accurate routing and snapping.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-panel section-muted">
+          <div class="container feature-grid">
+            <article class="feature-card">
+              <div class="feature-icon"><i data-lucide="radar"></i></div>
+              <h3>Isolines</h3>
+              <p>
+                Usually provided by expensive third-party APIs, isolines are fully integrated and
+                return inner "pretty-breaks" isolines for context.
+              </p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon"><i data-lucide="wrench"></i></div>
+              <h3>Friendly API</h3>
+              <p>
+                Inspect engine choice, fallback conditions, snap distances, and missing tile signals
+                for every route.
+              </p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon"><i data-lucide="rabbit"></i></div>
+              <h3>Fastest core</h3>
+              <p>
+                Powered by
+                <b
+                  ><a
+                    href="https://abelvm.github.io/performance-helpers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >performance-helpers</a
+                  ></b
+                >
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section-panel">
+          <div class="container">
+            <div class="section-head">
+              <div class="icon-badge"><i data-lucide="users"></i></div>
+              <div>
+                <h2>Built for developers, product teams, and enthusiasts.</h2>
+                <p>
+                  Use OMT Router for offline routing prototypes, delivery catchments, reproducible
+                  isolines, and low-cost geospatial UX.
+                </p>
+              </div>
+            </div>
+            <div class="usecase-grid">
+              <article class="usecase-card">
+                <span class="usecase-icon"><i data-lucide="git-pull-request"></i></span>
+                <p><b>Developers:</b> offline routing and custom penalty support.</p>
+              </article>
+              <article class="usecase-card">
+                <span class="usecase-icon"><i data-lucide="briefcase"></i></span>
+                <p><b>Product:</b> fast prototypes and cost-conscious delivery UX.</p>
+              </article>
+              <article class="usecase-card">
+                <span class="usecase-icon"><i data-lucide="map"></i></span>
+                <p><b>Enthusiasts:</b> easily add advanced functionality to your hobby projects.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="faq" class="section-panel section-muted">
+          <div class="container">
+            <div class="section-head">
+              <div class="icon-badge"><i data-lucide="help-circle"></i></div>
+              <div>
+                <h2>FAQ</h2>
+                <p>Short answers for common questions.</p>
+              </div>
+            </div>
+            <div class="faq-list">
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-1"
+              >
+                <span>Which tiles work?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-1" class="faq-panel">
+                Any
+                <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer"
+                  >OpenMapTiles</a
+                >-compatible vector tile source. CORS or proxying might be required for browser
+                fetches. You can use third-party servers like
+                <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer"
+                  >OpenFreeMap</a
+                >
+                or
+                <a href="https://www.maptiler.com/" target="_blank" rel="noopener noreferrer"
+                  >Maptiler</a
+                >
+                or host your own tiles.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-1"
+              >
+                <span>What's an "optimal" route?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-1" class="faq-panel">
+                It's the fastest route, but weighting by road hierarchy. It's logical to prefer
+                highways for long trips and local roads for short ones, even if the latter are
+                faster in absolute terms. This is a common approach in routing engines to provide
+                more intuitive and practical routes.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-2"
+              >
+                <span>Why <i>no_node</i> / <i>poor_snap</i> errors?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-2" class="faq-panel">
+                It means the endpoint is outside the maximum snap radius or road data is missing at
+                the target location. Choose a different endpoint closer to a road or check the map
+                data.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-3"
+              >
+                <span>When does engine fallback happen?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-3" class="faq-panel">
+                Fallback occurs when the selected engine cannot return a safe route; deterministic
+                fallback ensures correctness.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-4"
+              >
+                <span>Results are weird in certain areas</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-4" class="faq-panel">
+                Results quality relies on the accuracy and completeness of the underlying
+                OpenStreetMap data. If you feel it lacks detail in certain areas, contributions to
+                OSM are welcome.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-5"
+              >
+                <span>Routing is way slower than advertised</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-5" class="faq-panel">
+                There are two steps involved in routing: data preparation and route calculation.
+                Route calculation takes a few milliseconds, but data preparation depends on beeline
+                distance between points and the complexity of the network. To build the graph needed
+                for calculations, the system must fetch the needed tiles and that's the most
+                time-consuming part. So, if you requests the route for points far apart or in areas
+                with dense networks, it may take longer.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-6"
+              >
+                <span>How can I contribute?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-6" class="faq-panel">
+                You can contribute by improving the underlying OpenStreetMap data, reporting issues,
+                or suggesting enhancements to the
+                <a
+                  href="https://github.com/AbelVM/omt-router"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >OMT Router project</a
+                >.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-7"
+              >
+                <span>What is the license?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-7" class="faq-panel">
+                OMT Router is
+                <a
+                  href="https://www.gnu.org/licenses/agpl-3.0.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >AGPL-3.0-only</a
+                >. The <b>GNU Affero General Public License version 3 (AGPLv3)</b> lets you use,
+                modify, and share this library for free. However, if you modify the code and run it
+                over a network (like a cloud service or website), you must share your modified
+                source code publicly. If you want to use this library in a closed-source or
+                proprietary product without these open-source obligations, please contact
+                <a
+                  href="https://www.linkedin.com/in/abelvazquez/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >me</a
+                >
+                for a commercial license.
+              </div>
+
+              <button
+                class="faq-item"
+                type="button"
+                aria-expanded="false"
+                aria-controls="faq-panel-8"
+              >
+                <span>Why this license?</span>
+                <span class="faq-toggle">+</span>
+              </button>
+              <div id="faq-panel-8" class="faq-panel">
+                The AGPL-3.0-only license ensures that improvements to the software are shared with
+                the community, promoting transparency and collaboration. It also protects users'
+                freedoms by requiring that modifications made available over a network are shared
+                publicly.
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="container footer-grid">
+          <div>
+            <p class="footer-brand">OMT Router</p>
+            <p class="footer-copy">
+              Client-side routing for OpenMapTiles with engine selection, isolines, and map
+              integration.
+            </p>
+            <p class="footer-copy">
+              Made with <span class="as-hot">❤︎ </span> by
+              <a
+                href="https://www.linkedin.com/in/abelvazquez/"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Abel Vázquez Montoro</a
+              >
+            </p>
+          </div>
+          <div class="footer-links">
+            <a href="#demo">Demo</a>
+            <a href="#api">MapLibre control</a>
+            <a href="https://github.com/AbelVM/omt-router" target="_blank" rel="noopener noreferrer"
+              >Source code</a
+            >
+            <a href="#faq">FAQ</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+    <script
+      src="https://cdn.jsdelivr.net/npm/lucide@1.16.0/dist/umd/lucide.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script src="landing/script.js"></script>
+  </body>
 </html>

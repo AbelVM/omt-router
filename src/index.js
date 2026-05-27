@@ -438,14 +438,17 @@ export async function routeBatch(requests, urlTemplate, options = {}) {
   const results = new Array(requests.length);
   let nextIndex = 0;
 
-  const workers = Array.from({ length: Math.min(maxConcurrentRoutes, requests.length) }, async () => {
-    while (nextIndex < requests.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const { start, end, mode, costField } = requests[index];
-      results[index] = await route(start, end, mode, urlTemplate, { ...options, costField });
+  const workers = Array.from(
+    { length: Math.min(maxConcurrentRoutes, requests.length) },
+    async () => {
+      while (nextIndex < requests.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const { start, end, mode, costField } = requests[index];
+        results[index] = await route(start, end, mode, urlTemplate, { ...options, costField });
+      }
     }
-  });
+  );
 
   await Promise.all(workers);
   return results;

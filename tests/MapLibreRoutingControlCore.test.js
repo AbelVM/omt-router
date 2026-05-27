@@ -294,12 +294,30 @@ describe('MapLibreRoutingControl core helpers', () => {
         {
           type: 'Feature',
           properties: { valueMax: 3 },
-          geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 1], [0, 0]]] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [0, 0],
+                [1, 1],
+                [0, 0],
+              ],
+            ],
+          },
         },
         {
           type: 'Feature',
           properties: { valueMax: 5 },
-          geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 1], [0, 0]]] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [0, 0],
+                [1, 1],
+                [0, 0],
+              ],
+            ],
+          },
         },
       ],
     });
@@ -343,23 +361,22 @@ describe('MapLibreRoutingControl core helpers', () => {
 
     await Core.tryIsoline(ctrl);
 
-    expect(ctrl._map.setLayoutProperty).toHaveBeenCalledWith(
-      'fill',
-      'fill-sort-key',
+    expect(ctrl._map.setLayoutProperty).toHaveBeenCalledWith('fill', 'fill-sort-key', [
+      'coalesce',
       [
-        'coalesce',
-        ['to-number', ['*', -1, [
-          'coalesce',
+        'to-number',
+        [
+          '*',
+          -1,
           [
             'coalesce',
-            ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], 3]],
+            ['coalesce', ['to-number', ['coalesce', ['get', 'valueMax'], ['get', 'break'], 3]], 3],
             3,
           ],
-          3,
-        ]]],
-        0,
-      ]
-    );
+        ],
+      ],
+      0,
+    ]);
   });
 
   it('builds Y when route function fallback is used for isoline graph creation', async () => {

@@ -19,37 +19,37 @@ body {
 }
 
 .github-link {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 2000;
-    width: 52px;
-    height: 52px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.93);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #111;
-    text-decoration: none;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2000;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111;
+  text-decoration: none;
 }
 
 .github-link:hover {
-    background: #ffffff;
+  background: #ffffff;
 }
 
 .github-link svg {
-    width: 28px;
-    height: 28px;
-    fill: currentColor;
+  width: 28px;
+  height: 28px;
+  fill: currentColor;
 }
 
 @media (max-width: 640px) {
-    .github-link {
-        position: fixed;
-        top: 12px;
-        right: 12px;
-        z-index: 3200;
-    }
+  .github-link {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 3200;
+  }
 }

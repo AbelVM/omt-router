@@ -188,16 +188,28 @@ describe('isoPHAST direction and pedestrian mode', () => {
     const graph = { nodes, edges, mode: 'car' };
     const prepared = buildCH(graph, 'distance');
 
-    const baseRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    const baseRes = isoPHAST(prepared, 0, 1.5, {
+      direction: 'from',
+      mode: 'car',
+      outputUnscaled: true,
+    });
     expect(baseRes.reachable).toContain(0);
 
     prepared.costField = 'travelTime';
     prepared.penaltyKey = 'none';
-    const travelRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    const travelRes = isoPHAST(prepared, 0, 1.5, {
+      direction: 'from',
+      mode: 'car',
+      outputUnscaled: true,
+    });
     expect(travelRes.reachable).toContain(0);
 
     prepared.penaltyKey = 'i1';
-    const penaltyRes = isoPHAST(prepared, 0, 1.5, { direction: 'from', mode: 'car', outputUnscaled: true });
+    const penaltyRes = isoPHAST(prepared, 0, 1.5, {
+      direction: 'from',
+      mode: 'car',
+      outputUnscaled: true,
+    });
     expect(penaltyRes.reachable).toContain(0);
   });
 
@@ -205,7 +217,15 @@ describe('isoPHAST direction and pedestrian mode', () => {
     expect(() => isoPHAST(null, 0, 1)).toThrow(/Invalid prepared graph/);
     expect(() =>
       isoPHAST(
-        { N: 1, adjPtr: new Int32Array([0, 0]), adjTo: new Int32Array([]), adjCost: new Int32Array([]), revAdjPtr: new Int32Array([0, 0]), revAdjFrom: new Int32Array([]), revAdjCost: new Int32Array([]) },
+        {
+          N: 1,
+          adjPtr: new Int32Array([0, 0]),
+          adjTo: new Int32Array([]),
+          adjCost: new Int32Array([]),
+          revAdjPtr: new Int32Array([0, 0]),
+          revAdjFrom: new Int32Array([]),
+          revAdjCost: new Int32Array([]),
+        },
         0,
         1,
         { direction: 'side' }
@@ -213,7 +233,15 @@ describe('isoPHAST direction and pedestrian mode', () => {
     ).toThrow(/Invalid direction/);
     expect(() =>
       isoPHAST(
-        { N: 2, adjPtr: new Int32Array([0, 0, 0]), adjTo: new Int32Array([]), adjCost: new Int32Array([]), revAdjPtr: new Int32Array([0, 0, 0]), revAdjFrom: new Int32Array([]), revAdjCost: new Int32Array([]) },
+        {
+          N: 2,
+          adjPtr: new Int32Array([0, 0, 0]),
+          adjTo: new Int32Array([]),
+          adjCost: new Int32Array([]),
+          revAdjPtr: new Int32Array([0, 0, 0]),
+          revAdjFrom: new Int32Array([]),
+          revAdjCost: new Int32Array([]),
+        },
         -1,
         1
       )
@@ -270,6 +298,8 @@ describe('isoPHAST direction and pedestrian mode', () => {
       revAdjCost: new Int32Array([]),
     };
 
-    expect(() => isoPHAST(prepared, 0, 5, { mode: 'pedestrian' })).toThrow(/invalid pedestrian edge/);
+    expect(() => isoPHAST(prepared, 0, 5, { mode: 'pedestrian' })).toThrow(
+      /invalid pedestrian edge/
+    );
   });
 });
