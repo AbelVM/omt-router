@@ -1,18 +1,18 @@
 {
   "name": "omt-router",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": false,
   "description": "Client-side routing library for OpenMapTiles vector tiles (pedestrian, car, bicycle).",
   "type": "module",
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
-      "import": "./dist/omt-router.es.js",
+      "import": "./dist/omt-router.js",
       "require": "./dist/omt-router.cjs"
     }
   },
   "main": "dist/omt-router.cjs",
-  "module": "dist/omt-router.es.js",
+  "module": "dist/omt-router.js",
   "types": "types/index.d.ts",
   "files": [
     "dist",
