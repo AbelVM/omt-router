@@ -47,7 +47,7 @@ export function buildPanelMarkup(ctrl) {
             <svg class="rp-point-icon rp-point-icon--origin" viewBox="0 0 10 10">
               <circle cx="5" cy="5" r="4.5"/>
             </svg>
-            <input id="rp-origin" type="text" placeholder="${ctrl._text.originPlaceholder}" autocomplete="off" spellcheck="false" />
+            <input id="rp-origin" type="text" placeholder="${ctrl._text.originPlaceholder}" autocomplete="off" spellcheck="false" data-mode="origin" />
           </div>
           <div class="rp-swap-wrap">
             <button type="button" class="rp-swap-btn" id="rp-swap-btn" title="${ctrl._text.reverseRoute}" aria-label="${ctrl._text.reverseRoute}"><span class="rp-btn-label"><span class="rp-label-measure">⇅</span><span class="rp-label-visible">⇅</span></span></button>
@@ -56,15 +56,22 @@ export function buildPanelMarkup(ctrl) {
             <svg class="rp-point-icon rp-point-icon--dest" viewBox="0 0 10 10">
               <circle cx="5" cy="5" r="4.5"/>
             </svg>
-            <input id="rp-dest" type="text" placeholder="${ctrl._text.destinationPlaceholder}" autocomplete="off" spellcheck="false" />
+            <input id="rp-dest" type="text" placeholder="${ctrl._text.destinationPlaceholder}" autocomplete="off" spellcheck="false" data-mode="destination" />
           </div>
         </div>
       </div>
 
-      <div class="rp-hint">
+      <div class="rp-hint" id="rp-hint">
         <span class="rp-hint-item"><span class="rp-hint-key">${ctrl._text.leftClick}</span> ${ctrl._text.setOrigin}</span>
         <span class="rp-hint-sep">·</span>
         <span class="rp-hint-item"><span class="rp-hint-key">${ctrl._text.rightClick}</span> ${ctrl._text.setDestination}</span>
+      </div>
+
+      <div class="rp-mobile-controls" id="rp-mobile-controls">
+        <button type="button" class="rp-mode-toggle-btn" id="rp-mode-toggle-btn" aria-pressed="false" title="${ctrl._text.togglePointMode || 'Toggle point mode'}">
+          <span class="rp-btn-label"><span class="rp-label-measure">→</span><span class="rp-label-visible">${ctrl._text.nextPoint || 'Next: Origin'}</span></span>
+        </button>
+        <div class="rp-mobile-help" id="rp-mobile-help">${ctrl._text.tap || 'Tap'} the map to ${ctrl._text.setOrigin || 'set origin'}</div>
       </div>
 
       <div class="rp-stats" id="rp-stats" hidden>

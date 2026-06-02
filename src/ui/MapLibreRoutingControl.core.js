@@ -294,6 +294,21 @@ export function buildGraphGeoJSON(graph) {
   return { type: 'FeatureCollection', features };
 }
 
+function shouldAutoCollapsePanel(ctrl) {
+  if (ctrl?._collapsed) return false;
+  if (typeof window === 'undefined') return false;
+
+  const mediaQuery =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia('(hover: none), (pointer: coarse)')
+      : null;
+
+  return Boolean(
+    mediaQuery?.matches ||
+      (typeof navigator !== 'undefined' && Number(navigator.maxTouchPoints) > 0)
+  );
+}
+
 /**
  * Compute an isoline from the current control state and update the map source.
  * @param {object} ctrl Control instance.
@@ -518,6 +533,9 @@ export async function tryIsoline(ctrl) {
     }
 
     ctrl._setStatus('', '');
+      if (shouldAutoCollapsePanel(ctrl)) {
+        ctrl._togglePanelCollapse?.();
+      }
   } catch {
     if (calcId !== ctrl._calcId) return;
     try {
@@ -616,13 +634,13 @@ export async function tryRoute(ctrl) {
       ctrl._destInput.value = lngLatToStr({ lng: snappedDest[0], lat: snappedDest[1] });
     }
 
-    if (coords.length > 1) {
-      ctrl._centerMapOnSource(ctrl._options.routeSourceId, {
-        padding: 100,
-        maxZoom: 16,
-        duration: 600,
-      });
-    }
+      if (coords.length > 1) {
+        ctrl._centerMapOnSource(ctrl._options.routeSourceId, {
+          padding: 100,
+          maxZoom: 16,
+          duration: 600,
+        });
+      }
 
     ctrl._showStats(result);
     if (result.partialGraph) {
@@ -630,6 +648,8 @@ export async function tryRoute(ctrl) {
     } else {
       ctrl._setStatus('');
     }
+
+    if (shouldAutoCollapsePanel(ctrl)) ctrl._togglePanelCollapse?.();
   } catch (err) {
     if (!ctrl._mounted || id !== ctrl._calcId) return;
     if (err?.code === 'engine_cancelled') {

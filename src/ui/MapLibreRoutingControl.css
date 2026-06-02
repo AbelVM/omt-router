@@ -757,6 +757,56 @@
   color: var(--rp-border-strong);
 }
 
+.rp-mobile-controls {
+  display: none;
+  padding: 8px;
+  gap: 8px;
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.rp-mode-toggle-btn {
+  flex: 1;
+  min-height: 36px;
+  padding: 8px 12px;
+  background: var(--rp-bg);
+  border: 1.2px solid var(--rp-border);
+  border-radius: 8px;
+  color: var(--rp-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.rp-mode-toggle-btn:hover {
+  background: var(--rp-primary-soft);
+  border-color: var(--rp-primary);
+  color: var(--rp-primary);
+}
+
+.rp-mode-toggle-btn.active {
+  background: var(--rp-primary);
+  color: white;
+  border-color: var(--rp-primary);
+}
+
+.rp-mode-toggle-btn:active {
+  transform: scale(0.98);
+}
+
+.rp-mobile-help {
+  display: block;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--rp-muted);
+}
+
 .rp-stats {
   display: flex;
   align-items: stretch;
@@ -930,6 +980,14 @@
   .rp-cost-btn,
   .rp-isoline-direction-btn {
     min-height: 40px;
+  }
+
+  .rp-mobile-controls {
+    display: flex !important;
+  }
+
+  .rp-hint {
+    display: none;
   }
 
   .rp-title,

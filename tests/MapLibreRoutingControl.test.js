@@ -93,6 +93,24 @@ function createDocumentStub(panelStub = null) {
   };
 }
 
+function setGlobalWritable(name, value) {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+  return descriptor;
+}
+
+function restoreGlobal(name, descriptor) {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+  } else {
+    delete globalThis[name];
+  }
+}
+
 function createPanelStub() {
   const modeBtnA = createElementStub({ id: 'mode-car' });
   const modeBtnB = createElementStub({ id: 'mode-bike' });
@@ -128,6 +146,15 @@ function createPanelStub() {
   const tabIsolineBtn = createElementStub({ id: 'rp-tab-isoline' });
   const isoPoint = createElementStub({ id: 'rp-isoline-point' });
   const isoThreshold = createElementStub({ id: 'rp-isoline-threshold' });
+  const hintEl = createElementStub({ id: 'rp-hint' });
+  const modeToggleLabel = createElementStub({ id: 'rp-mode-toggle-label' });
+  const mobileHelp = createElementStub({ id: 'rp-mobile-help' });
+  const modeToggleBtn = createElementStub({
+    id: 'rp-mode-toggle-btn',
+    selectorMap: {
+      '.rp-label-visible': modeToggleLabel,
+    },
+  });
   const pointIcon = createElementStub({ id: 'rp-point-icon' });
   pointIcon.classList = { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() };
 
@@ -158,9 +185,12 @@ function createPanelStub() {
       '#rp-swap-btn': swapBtn,
       '#rp-tab-routing': tabRoutingBtn,
       '#rp-tab-isoline': tabIsolineBtn,
+      '#rp-mode-toggle-btn': modeToggleBtn,
       '#rp-isoline-point': isoPoint,
       '#rp-isoline-threshold': isoThreshold,
       '#rp-isoline-panel .rp-point-icon': pointIcon,
+      '#rp-mobile-help': mobileHelp,
+      '.rp-hint': hintEl,
     },
     querySelectorAllMap: {
       '.rp-isoline-direction-btn': [isoDirBtnFrom, isoDirBtnTo],
@@ -184,6 +214,10 @@ function createPanelStub() {
     tabIsolineBtn,
     isoPoint,
     isoThreshold,
+    hintEl,
+    modeToggleBtn,
+    modeToggleLabel,
+    mobileHelp,
     pointIcon,
     isoDirBtnFrom,
     isoDirBtnTo,
@@ -468,6 +502,85 @@ describe('MapLibreRoutingControl', () => {
     expect(fakeMap.eventHandlers.has('contextmenu')).toBe(false);
   });
 
+  it('resets destination one-shot mode and syncs mode toggle on map click', () => {
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      getEngineWorkerStatus: () => ({ running: false }),
+      onEngineWorkerStatusChange: () => () => {},
+    });
+
+    const panelSet = createPanelStub();
+    global.document = createDocumentStub(panelSet.panel);
+    vi.spyOn(UI, 'syncModeAndCostUI').mockImplementation(() => {});
+    vi.spyOn(MapModule, 'setupRouteSource').mockImplementation(() => {});
+    control._buildPanelMarkup = vi.fn(() => '');
+
+    control.onAdd(fakeMap);
+
+    expect(panelSet.mobileHelp.textContent).toBe('Tap the map to set origin');
+    expect(panelSet.modeToggleLabel.textContent).toBe('set origin');
+
+    const clickHandler = fakeMap.eventHandlers.get('click');
+    const setDestSpy = vi.spyOn(control, 'setDestFromMap').mockImplementation(() => {});
+    const updateModeSpy = vi.spyOn(control, '_updateModeToggleButton');
+
+    control._activeTab = 'routing';
+    control._nextClickSetsDestination = true;
+    updateModeSpy.mockClear();
+
+    clickHandler({ lngLat: { lng: 1, lat: 2 } });
+
+    expect(control._nextClickSetsDestination).toBe(false);
+    expect(updateModeSpy).toHaveBeenCalledTimes(1);
+    expect(setDestSpy).toHaveBeenCalledWith({ lng: 1, lat: 2 });
+    expect(panelSet.mobileHelp.textContent).toBe('Tap the map to set origin');
+
+    control._nextClickSetsDestination = true;
+    control._updateModeToggleButton();
+    expect(panelSet.modeToggleLabel.textContent).toBe('set destination');
+    expect(panelSet.mobileHelp.textContent).toBe('Tap the map to set destination');
+  });
+
+  it('sets destination on long-press and suppresses following synthetic click', () => {
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      getEngineWorkerStatus: () => ({ running: false }),
+      onEngineWorkerStatusChange: () => () => {},
+    });
+
+    const canvasEl = createElementStub();
+    const mapWithCanvas = {
+      ...fakeMap,
+      getCanvas: () => canvasEl,
+      unproject: vi.fn(() => ({ lng: 7, lat: 8 })),
+    };
+
+    const panelSet = createPanelStub();
+    global.document = createDocumentStub(panelSet.panel);
+    vi.spyOn(UI, 'syncModeAndCostUI').mockImplementation(() => {});
+    vi.spyOn(MapModule, 'setupRouteSource').mockImplementation(() => {});
+    control._buildPanelMarkup = vi.fn(() => '');
+
+    control.onAdd(mapWithCanvas);
+
+    const setDestSpy = vi.spyOn(control, 'setDest').mockImplementation(() => {});
+    const setOriginSpy = vi.spyOn(control, 'setOrigin').mockImplementation(() => {});
+    const clickHandler = mapWithCanvas.eventHandlers.get('click');
+
+    control._activeTab = 'routing';
+    control._suppressNextMapPointerSet = false;
+
+    control._handleLongPressPoint([10, 20]);
+
+    expect(mapWithCanvas.unproject).toHaveBeenCalledWith([10, 20]);
+    expect(setDestSpy).toHaveBeenCalledWith({ lng: 7, lat: 8 });
+    expect(control._suppressNextMapPointerSet).toBe(true);
+
+    clickHandler({ lngLat: { lng: 1, lat: 2 } });
+    expect(setOriginSpy).not.toHaveBeenCalled();
+    expect(control._suppressNextMapPointerSet).toBe(false);
+  });
+
   it('calls shared dispose/shutdown when removed from the map', () => {
     const control = new MapLibreRoutingControl({
       maplibre: fakeMaplibre,
@@ -531,6 +644,58 @@ describe('MapLibreRoutingControl', () => {
     expect(control._engineBadgeEl.hidden).toBe(false);
     expect(control._statsEl.hidden).toBe(false);
     expect(control._originInput.value).toContain('0.000000');
+  });
+
+  it('auto-collapses the panel after a successful mobile route', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    setGlobalWritable('window', {
+      matchMedia: vi.fn(() => ({ matches: true })),
+    });
+    setGlobalWritable('navigator', { maxTouchPoints: 1 });
+
+    const routeFunction = vi.fn(async () => ({
+      found: true,
+      costField: 'distance',
+      cost: 1200,
+      coordinates: [
+        [0, 0],
+        [0.01, 0],
+      ],
+      engine: 'cpu',
+      parallelUsed: false,
+    }));
+
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      routeFunction,
+    });
+
+    control._mounted = true;
+    control._map = fakeMap;
+    control._statusEl = createElementStub();
+    control._statsEl = createElementStub();
+    control._statDistEl = createElementStub();
+    control._statTimeEl = createElementStub();
+    control._statDistLabelEl = createElementStub();
+    control._statTimeLabelEl = createElementStub();
+    control._engineBadgeEl = createElementStub();
+    control._originInput = createElementStub();
+    control._destInput = createElementStub();
+    control._originInput.value = '';
+    control._destInput.value = '';
+    control._togglePanelCollapse = vi.fn();
+
+    control._urlTemplate = 'http://example.com/{z}/{x}/{y}.pbf';
+    control._origin = [0, 0];
+    control._dest = [0.01, 0];
+
+    await control._tryRoute();
+
+    expect(control._togglePanelCollapse).toHaveBeenCalledTimes(1);
+
+    restoreGlobal('window', originalWindowDescriptor);
+    restoreGlobal('navigator', originalNavigatorDescriptor);
   });
 
   it('anchors isoline interpolation endpoints to the configured colors', async () => {
@@ -633,6 +798,96 @@ describe('MapLibreRoutingControl', () => {
       ],
       0,
     ]);
+  });
+
+  it('auto-collapses the panel after a successful mobile route or isoline', async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    setGlobalWritable('window', {
+      matchMedia: vi.fn(() => ({ matches: true })),
+    });
+    setGlobalWritable('navigator', { maxTouchPoints: 1 });
+
+    const routeFunction = vi.fn(async () => ({
+      found: true,
+      costField: 'distance',
+      cost: 1200,
+      coordinates: [
+        [0, 0],
+        [0.01, 0],
+      ],
+      engine: 'cpu',
+      parallelUsed: false,
+    }));
+
+    const control = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      routeFunction,
+    });
+
+    control._mounted = true;
+    control._map = fakeMap;
+    control._statusEl = createElementStub();
+    control._statsEl = createElementStub();
+    control._statDistEl = createElementStub();
+    control._statTimeEl = createElementStub();
+    control._statDistLabelEl = createElementStub();
+    control._statTimeLabelEl = createElementStub();
+    control._engineBadgeEl = createElementStub();
+    control._originInput = createElementStub();
+    control._destInput = createElementStub();
+    control._originInput.value = '';
+    control._destInput.value = '';
+    control._togglePanelCollapse = vi.fn();
+    control._urlTemplate = 'http://example.com/{z}/{x}/{y}.pbf';
+
+    control._origin = [0, 0];
+    control._dest = [0.01, 0];
+
+    await control._tryRoute();
+
+    expect(control._togglePanelCollapse).toHaveBeenCalledTimes(1);
+
+    const graphRouteFunction = vi.fn(async () => ({
+      found: true,
+      graph: {
+        nodes: new Map([
+          [0, { coords: [0, -0.0001] }],
+          [1, { coords: [0, 0.0001] }],
+        ]),
+        edges: [
+          {
+            source: 0,
+            target: 1,
+            cost: 1,
+            reverseCost: 1,
+            length: 100,
+            travelTime: 100,
+          },
+        ],
+      },
+    }));
+
+    const isolineControl = new MapLibreRoutingControl({
+      maplibre: fakeMaplibre,
+      routeFunction: graphRouteFunction,
+    });
+    isolineControl._mounted = true;
+    isolineControl._map = fakeMap;
+    isolineControl._togglePanelCollapse = vi.fn();
+    fakeMap.sources.set(isolineControl._options.isolineSourceId, {
+      setData: vi.fn(),
+      getBounds: vi.fn(() => new LngLatBoundsStub([0, 0], [1, 1])),
+    });
+    isolineControl._isoline.point = [0, 0];
+    isolineControl._urlTemplate = 'http://example.com/{z}/{x}/{y}.pbf';
+
+    await isolineControl._tryIsoline();
+
+    expect(isolineControl._togglePanelCollapse).toHaveBeenCalledTimes(1);
+
+    restoreGlobal('window', originalWindowDescriptor);
+    restoreGlobal('navigator', originalNavigatorDescriptor);
   });
 
   it('loads tile template once and caches the promise', async () => {

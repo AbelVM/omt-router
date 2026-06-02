@@ -49,6 +49,22 @@ const DEFAULT_OPTIONS = {
 const { parseCoords, lngLatToStr } = Core;
 
 /**
+ * Detect if device supports touch/pointer input (mobile).
+ * @returns {boolean} True if device uses coarse pointer (touch).
+ */
+function isTouchDevice() {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
+/**
+ * Detect if device can hover (desktop).
+ * @returns {boolean} True if device supports hover.
+ */
+function canHover() {
+  return typeof matchMedia === 'function' && matchMedia('(hover: hover)').matches;
+}
+
+/**
  * Merge nested option objects while preserving base defaults.
  * @param {object} base Default option values.
  * @param {object} override User-provided options.
@@ -225,6 +241,8 @@ export class MapLibreRoutingControl {
     this._isoline = { point: null, direction: 'from', maxCost: _defaultIso };
     this._isolineWorker = null;
     this._isolinePendingRequests = null;
+    // Mode toggle for mobile: tracks if next click sets destination
+    this._nextClickSetsDestination = false;
   }
 
   _resolveThemeClass() {
@@ -289,8 +307,11 @@ export class MapLibreRoutingControl {
     this._removeBtn = this._panel.querySelector('#rp-remove-btn');
 
     this._bindPanelEvents();
+    // Update hint text immediately based on device capability
+    this._updateHintText();
     // Ensure mode/cost UI and threshold UI are synced on mount
     UI.syncModeAndCostUI(this);
+    this._updateModeToggleButton();
     this._setupRouteSource();
     // Initialize remove button visibility based on current markers
     try {
@@ -301,6 +322,13 @@ export class MapLibreRoutingControl {
 
     this._mapClickHandler = (e) => {
       if (this._activeTab === 'isoline') return this.setIsolineFromMap(e.lngLat);
+      // Check if user toggled to set destination on next click (mobile)
+      if (this._nextClickSetsDestination) {
+        this._nextClickSetsDestination = false;
+        this._updateModeToggleButton();
+        this._updateHintText();
+        return this.setDestFromMap(e.lngLat);
+      }
       return this.setOriginFromMap(e.lngLat);
     };
     this._mapContextMenuHandler = (e) => {
@@ -310,8 +338,96 @@ export class MapLibreRoutingControl {
       if (this._consumeMapPointerSuppression()) return;
       this.setDestFromMap(e.lngLat);
     };
+
+    // Long-press detection for mobile touch devices.
+    this._longPressDuration = 500;
+    this._longPressMoveTolerancePx = 10;
+    this._longPressActive = false;
+    this._longPressFired = false;
+    this._longPressTimer = null;
+    this._longPressStartPoint = null;
+    this._mapCanvasEl =
+      this._map && typeof this._map.getCanvas === 'function' ? this._map.getCanvas() : null;
+
+    this._handleLongPressPoint = (point) => {
+      if (!this._mounted || !this._map) return;
+      if (!point) return;
+      if (this._activeTab === 'isoline') return;
+      if (this._consumeMapPointerSuppression()) return;
+      const lngLat = this._map.unproject(point);
+      // Suppress the synthetic click that often follows a long-press on mobile.
+      this._suppressNextMapPointerSet = true;
+      this.setDest(lngLat);
+    };
+
+    this._clearLongPressTimer = () => {
+      if (!this._longPressTimer) return;
+      clearTimeout(this._longPressTimer);
+      this._longPressTimer = null;
+    };
+
+    this._startLongPress = (point) => {
+      this._clearLongPressTimer();
+      this._longPressActive = true;
+      this._longPressFired = false;
+      this._longPressStartPoint = point;
+      this._longPressTimer = setTimeout(() => {
+        if (!this._longPressActive || !this._longPressStartPoint) return;
+        this._longPressFired = true;
+        this._handleLongPressPoint(this._longPressStartPoint);
+      }, this._longPressDuration);
+    };
+
+    this._cancelLongPress = () => {
+      this._longPressActive = false;
+      this._longPressStartPoint = null;
+      this._clearLongPressTimer();
+    };
+
+    this._mapTouchStartHandler = (ev) => {
+      const touch = ev.touches && ev.touches[0];
+      if (!touch || !this._mapCanvasEl) return;
+      const rect = this._mapCanvasEl.getBoundingClientRect();
+      const point = [touch.clientX - rect.left, touch.clientY - rect.top];
+      this._startLongPress(point);
+    };
+
+    this._mapTouchMoveHandler = (ev) => {
+      if (!this._longPressActive || !this._longPressStartPoint || !this._mapCanvasEl) return;
+      const touch = ev.touches && ev.touches[0];
+      if (!touch) return;
+      const rect = this._mapCanvasEl.getBoundingClientRect();
+      const dx = touch.clientX - rect.left - this._longPressStartPoint[0];
+      const dy = touch.clientY - rect.top - this._longPressStartPoint[1];
+      if (Math.hypot(dx, dy) > this._longPressMoveTolerancePx) {
+        this._cancelLongPress();
+      }
+    };
+
+    this._mapTouchEndHandler = () => {
+      this._cancelLongPress();
+    };
+
+    this._mapTouchCancelHandler = () => {
+      this._cancelLongPress();
+    };
+
     this._map.on('click', this._mapClickHandler);
     this._map.on('contextmenu', this._mapContextMenuHandler);
+    if (this._mapCanvasEl) {
+      this._mapCanvasEl.addEventListener('touchstart', this._mapTouchStartHandler, {
+        passive: true,
+      });
+      this._mapCanvasEl.addEventListener('touchmove', this._mapTouchMoveHandler, {
+        passive: true,
+      });
+      this._mapCanvasEl.addEventListener('touchend', this._mapTouchEndHandler, {
+        passive: true,
+      });
+      this._mapCanvasEl.addEventListener('touchcancel', this._mapTouchCancelHandler, {
+        passive: true,
+      });
+    }
 
     if (this._onEngineWorkerStatusChange) {
       this._unsubscribeEngineStatus = this._onEngineWorkerStatusChange((status) => {
@@ -351,11 +467,34 @@ export class MapLibreRoutingControl {
         this._map.off('contextmenu', this._mapContextMenuHandler);
         this._mapContextMenuHandler = null;
       }
+      if (this._mapCanvasEl && this._mapTouchStartHandler) {
+        this._mapCanvasEl.removeEventListener('touchstart', this._mapTouchStartHandler);
+      }
+      if (this._mapCanvasEl && this._mapTouchMoveHandler) {
+        this._mapCanvasEl.removeEventListener('touchmove', this._mapTouchMoveHandler);
+      }
+      if (this._mapCanvasEl && this._mapTouchEndHandler) {
+        this._mapCanvasEl.removeEventListener('touchend', this._mapTouchEndHandler);
+      }
+      if (this._mapCanvasEl && this._mapTouchCancelHandler) {
+        this._mapCanvasEl.removeEventListener('touchcancel', this._mapTouchCancelHandler);
+      }
       if (this._routeSourceStyleLoadHandler) {
         this._map.off('load', this._routeSourceStyleLoadHandler);
         this._routeSourceStyleLoadHandler = null;
       }
     }
+
+    this._clearLongPressTimer?.();
+    this._mapCanvasEl = null;
+    this._mapTouchStartHandler = null;
+    this._mapTouchMoveHandler = null;
+    this._mapTouchEndHandler = null;
+    this._mapTouchCancelHandler = null;
+    this._handleLongPressPoint = null;
+    this._startLongPress = null;
+    this._cancelLongPress = null;
+    this._clearLongPressTimer = null;
 
     Object.values(this._markers).forEach((marker) => marker?.remove());
     this._markers = { origin: null, dest: null, isoline: null };
@@ -446,6 +585,71 @@ export class MapLibreRoutingControl {
   setDestFromMap(lngLat) {
     if (this._consumeMapPointerSuppression()) return;
     this.setDest(lngLat);
+  }
+
+  /**
+   * Update hint text to show device-aware instructions.
+   * @private
+   */
+  _updateHintText() {
+    if (!this._panel) return;
+    const hintEl = this._panel.querySelector('.rp-hint');
+    if (!hintEl) return;
+
+    const isTouch = isTouchDevice() && !canHover();
+    const leftClickKey = this._text.tap || this._text.leftClick || 'Left-click';
+    const rightClickKey = isTouch 
+      ? (this._text.longPress || 'Long press')
+      : (this._text.rightClick || 'Right-click');
+
+    const originLabel = this._text.setOrigin || 'set origin';
+    const destLabel = this._text.setDestination || 'set destination';
+
+    hintEl.innerHTML = `
+      <span class="rp-hint-item"><span class="rp-hint-key">${leftClickKey}</span> ${originLabel}</span>
+      <span class="rp-hint-sep">·</span>
+      <span class="rp-hint-item"><span class="rp-hint-key">${rightClickKey}</span> ${destLabel}</span>
+    `;
+  }
+
+  /**
+   * Toggle the mode for next click (origin vs destination).
+   * @private
+   */
+  _toggleNextPointMode() {
+    this._nextClickSetsDestination = !this._nextClickSetsDestination;
+    this._updateModeToggleButton();
+  }
+
+  /**
+   * Update mode toggle button appearance.
+   * @private
+   */
+  _updateModeToggleButton() {
+    const modeToggleBtn = this._panel?.querySelector('#rp-mode-toggle-btn');
+    if (!modeToggleBtn) return;
+    const nextLabel =
+      (this._nextClickSetsDestination
+        ? this._text.setDestination
+        : this._text.setOrigin) || this._text.nextPoint || 'Next point';
+    const title = this._text.togglePointMode || 'Toggle point mode';
+    const labelEl = modeToggleBtn.querySelector('.rp-label-visible');
+    const helperEl = this._panel?.querySelector('#rp-mobile-help');
+    if (labelEl) labelEl.textContent = nextLabel;
+    if (helperEl) {
+      const tapText = this._text.tap || 'Tap';
+      helperEl.textContent = `${tapText} the map to ${nextLabel}`;
+    }
+    modeToggleBtn.setAttribute('title', title);
+    modeToggleBtn.setAttribute('aria-label', `${title}: ${nextLabel}`);
+
+    if (this._nextClickSetsDestination) {
+      modeToggleBtn.classList.add('active');
+      modeToggleBtn.setAttribute('aria-pressed', 'true');
+    } else {
+      modeToggleBtn.classList.remove('active');
+      modeToggleBtn.setAttribute('aria-pressed', 'false');
+    }
   }
 
   /**
@@ -869,6 +1073,16 @@ export class MapLibreRoutingControl {
       // Trigger recalculation immediately on input changes (not just on blur/enter)
       isoThreshold.addEventListener('input', handleIsoThresholdChange);
       isoThreshold.addEventListener('change', handleIsoThresholdChange);
+    }
+
+    // Mobile controls: mode toggle button for touch devices
+    const mobileControls = this._panel.querySelector('.rp-mobile-controls');
+    const modeToggleBtn = mobileControls?.querySelector('#rp-mode-toggle-btn');
+    if (modeToggleBtn) {
+      modeToggleBtn.addEventListener('click', () => {
+        this._toggleNextPointMode();
+      });
+      this._updateModeToggleButton();
     }
   }
 
