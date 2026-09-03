@@ -1,3 +1,4 @@
+import * as maplibregl from 'https://unpkg.com/maplibre-gl@^6.7.0/dist/maplibre-gl.mjs'
 import { MapLibreRoutingControl } from '../dist/omt-router.js';
 
 const TILE_JSON_URL = 'https://tiles.openfreemap.org/planet';
