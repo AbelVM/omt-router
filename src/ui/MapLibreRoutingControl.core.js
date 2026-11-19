@@ -5,6 +5,9 @@ import { isoline } from '../isolines/index.js';
 import { buildTileURL, buildGraphForTiles } from '../index.js';
 import worker from './MapLibreRoutingControl.isoline.worker?worker&inline.js';
 
+/** Maximum time (ms) to wait for an isoline worker response before rejecting. */
+const ISO_LINE_WORKER_TIMEOUT_MS = 30_000;
+
 /**
  * Ensure the isoline worker is created and wired for this control.
  * @param {object} ctrl Control instance that owns worker state.
@@ -33,6 +36,7 @@ function _ensureIsolineWorker(ctrl) {
       try {
         const pending = ctrl._isolinePendingRequests && ctrl._isolinePendingRequests.get(id);
         if (!pending) return;
+        if (pending.timeoutId) clearTimeout(pending.timeoutId);
         if (type === 'result') pending.resolve(result);
         else
           pending.reject(
@@ -49,6 +53,7 @@ function _ensureIsolineWorker(ctrl) {
       if (ctrl._isolinePendingRequests) {
         for (const [id, p] of ctrl._isolinePendingRequests) {
           try {
+            if (p.timeoutId) clearTimeout(p.timeoutId);
             p.reject(err);
           } catch (_e) {
             void _e;
@@ -79,6 +84,7 @@ async function computeIsolineInWorker(ctrl, params) {
   if (ctrl._isolinePendingRequests.size) {
     for (const [id, p] of ctrl._isolinePendingRequests) {
       try {
+        if (p.timeoutId) clearTimeout(p.timeoutId);
         p.reject(new Error('isoline cancelled'));
       } catch (_e) {
         void _e;
@@ -95,7 +101,16 @@ async function computeIsolineInWorker(ctrl, params) {
 
   const id = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
   const promise = new Promise((resolve, reject) => {
-    ctrl._isolinePendingRequests.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      if (!ctrl._isolinePendingRequests?.has(id)) return;
+      ctrl._isolinePendingRequests.delete(id);
+      reject(
+        Object.assign(new Error(`isoline worker timed out after ${ISO_LINE_WORKER_TIMEOUT_MS}ms`), {
+          code: 'ISO_LINE_WORKER_TIMEOUT',
+        })
+      );
+    }, ISO_LINE_WORKER_TIMEOUT_MS);
+    ctrl._isolinePendingRequests.set(id, { resolve, reject, timeoutId });
   });
 
   try {
@@ -133,6 +148,8 @@ async function computeIsolineInWorker(ctrl, params) {
       worker.postMessage({ type: 'compute', id, payload: postParams });
     }
   } catch (e) {
+    const pending = ctrl._isolinePendingRequests.get(id);
+    if (pending?.timeoutId) clearTimeout(pending.timeoutId);
     ctrl._isolinePendingRequests.delete(id);
     throw e;
   }

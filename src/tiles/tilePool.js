@@ -32,6 +32,7 @@ export function getSharedTilePool() {
     size: TILE_POOL_BASE_SIZE,
     maxSize: TILE_POOL_MAX_SIZE,
     lazy: true,
+    maxQueueLength: 'auto',
     autoScale: {
       intervalMs: 350,
       targetMs: 55,
@@ -43,6 +44,7 @@ export function getSharedTilePool() {
       backoffFactor: 1.5,
       backoffMaxMultiplier: 4,
       backoffResetMs: 6_000,
+      policy: 'aimd',
     },
     idleTimeout: 30_000,
   });

@@ -34,6 +34,7 @@ function getSharedPool(workerCount) {
       size: 2,
       maxSize: workerCount,
       lazy: true,
+      maxQueueLength: 'auto',
       idleTimeout: 60_000,
       autoScale: {
         // Barrier SSSP tasks are coarser and steadier; favor stable scaling over twitchy reactions.
@@ -317,29 +318,31 @@ export class AdaptiveBarrierSSSP {
   async dispatchParallel(size, currQOff, nextQOff) {
     const workers = this.workerCount;
     const chunkSize = Math.ceil(size / workers);
-    const tasks = [];
+    const batch = [];
 
     for (let w = 0; w < workers; w++) {
       const start = w * chunkSize;
       if (start >= size) break;
-      tasks.push({
-        sab: this.buffer,
-        start,
-        end: Math.min(start + chunkSize, size),
-        currQOff,
-        nextQOff,
-        distOff: this.distOff,
-        headOff: this.headOff,
-        nextOff: this.nextOff,
-        targetsOff: this.targetsOff,
-        weightsOff: this.weightsOff,
-        inQueueOff: this.inQueueOff,
-        stateOff: this.stateOff,
-        n: this.n,
-        m: this.m,
+      batch.push({
+        message: {
+          sab: this.buffer,
+          start,
+          end: Math.min(start + chunkSize, size),
+          currQOff,
+          nextQOff,
+          distOff: this.distOff,
+          headOff: this.headOff,
+          nextOff: this.nextOff,
+          targetsOff: this.targetsOff,
+          weightsOff: this.weightsOff,
+          inQueueOff: this.inQueueOff,
+          stateOff: this.stateOff,
+          n: this.n,
+          m: this.m,
+        },
       });
     }
-    return await this.pool.executeBatch(tasks);
+    return await this.pool.postMessageBatch(batch, { zeroCopy: true });
   }
 }
 

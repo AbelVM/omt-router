@@ -188,6 +188,7 @@ All unspecified text in `locale_override` is merged from the selected built-in l
 - `features === 'both'` renders tabs for routing and isolines; switching clears the alternate feature's layers/sources.
 - Isolines are output to `isolineSourceId` as a GeoJSON `FeatureCollection`; each feature includes `properties.color` used for styling.
 - Default isoline behaviour: direction `from`, `isolineMaxCost` defaults to `1000` m for `distance`, `900` s for `travelTime`.
+- For standalone use outside the control, call the exported [`isoline(options)`](#isolineoptions) function directly with a graph from `buildGraphForTiles()`.
 
 ---
 
@@ -261,6 +262,43 @@ Run the routing algorithm on a `buildCH`-prepared graph. Supports `engineId: 'au
 ### `nearestNode(coords, graph, maxDistM?)`
 
 Return the nearest graph node id within `maxDistM` (default 500 m).
+
+### `isoline(options)`
+
+Compute a reachability polygon (GeoJSON `Feature` with `Polygon` or `MultiPolygon` geometry) for a point over a pre-built graph. Snaps the point to the nearest graph segment, builds a prepared CH graph, runs a bounded isoPHAST search, and converts the sampled distance field into isobands via [d3-tricontour](https://github.com/d3/d3-tricontour).
+
+`options`:
+
+- `point` (`[lng, lat]`) — coordinate to snap and use as the origin/target.
+- `direction` (`'from'` | `'to'`) — `'from'` computes distances originating at the point; `'to'` computes distances toward it. Default `'from'`.
+- `mode` (`string`) — routing mode: `'car'` | `'pedestrian'` | `'bicycle'`. Default `'car'`.
+- `costField` (`'distance'` | `'travelTime'` | `'optimal'`) — cost metric (meters or seconds). Default `'distance'`.
+- `graph` (object) — routable graph with `nodes` (Map) and `edges` (Array), as returned by `buildGraphForTiles()`.
+- `maxCost` (`number`) — threshold in the same units as `costField`. Default `1000`.
+- `snapMaxDistM` (`number`) — maximum snapping distance (meters) for projecting the point onto the graph. Default `800`.
+- `penalties` (object) — optional penalties forwarded to `buildCH()`.
+
+Example:
+
+```javascript
+import { buildGraphForTiles, isoline } from 'omt-router';
+
+const tiles = [
+  { z: 14, x: 4827, y: 6372 },
+  { z: 14, x: 4828, y: 6372 },
+];
+const graph = await buildGraphForTiles(tiles, 'pedestrian', { urlTemplate });
+
+const feature = await isoline({
+  point: [-0.1276, 51.5074],
+  direction: 'from',
+  mode: 'pedestrian',
+  costField: 'distance',
+  graph,
+  maxCost: 1000,
+});
+// feature => GeoJSON Feature (Polygon or MultiPolygon)
+```
 
 ---
 

@@ -35,6 +35,7 @@ function getSharedPool(workerCount) {
       size: 2,
       maxSize: workerCount,
       lazy: true,
+      maxQueueLength: 'auto',
       idleTimeout: 60_000,
       autoScale: {
         // Delta-Stepping frontiers can spike suddenly; grow in larger steps but downscale slowly.
@@ -260,33 +261,35 @@ class DeltaSteppingSSSP {
   async dispatchParallel(size, mode) {
     const workers = this.workerCount;
     const chunkSize = Math.ceil(size / workers);
-    const tasks = [];
+    const batch = [];
 
     for (let w = 0; w < workers; w++) {
       const start = w * chunkSize;
       if (start >= size) break;
-      tasks.push({
-        sab: this.buffer,
-        start,
-        end: Math.min(start + chunkSize, size),
-        currQOff: this.qCurrOff,
-        nextQOff: this.qNextOff,
-        distOff: this.distOff,
-        prevOff: this.prevOff,
-        headOff: this.headOff,
-        nextOff: this.nextOff,
-        targetsOff: this.targetsOff,
-        weightsOff: this.weightsOff,
-        inQueueOff: this.inQueueOff,
-        stateOff: this.stateOff,
-        n: this.n,
-        m: this.m,
-        delta: this.delta,
-        mode,
+      batch.push({
+        message: {
+          sab: this.buffer,
+          start,
+          end: Math.min(start + chunkSize, size),
+          currQOff: this.qCurrOff,
+          nextQOff: this.qNextOff,
+          distOff: this.distOff,
+          prevOff: this.prevOff,
+          headOff: this.headOff,
+          nextOff: this.nextOff,
+          targetsOff: this.targetsOff,
+          weightsOff: this.weightsOff,
+          inQueueOff: this.inQueueOff,
+          stateOff: this.stateOff,
+          n: this.n,
+          m: this.m,
+          delta: this.delta,
+          mode,
+        },
       });
     }
 
-    await this.pool.executeBatch(tasks);
+    await this.pool.postMessageBatch(batch, { zeroCopy: true });
   }
 
   dispatchSerial(size, mode) {

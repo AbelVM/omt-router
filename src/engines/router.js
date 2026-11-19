@@ -232,9 +232,18 @@ export const EngineErrorCode = Object.freeze({
   ENGINE_CANCELLED: 'engine_cancelled',
   ENGINE_SHUTDOWN: 'engine_shutdown',
   ENGINE_WORKER_BUSY: 'engine_worker_busy',
+  ENGINE_WORKER_TIMEOUT: 'engine_worker_timeout',
 });
 
 const OPTIMAL_PRIORITY_ALPHA = 0.7;
+
+/**
+ * Maximum time (ms) to wait for an engine worker to respond before rejecting.
+ * Engine routing on large graphs can be expensive; 30 s covers worst-case
+ * pedestrian/bicycle routing on dense urban graphs while still catching
+ * hung workers that would otherwise leak a promise in _engineWorkerJobs forever.
+ */
+const ENGINE_WORKER_TIMEOUT_MS = 30_000;
 
 function isTravelTimeCostField(costField) {
   return costField === 'travelTime' || costField === 'optimal';
@@ -329,6 +338,7 @@ function emitEngineWorkerStatus(nextState) {
 
 function rejectAllEngineJobs(error) {
   for (const job of _engineWorkerJobs.values()) {
+    if (job.timeoutId) clearTimeout(job.timeoutId);
     if (job.preparedTransferred && job.prepared?.reclaimFromWorker) {
       try {
         job.prepared.reclaimFromWorker();
@@ -409,6 +419,7 @@ function ensureEngineWorker() {
     const job = _engineWorkerJobs.get(message.requestId);
     if (!job) return;
 
+    clearTimeout(job.timeoutId);
     _engineWorkerJobs.delete(message.requestId);
     const { resolve, reject, prepared, preparedTransferred } = job;
     if (preparedTransferred && prepared?.reclaimFromWorker) {
@@ -686,6 +697,7 @@ async function getEngineWorkerPool(maxSize = null) {
     size: Math.min(8, desiredSize),
     maxSize: desiredSize,
     lazy: true,
+    maxQueueLength: 'auto',
     autoScale: {
       intervalMs: 350,
       targetMs: 55,
@@ -722,7 +734,7 @@ async function runEngineInWorker(
   const startedAt = Date.now();
 
   return await new Promise((resolve, reject) => {
-    _engineWorkerJobs.set(requestId, {
+    const job = {
       requestId,
       resolve,
       reject,
@@ -730,7 +742,37 @@ async function runEngineInWorker(
       startedAt,
       prepared,
       preparedTransferred: false,
-    });
+      timeoutId: null,
+    };
+    _engineWorkerJobs.set(requestId, job);
+
+    // Reject if the worker doesn't respond within the timeout, preventing
+    // a hung worker from leaking a promise in _engineWorkerJobs forever.
+    job.timeoutId = setTimeout(() => {
+      if (!_engineWorkerJobs.has(requestId)) return;
+      _engineWorkerJobs.delete(requestId);
+      if (job.preparedTransferred && prepared?.reclaimFromWorker) {
+        try {
+          prepared.reclaimFromWorker();
+        } catch {
+          // best effort
+        }
+      }
+      const error = makeEngineError(
+        `engine worker timed out after ${ENGINE_WORKER_TIMEOUT_MS}ms`,
+        EngineErrorCode.ENGINE_WORKER_TIMEOUT
+      );
+      emitEngineWorkerStatus({
+        state: ENGINE_WORKER_STATES.ERROR,
+        running: _engineWorkerJobs.size > 0,
+        engineId: null,
+        requestId: null,
+        requestCount: _engineWorkerJobs.size,
+        startedAt: null,
+        lastError: error.message,
+      });
+      reject(error);
+    }, ENGINE_WORKER_TIMEOUT_MS);
 
     emitEngineWorkerStatus({
       state: ENGINE_WORKER_STATES.RUNNING,
@@ -759,6 +801,7 @@ async function runEngineInWorker(
             // best effort
           }
         }
+        clearTimeout(job.timeoutId);
         _engineWorkerJobs.delete(requestId);
         emitEngineWorkerStatus({
           state: ENGINE_WORKER_STATES.IDLE,
@@ -774,8 +817,7 @@ async function runEngineInWorker(
       }
       _engineWorkerPreparedIdInWorker = preparedId;
       preparedTransferred = true;
-      const job = _engineWorkerJobs.get(requestId);
-      if (job) job.preparedTransferred = true;
+      job.preparedTransferred = true;
     }
 
     try {
@@ -797,6 +839,7 @@ async function runEngineInWorker(
           // best effort
         }
       }
+      clearTimeout(job.timeoutId);
       _engineWorkerJobs.delete(requestId);
       emitEngineWorkerStatus({
         state: ENGINE_WORKER_STATES.IDLE,
@@ -832,41 +875,51 @@ async function runEngineInWorkerPool(
   const poolCanReusePrepared = _engineWorkerPoolSize <= 1 && _poolPreparedIds.has(preparedId);
 
   let response;
-  if (poolCanReusePrepared) {
-    response = await pool.postMessage(
-      {
-        type: 'run',
-        requestId,
-        engineId: selectedEngine,
-        startId,
-        endId,
-        preparedId,
-        forceSerialRouting,
-        parallelPolicy,
-      },
-      undefined,
-      { awaitResponse: true, zeroCopy: true }
-    );
-  } else {
-    const serializedPrepared = clonePreparedForEngineWorker(prepared);
-    const transferables = getPreparedWorkerTransferables(serializedPrepared);
-    response = await pool.postMessage(
-      {
-        type: 'prepareAndRun',
-        requestId,
-        engineId: selectedEngine,
-        startId,
-        endId,
-        prepared: serializedPrepared,
-        forceSerialRouting,
-        parallelPolicy,
-      },
-      transferables,
-      { awaitResponse: true, zeroCopy: true }
-    );
-    if (_engineWorkerPoolSize <= 1) {
-      _poolPreparedIds.add(preparedId);
+  try {
+    if (poolCanReusePrepared) {
+      response = await pool.postMessage(
+        {
+          type: 'run',
+          requestId,
+          engineId: selectedEngine,
+          startId,
+          endId,
+          preparedId,
+          forceSerialRouting,
+          parallelPolicy,
+        },
+        undefined,
+        { awaitResponse: true, zeroCopy: true, timeout: ENGINE_WORKER_TIMEOUT_MS }
+      );
+    } else {
+      const serializedPrepared = clonePreparedForEngineWorker(prepared);
+      const transferables = getPreparedWorkerTransferables(serializedPrepared);
+      response = await pool.postMessage(
+        {
+          type: 'prepareAndRun',
+          requestId,
+          engineId: selectedEngine,
+          startId,
+          endId,
+          prepared: serializedPrepared,
+          forceSerialRouting,
+          parallelPolicy,
+        },
+        transferables,
+        { awaitResponse: true, zeroCopy: true, timeout: ENGINE_WORKER_TIMEOUT_MS }
+      );
+      if (_engineWorkerPoolSize <= 1) {
+        _poolPreparedIds.add(preparedId);
+      }
     }
+  } catch (error) {
+    if (error?.message === 'postMessage response timeout') {
+      throw makeEngineError(
+        `engine worker pool timed out after ${ENGINE_WORKER_TIMEOUT_MS}ms`,
+        EngineErrorCode.ENGINE_WORKER_TIMEOUT
+      );
+    }
+    throw error;
   }
 
   if (!response || response.ok !== true) {
@@ -1391,10 +1444,35 @@ export async function queryRoute(
     }
   }
 
+  // ── Single-flight dedup ────────────────────────────────────────────────────
+  // If two concurrent calls request the same route (same cacheKey), the second
+  // awaits the first's computation instead of running the engine again. The
+  // result is already validated before caching, so the single-flight hit can
+  // return it directly without re-validation.
+  let inflightResolve = null;
+  let inflightReject = null;
+  if (useCache) {
+    if (!prepared._routeInflight) prepared._routeInflight = new Map();
+    const existing = prepared._routeInflight.get(cacheKey);
+    if (existing) {
+      logger.log(() => `route single-flight hit (${cacheKey})`);
+      return existing;
+    }
+    const inflightPromise = new Promise((resolve, reject) => {
+      inflightResolve = resolve;
+      inflightReject = reject;
+    });
+    // Suppress unhandled rejection when no other caller is waiting on this
+    // promise. Callers that await it still receive the rejection.
+    inflightPromise.catch(() => {});
+    prepared._routeInflight.set(cacheKey, inflightPromise);
+  }
+
   if (forceEngine === 'gpu') {
     logger.warn('forceEngine="gpu" requested, but GPU routing has been removed; using CPU routing');
   }
 
+  try {
   let result;
   let fallback = null;
   const engineWorkerEnabled = useEngineWorker && typeof Worker !== 'undefined';
@@ -1528,8 +1606,17 @@ export async function queryRoute(
 
   if (useCache) {
     prepared._routeCache.set(cacheKey, { ...result, _routeValidated: true });
+    prepared._routeInflight.delete(cacheKey);
+    inflightResolve?.(result);
   }
   return result;
+  } catch (error) {
+    if (useCache) {
+      prepared._routeInflight.delete(cacheKey);
+    }
+    inflightReject?.(error);
+    throw error;
+  }
 }
 
 /**

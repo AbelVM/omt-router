@@ -1,6 +1,6 @@
 {
   "name": "omt-router",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": false,
   "description": "Client-side routing library for OpenMapTiles vector tiles (pedestrian, car, bicycle).",
   "type": "module",
@@ -72,28 +72,31 @@
   "homepage": "https://github.com/AbelVM/omt-router#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@fullhuman/postcss-purgecss": "^8.0.0",
-    "@vitest/coverage-v8": "^4.1.8",
-    "cssnano": "^8.0.1",
+    "@fullhuman/postcss-purgecss": "^9.1.0",
+    "@vitest/coverage-v8": "^5.1.1",
+    "cssnano": "^9.9.0",
     "depcheck": "^1.4.7",
-    "esbuild": "^0.28.0",
-    "eslint": "^10.4.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.6.0",
-    "jsdom": "^29.1.1",
-    "postcss": "^8.5.15",
-    "prettier": "^3.8.3",
-    "terser": "^5.48.0",
-    "vite": "^8.0.16",
+    "globals": "^17.14.0",
+    "jsdom": "^31.0.1",
+    "postcss": "^8.5.33",
+    "prettier": "^3.10.1",
+    "terser": "^5.51.2",
+    "vite": "^8.3.8",
     "vite-plugin-cross-origin-isolation": "^0.1.6",
-    "vitest": "^4.1.8"
+    "vitest": "^5.1.1"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
     "d3-tricontour": "^1.1.0",
     "kdbush": "^4.1.0",
-    "pbf": "^5.1.0",
-    "performance-helpers": "^1.0.2",
+    "pbf": "^5.2.0",
+    "performance-helpers": "^2.3.0",
     "rbush": "^4.0.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

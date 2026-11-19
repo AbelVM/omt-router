@@ -32,6 +32,7 @@ import {
   ensureAdjCostMap,
 } from './engines/router.js';
 import { MapLibreRoutingControl } from './ui/MapLibreRoutingControl.js';
+import { isoline } from './isolines/index.js';
 
 /**
  * @typedef {[number, number]} LatLng
@@ -82,6 +83,7 @@ export {
   ensureAdjCostMap,
   MapLibreRoutingControl,
   buildTileURL,
+  isoline,
 };
 
 // Module-level singletons — created once at import time, shared across all
@@ -101,6 +103,7 @@ _tileCache.startCleanup?.({ interval: 60_000, maxCleanupPerTick: 64 });
 const _graphCache = new PowerCache({
   maxEntries: 8,
   defaultTTL: 90_000,
+  admission: 'tinylfu',
   onEvict: (_key, graph) => {
     releaseGraph(graph);
   },
@@ -175,8 +178,8 @@ export function dispose() {
   for (const graph of _graphCache.values?.() ?? []) {
     releaseGraph(graph);
   }
-  _tileCache.clear();
-  _graphCache.clear();
+  _tileCache.dispose?.();
+  _graphCache.dispose?.();
   disposeSharedTilePool();
 }
 

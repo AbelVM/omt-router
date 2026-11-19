@@ -921,7 +921,7 @@ export async function buildGraphAsync(
         const response = await pool.postMessage(
           { op: 'parse-tile', url, x, y, z, mode },
           undefined,
-          { awaitResponse: true, timeout: 10_000, signal }
+          { awaitResponse: true, timeout: 10_000, signal, zeroCopy: true }
         );
 
         if (response?.fetchFailed) {

@@ -6,16 +6,22 @@
  */
 import { u82o, o2u8 } from 'performance-helpers/powerBuffer';
 import { PowerLogger } from 'performance-helpers/powerLogger';
-import { PowerRetry } from 'performance-helpers/powerRetry';
+import { PowerRetry, PowerRetryBudget } from 'performance-helpers/powerRetry';
 import { parseTile } from '../graphs/graphBuilder.js';
 
 const logger = new PowerLogger(0, { name: 'omt-router/worker' });
+// Shared retry budget: bounds retry amplification during tile server outages.
+// Each successful fetch funds 0.2 tokens; each retry costs 1. Capacity 10
+// absorbs transient bursts, then throttles retries when the server is failing.
+const retryBudget = new PowerRetryBudget({ ratio: 0.2 });
 const retryer = new PowerRetry({
   maxAttempts: 3,
   backoff: 'exponential',
   baseDelay: 200,
   jitter: true,
+  attemptTimeout: 8_000,
   retryIf: (err) => err?.status >= 500 || err?.status === 408,
+  budget: retryBudget,
 });
 
 let _currentTileTaskId = null;
@@ -110,11 +116,13 @@ self.onmessage = async (e) => {
     const { url, x, y, z, mode, correlationId } = data;
 
     try {
-      rawtile = await retryer.run(() =>
-        fetch(url, { mode: 'cors', signal: _currentTileAbortController.signal }).then((res) => {
-          if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-          return res.arrayBuffer();
-        })
+      rawtile = await retryer.run(
+        () =>
+          fetch(url, { mode: 'cors', signal: _currentTileAbortController.signal }).then((res) => {
+            if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+            return res.arrayBuffer();
+          }),
+        { signal: _currentTileAbortController.signal }
       );
     } catch (err) {
       if (!isCurrentTileTask(taskId)) return;

@@ -132,6 +132,19 @@ export function cancelRunningEngine(reason?: string): void;
 export function releaseGraph(graph: unknown): void;
 export function ensureAdjCostMap(graph: unknown): unknown;
 
+export interface IsolineOptions {
+  point: LatLng;
+  direction?: 'from' | 'to';
+  mode?: string;
+  costField?: CostField;
+  graph: unknown;
+  maxCost?: number;
+  snapMaxDistM?: number;
+  penalties?: Record<string, unknown>;
+}
+
+export function isoline(options: IsolineOptions): Promise<Record<string, unknown>>;
+
 export class MapLibreRoutingControl {
   constructor(options?: MapLibreRoutingControlOptions);
   onAdd(map: unknown): HTMLElement;
